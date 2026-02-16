@@ -262,7 +262,104 @@ x402_routes = {
             ),
         ],
         mime_type="application/json",
-        description="Base agent wallet health report with optimization recommendations",
+        description=(
+            "Base blockchain agent wallet health analyzer. "
+            "Returns health score, gas efficiency, failure analysis, "
+            "and optimization recommendations for any Base L2 wallet address."
+        ),
+        extensions={
+            "bazaar": {
+                "info": {
+                    "input": {
+                        "type": "http",
+                        "method": "GET",
+                        "queryParams": {
+                            "address": "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
+                        },
+                    },
+                    "output": {
+                        "type": "json",
+                        "example": {
+                            "status": "ok",
+                            "report": {
+                                "address": "0xd8da6bf26964af9d7eed9e03e53415d37aa96045",
+                                "is_contract": True,
+                                "health_score": 82.5,
+                                "optimization_priority": "MEDIUM",
+                                "total_transactions": 150,
+                                "successful": 138,
+                                "failed": 12,
+                                "success_rate_pct": 92.0,
+                                "total_gas_spent_eth": 0.00342,
+                                "wasted_gas_eth": 0.00041,
+                                "estimated_monthly_waste_usd": 1.23,
+                                "avg_gas_efficiency_pct": 65.4,
+                                "out_of_gas_count": 2,
+                                "reverted_count": 10,
+                                "nonce_gap_count": 0,
+                                "retry_count": 1,
+                                "top_failure_type": "reverted",
+                                "first_seen": "2024-03-01",
+                                "last_seen": "2025-06-15",
+                                "recommendations": [
+                                    {
+                                        "category": "reliability",
+                                        "severity": "high",
+                                        "message": "Transaction success rate is 92.0%...",
+                                    },
+                                ],
+                                "eth_price_usd": 2500.0,
+                                "analyzed_at": "2026-02-16T12:00:00Z",
+                            },
+                        },
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "status": {"type": "string"},
+                                "report": {
+                                    "type": "object",
+                                    "properties": {
+                                        "address": {"type": "string", "description": "Wallet address analyzed"},
+                                        "is_contract": {"type": "boolean", "description": "Whether address is a smart contract"},
+                                        "health_score": {"type": "number", "description": "Composite health score 0-100"},
+                                        "optimization_priority": {"type": "string", "description": "CRITICAL, HIGH, MEDIUM, or LOW"},
+                                        "total_transactions": {"type": "integer", "description": "Total outgoing transactions"},
+                                        "successful": {"type": "integer"},
+                                        "failed": {"type": "integer"},
+                                        "success_rate_pct": {"type": "number", "description": "Success rate percentage"},
+                                        "total_gas_spent_eth": {"type": "number"},
+                                        "wasted_gas_eth": {"type": "number", "description": "ETH wasted on failed transactions"},
+                                        "estimated_monthly_waste_usd": {"type": "number"},
+                                        "avg_gas_efficiency_pct": {"type": "number"},
+                                        "out_of_gas_count": {"type": "integer"},
+                                        "reverted_count": {"type": "integer"},
+                                        "nonce_gap_count": {"type": "integer"},
+                                        "retry_count": {"type": "integer"},
+                                        "top_failure_type": {"type": "string"},
+                                        "first_seen": {"type": "string"},
+                                        "last_seen": {"type": "string"},
+                                        "recommendations": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "category": {"type": "string"},
+                                                    "severity": {"type": "string"},
+                                                    "message": {"type": "string"},
+                                                },
+                                            },
+                                            "description": "Actionable optimization recommendations",
+                                        },
+                                        "eth_price_usd": {"type": "number"},
+                                        "analyzed_at": {"type": "string"},
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+        },
     ),
 }
 
