@@ -4,12 +4,20 @@ Pay-per-use API that analyzes Base blockchain agent wallets for transaction fail
 
 ## What it does
 
+**Diagnose** with `/health` — then **fix** with `/optimize`.
+
+| Endpoint | Price | Purpose |
+|---|---|---|
+| `GET /health/{address}` | $0.50 USDC | Diagnose wallet health — score, failure rates, gas waste |
+| `GET /optimize/{address}` | $5.00 USDC | Fix the problems — per-transaction-type gas optimization with before/after savings |
+
 - Analyzes agent wallet transaction history on Base L2
 - Calculates composite health score (0-100)
 - Identifies failed transactions and their causes (out-of-gas, reverted)
 - Detects nonce gaps and retry patterns
 - Estimates monthly gas waste in USD
-- Provides actionable optimization recommendations
+- Groups transactions by type and calculates optimal gas limits
+- Provides actionable optimization recommendations with projected savings
 
 ## Live API
 
@@ -17,16 +25,16 @@ Pay-per-use API that analyzes Base blockchain agent wallets for transaction fail
 |---|---|
 | **Base URL** | `https://web-production-a512e.up.railway.app` |
 | **Docs** | `https://web-production-a512e.up.railway.app/docs` |
-| **Pricing** | $0.50 USDC per health check via x402 |
+| **Payment** | USDC via x402 protocol |
 | **Network** | Base Sepolia (eip155:84532) |
 
 ## Quick Start
 
+### 1. Health Check ($0.50) — Diagnose the problem
+
 ```
 GET /health/{wallet_address}
 ```
-
-### Example Request
 
 ```bash
 curl https://web-production-a512e.up.railway.app/health/0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045
@@ -34,7 +42,7 @@ curl https://web-production-a512e.up.railway.app/health/0xd8dA6BF26964aF9D7eEd9e
 
 Without an x402 payment header, you'll get a `402 Payment Required` response with payment instructions. An x402-enabled client handles this automatically.
 
-### Example Response
+#### Example Response
 
 ```json
 {
@@ -66,11 +74,6 @@ Without an x402 payment header, you'll get a `402 Payment Required` response wit
         "message": "Transaction success rate is 89.85%. 86 of 847 transactions failed. Review contract interactions for revert conditions and add pre-flight simulation via eth_call before submitting."
       },
       {
-        "category": "gas_management",
-        "severity": "high",
-        "message": "12 transactions ran out of gas. Increase gas limit estimates by 20-30% or use eth_estimateGas before submitting."
-      },
-      {
         "category": "cost",
         "severity": "high",
         "message": "Estimated $14.70/month wasted on failed transactions (0.002940 ETH total). Implement transaction simulation (eth_call) before submission to avoid paying for failures."
@@ -80,6 +83,90 @@ Without an x402 payment header, you'll get a `402 Payment Required` response wit
     "analyzed_at": "2026-02-16T20:02:19Z"
   }
 }
+```
+
+### 2. Gas Optimization ($5.00) — Fix the problem
+
+```
+GET /optimize/{wallet_address}
+```
+
+```bash
+curl https://web-production-a512e.up.railway.app/optimize/0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045
+```
+
+#### Example Response
+
+```json
+{
+  "status": "ok",
+  "report": {
+    "address": "0x464fc339...e92ad",
+    "total_transactions_analyzed": 998,
+    "current_monthly_gas_usd": 346.49,
+    "optimized_monthly_gas_usd": 275.67,
+    "estimated_monthly_savings_usd": 70.82,
+    "total_wasted_gas_eth": 0.00515463,
+    "total_wasted_gas_usd": 10.05,
+    "tx_types": [
+      {
+        "contract": "0x6bded42c...7891",
+        "method_id": "0xb858183f",
+        "method_label": "0xb858183f",
+        "tx_count": 590,
+        "failed_count": 146,
+        "failure_rate_pct": 24.7,
+        "current_avg_gas_limit": 271186,
+        "current_p50_gas_used": 166053,
+        "current_p95_gas_used": 197887,
+        "optimal_gas_limit": 227570,
+        "gas_limit_reduction_pct": 16.1,
+        "wasted_gas_eth": 0.00348,
+        "wasted_gas_usd": 6.78
+      },
+      {
+        "contract": "0x6bded42c...7891",
+        "method_id": "0x38ed1739",
+        "method_label": "swapExactTokensForTokens",
+        "tx_count": 100,
+        "failed_count": 98,
+        "failure_rate_pct": 98.0,
+        "current_avg_gas_limit": 5000000,
+        "current_p50_gas_used": 30996,
+        "current_p95_gas_used": 39474,
+        "optimal_gas_limit": 45395,
+        "gas_limit_reduction_pct": 99.1,
+        "wasted_gas_eth": 0.00145,
+        "wasted_gas_usd": 2.83
+      }
+    ],
+    "recommendations": [
+      "High failure rate (98.0%) on swapExactTokensForTokens to 0x6bded42c...7891. Add eth_call simulation before submitting these transactions.",
+      "Gas limits are 99.1% too high for swapExactTokensForTokens. Current avg: 5,000,000, optimal: 45,395. Use eth_estimateGas with a 15% buffer.",
+      "Eliminating failed transactions would save ~$70.82/month (0.005155 ETH wasted so far)."
+    ],
+    "eth_price_usd": 1949.43,
+    "analyzed_at": "2026-02-17T13:15:00Z"
+  }
+}
+```
+
+## The Upsell Funnel
+
+```
+Agent discovers a problem             Agent gets the fix
+         $0.50                               $5.00
+
+  GET /health/0x1234...             GET /optimize/0x1234...
+          |                                   |
+          v                                   v
+  "Health score: 62/100"            "22 transaction types analyzed"
+  "74% success rate"                "swapExactTokensForTokens:"
+  "258 reverted transactions"         "Gas limit 99% too high"
+  "$70/month wasted"                  "5,000,000 → 45,395"
+          |                           "$70.82/month savings"
+          v                                   |
+  "You have a problem."              "Here's exactly how to fix it."
 ```
 
 ## How Payment Works
@@ -118,8 +205,13 @@ from x402.mechanisms.evm.exact import ExactEvmScheme
 client = x402Client()
 client.register("eip155:*", ExactEvmScheme(signer=your_wallet))
 
-response = client.get("https://web-production-a512e.up.railway.app/health/0x1234...")
-print(response.json())
+# Diagnose
+health = client.get("https://web-production-a512e.up.railway.app/health/0x1234...")
+print(health.json())
+
+# Optimize
+optimization = client.get("https://web-production-a512e.up.railway.app/optimize/0x1234...")
+print(optimization.json())
 ```
 
 ## Tech Stack
@@ -149,6 +241,7 @@ uvicorn api:app --host 0.0.0.0 --port 4021
 | `BASESCAN_API_KEY` | No | — | Blockscout API key (increases rate limits) |
 | `FACILITATOR_URL` | No | `https://x402.org/facilitator` | x402 facilitator endpoint |
 | `PRICE_USD` | No | `$0.50` | Price per health check |
+| `OPTIMIZE_PRICE_USD` | No | `$5.00` | Price per gas optimization |
 | `NETWORK` | No | `eip155:84532` | CAIP-2 network ID |
 | `PORT` | No | `4021` | Server port |
 
