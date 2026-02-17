@@ -4,18 +4,20 @@ Pay-per-use API that analyzes Base blockchain agent wallets for transaction fail
 
 ## What it does
 
-**Diagnose** with `/health` — then **fix** with `/optimize`.
+**Diagnose** with `/health` — **monitor** with `/alerts` — **fix** with `/optimize`.
 
 | Endpoint | Price | Purpose |
 |---|---|---|
 | `GET /health/{address}` | $0.50 USDC | Diagnose wallet health — score, failure rates, gas waste |
-| `GET /optimize/{address}` | $5.00 USDC | Fix the problems — per-transaction-type gas optimization with before/after savings |
+| `GET /alerts/subscribe/{address}` | $2.00 USDC/month | Automated monitoring — webhook alerts every 6 hours |
+| `GET /optimize/{address}` | $5.00 USDC | Fix the problems — per-transaction-type gas optimization |
 
 - Analyzes agent wallet transaction history on Base L2
 - Calculates composite health score (0-100)
 - Identifies failed transactions and their causes (out-of-gas, reverted)
 - Detects nonce gaps and retry patterns
 - Estimates monthly gas waste in USD
+- Monitors wallets on a schedule and sends webhook alerts
 - Groups transactions by type and calculates optimal gas limits
 - Provides actionable optimization recommendations with projected savings
 
@@ -85,7 +87,63 @@ Without an x402 payment header, you'll get a `402 Payment Required` response wit
 }
 ```
 
-### 2. Gas Optimization ($5.00) — Fix the problem
+### 2. Alert Monitoring ($2.00/month) — Stay on top of it
+
+A two-step flow: pay to subscribe, then configure your webhook.
+
+#### Step 1: Subscribe (x402 payment)
+
+```
+GET /alerts/subscribe/{wallet_address}
+```
+
+Pays $2.00 USDC and activates 30 days of monitoring. If already subscribed, extends by 30 days.
+
+#### Step 2: Configure webhook (free)
+
+```bash
+curl -X POST https://web-production-a512e.up.railway.app/alerts/configure \
+  -H "Content-Type: application/json" \
+  -d '{
+    "address": "0x1234...abcd",
+    "webhook_url": "https://hooks.slack.com/services/T.../B.../xxx",
+    "webhook_type": "slack",
+    "thresholds": {
+      "health_score": 70,
+      "failure_rate": 30,
+      "waste_usd": 50
+    }
+  }'
+```
+
+**Webhook types**: `"slack"`, `"discord"`, or `"generic"` (raw JSON).
+
+**Default thresholds** (all configurable):
+- Health score drops below **70**
+- Failure rate exceeds **30%**
+- Monthly gas waste exceeds **$50**
+
+#### Check subscription status (free)
+
+```
+GET /alerts/status/{wallet_address}
+```
+
+#### Unsubscribe (free)
+
+```
+DELETE /alerts/unsubscribe/{wallet_address}
+```
+
+#### Example Alert (Slack)
+
+```json
+{
+  "text": "*Agent Health Alert* — `0x1234...abcd`\n• *low_health_score*: Health score dropped to 58.2/100 (threshold: 70)\n• *high_gas_waste*: Estimated gas waste is $72.15/month (threshold: $50.00)"
+}
+```
+
+### 3. Gas Optimization ($5.00) — Fix the problem
 
 ```
 GET /optimize/{wallet_address}
@@ -151,22 +209,22 @@ curl https://web-production-a512e.up.railway.app/optimize/0xd8dA6BF26964aF9D7eEd
 }
 ```
 
-## The Upsell Funnel
+## The Service Funnel
 
 ```
-Agent discovers a problem             Agent gets the fix
-         $0.50                               $5.00
+  Diagnose              Monitor                Fix
+   $0.50              $2.00/month             $5.00
 
-  GET /health/0x1234...             GET /optimize/0x1234...
-          |                                   |
-          v                                   v
-  "Health score: 62/100"            "22 transaction types analyzed"
-  "74% success rate"                "swapExactTokensForTokens:"
-  "258 reverted transactions"         "Gas limit 99% too high"
-  "$70/month wasted"                  "5,000,000 → 45,395"
-          |                           "$70.82/month savings"
-          v                                   |
-  "You have a problem."              "Here's exactly how to fix it."
+GET /health/0x...   GET /alerts/subscribe   GET /optimize/0x...
+      |              POST /alerts/configure        |
+      v                     |                      v
+ "Score: 62/100"     Every 6 hours:          "22 tx types analyzed"
+ "74% success"       check thresholds        "swapExact...: limit"
+ "$70/mo wasted"     send Slack/Discord        "99% too high"
+      |              if problems found       "5M → 45,395"
+      v                     |               "$70.82/mo savings"
+ "You have a          "You'll know              |
+  problem."           immediately."        "Here's the fix."
 ```
 
 ## How Payment Works
@@ -209,6 +267,10 @@ client.register("eip155:*", ExactEvmScheme(signer=your_wallet))
 health = client.get("https://web-production-a512e.up.railway.app/health/0x1234...")
 print(health.json())
 
+# Subscribe to alerts
+sub = client.get("https://web-production-a512e.up.railway.app/alerts/subscribe/0x1234...")
+print(sub.json())
+
 # Optimize
 optimization = client.get("https://web-production-a512e.up.railway.app/optimize/0x1234...")
 print(optimization.json())
@@ -241,6 +303,7 @@ uvicorn api:app --host 0.0.0.0 --port 4021
 | `BASESCAN_API_KEY` | No | — | Blockscout API key (increases rate limits) |
 | `FACILITATOR_URL` | No | `https://x402.org/facilitator` | x402 facilitator endpoint |
 | `PRICE_USD` | No | `$0.50` | Price per health check |
+| `ALERT_PRICE_USD` | No | `$2.00` | Price per alert subscription (30 days) |
 | `OPTIMIZE_PRICE_USD` | No | `$5.00` | Price per gas optimization |
 | `NETWORK` | No | `eip155:84532` | CAIP-2 network ID |
 | `PORT` | No | `4021` | Server port |
