@@ -12,10 +12,11 @@ Usage:
 
 import argparse
 import csv
+import math
 import sys
 import time
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 import requests
@@ -297,6 +298,230 @@ def analyze_address(address: str, transactions: list[dict], eth_price: float) ->
         health.optimization_priority = "LOW"
 
     return health
+
+
+# -- Gas Optimization Engine --------------------------------------------
+
+KNOWN_SELECTORS = {
+    "0x5ae401dc": "multicall (Uniswap V3)",
+    "0x3593564c": "execute (Universal Router)",
+    "0xa9059cbb": "transfer (ERC-20)",
+    "0x095ea7b3": "approve (ERC-20)",
+    "0x38ed1739": "swapExactTokensForTokens",
+    "0x7ff36ab5": "swapExactETHForTokens",
+    "0x18cbafe5": "swapExactTokensForETH",
+    "0x23b872dd": "transferFrom (ERC-20)",
+    "0xb6f9de95": "swapExactETHForTokensSupportingFee",
+    "0x791ac947": "swapExactTokensForETHSupportingFee",
+    "0x": "ETH transfer",
+}
+
+
+def _percentile(values: list[int], p: float) -> int:
+    """Compute the p-th percentile of a list of integers."""
+    if not values:
+        return 0
+    s = sorted(values)
+    k = (len(s) - 1) * (p / 100)
+    f = math.floor(k)
+    c = math.ceil(k)
+    if f == c:
+        return s[int(k)]
+    return int(s[f] * (c - k) + s[c] * (k - f))
+
+
+def _method_label(selector: str) -> str:
+    """Resolve a 4-byte method selector to a human label."""
+    return KNOWN_SELECTORS.get(selector, selector)
+
+
+@dataclass
+class TxTypeOptimization:
+    """Gas optimization for one transaction type (contract + method)."""
+    contract: str
+    method_id: str
+    method_label: str
+    tx_count: int = 0
+    failed_count: int = 0
+    failure_rate_pct: float = 0.0
+    current_avg_gas_limit: int = 0
+    current_p50_gas_used: int = 0
+    current_p95_gas_used: int = 0
+    optimal_gas_limit: int = 0
+    gas_limit_reduction_pct: float = 0.0
+    wasted_gas_eth: float = 0.0
+    wasted_gas_usd: float = 0.0
+
+
+@dataclass
+class GasOptimization:
+    """Full gas optimization report for a wallet."""
+    address: str
+    total_transactions_analyzed: int = 0
+    current_monthly_gas_usd: float = 0.0
+    optimized_monthly_gas_usd: float = 0.0
+    estimated_monthly_savings_usd: float = 0.0
+    total_wasted_gas_eth: float = 0.0
+    total_wasted_gas_usd: float = 0.0
+    tx_types: list[TxTypeOptimization] = field(default_factory=list)
+    recommendations: list[str] = field(default_factory=list)
+
+
+def optimize_gas(
+    address: str, transactions: list[dict], eth_price: float,
+) -> GasOptimization:
+    """Analyze transactions and generate per-type gas optimization report."""
+    result = GasOptimization(address=address)
+
+    if not transactions:
+        return result
+
+    outgoing = [
+        tx for tx in transactions if tx.get("from", "").lower() == address.lower()
+    ]
+    if not outgoing:
+        return result
+
+    result.total_transactions_analyzed = len(outgoing)
+
+    # Group by contract:methodId
+    groups: dict[str, list[dict]] = {}
+    for tx in outgoing:
+        to_addr = (tx.get("to") or "0x0000000000000000000000000000000000000000").lower()
+        inp = tx.get("input", "0x")
+        selector = inp[:10] if len(inp) >= 10 else "0x"
+        key = f"{to_addr}:{selector}"
+        groups.setdefault(key, []).append(tx)
+
+    # Time range for monthly projection
+    timestamps = [int(tx.get("timeStamp", 0)) for tx in outgoing]
+    first_ts, last_ts = min(timestamps), max(timestamps)
+    period_days = max((last_ts - first_ts) / 86400, 1)
+
+    total_gas_cost_wei = 0
+    total_wasted_wei = 0
+    total_optimized_cost_wei = 0
+
+    type_results = []
+
+    for key, txs in sorted(groups.items(), key=lambda kv: -len(kv[1])):
+        to_addr, selector = key.rsplit(":", 1)
+        label = _method_label(selector)
+
+        gas_limits = []
+        gas_used_list = []
+        failed = 0
+        group_wasted_wei = 0
+        group_cost_wei = 0
+
+        for tx in txs:
+            g_used = int(tx.get("gasUsed") or 0)
+            g_limit = int(tx.get("gas") or 0)
+            g_price = int(tx.get("gasPrice") or 0)
+            is_error = tx.get("isError") == "1" or tx.get("txreceipt_status") == "0"
+
+            cost_wei = g_used * g_price
+            group_cost_wei += cost_wei
+            total_gas_cost_wei += cost_wei
+
+            if g_limit > 0:
+                gas_limits.append(g_limit)
+            if g_used > 0:
+                gas_used_list.append(g_used)
+
+            if is_error:
+                failed += 1
+                group_wasted_wei += cost_wei
+                total_wasted_wei += cost_wei
+
+        avg_limit = int(sum(gas_limits) / len(gas_limits)) if gas_limits else 0
+        p50_used = _percentile(gas_used_list, 50)
+        p95_used = _percentile(gas_used_list, 95)
+        optimal = int(p95_used * 1.15) if p95_used > 0 else avg_limit
+
+        # Project optimized cost: for successful txs, cost stays same (gas_used * price).
+        # Savings come from eliminating failed txs via better limits + simulation.
+        total_optimized_cost_wei += (group_cost_wei - group_wasted_wei)
+
+        reduction_pct = (
+            round((1 - optimal / avg_limit) * 100, 1) if avg_limit > 0 and optimal < avg_limit else 0.0
+        )
+
+        opt = TxTypeOptimization(
+            contract=to_addr,
+            method_id=selector,
+            method_label=label,
+            tx_count=len(txs),
+            failed_count=failed,
+            failure_rate_pct=round(failed / len(txs) * 100, 1) if txs else 0.0,
+            current_avg_gas_limit=avg_limit,
+            current_p50_gas_used=p50_used,
+            current_p95_gas_used=p95_used,
+            optimal_gas_limit=optimal,
+            gas_limit_reduction_pct=reduction_pct,
+            wasted_gas_eth=round(group_wasted_wei / 1e18, 8),
+            wasted_gas_usd=round(group_wasted_wei / 1e18 * eth_price, 2),
+        )
+        type_results.append(opt)
+
+    # Monthly projections
+    daily_total = (total_gas_cost_wei / 1e18) / period_days
+    daily_optimized = (total_optimized_cost_wei / 1e18) / period_days
+
+    result.current_monthly_gas_usd = round(daily_total * 30 * eth_price, 2)
+    result.optimized_monthly_gas_usd = round(daily_optimized * 30 * eth_price, 2)
+    result.estimated_monthly_savings_usd = round(
+        result.current_monthly_gas_usd - result.optimized_monthly_gas_usd, 2
+    )
+    result.total_wasted_gas_eth = round(total_wasted_wei / 1e18, 8)
+    result.total_wasted_gas_usd = round(total_wasted_wei / 1e18 * eth_price, 2)
+    result.tx_types = type_results
+
+    # Generate recommendations
+    recs = []
+    high_fail_types = [t for t in type_results if t.failure_rate_pct > 10 and t.tx_count >= 3]
+    if high_fail_types:
+        worst = max(high_fail_types, key=lambda t: t.failure_rate_pct)
+        recs.append(
+            f"High failure rate ({worst.failure_rate_pct}%) on {worst.method_label} "
+            f"to {worst.contract[:10]}...{worst.contract[-4:]}. "
+            f"Add eth_call simulation before submitting these transactions."
+        )
+
+    over_limit = [t for t in type_results if t.gas_limit_reduction_pct > 30 and t.tx_count >= 3]
+    if over_limit:
+        worst = max(over_limit, key=lambda t: t.gas_limit_reduction_pct)
+        recs.append(
+            f"Gas limits are {worst.gas_limit_reduction_pct}% too high for {worst.method_label}. "
+            f"Current avg: {worst.current_avg_gas_limit:,}, optimal: {worst.optimal_gas_limit:,}. "
+            f"Use eth_estimateGas with a 15% buffer."
+        )
+
+    if result.estimated_monthly_savings_usd > 0:
+        recs.append(
+            f"Eliminating failed transactions would save ~${result.estimated_monthly_savings_usd:.2f}/month "
+            f"({result.total_wasted_gas_eth:.6f} ETH wasted so far)."
+        )
+
+    tight_limit = [
+        t for t in type_results
+        if t.current_avg_gas_limit > 0
+        and t.current_p95_gas_used > t.current_avg_gas_limit * 0.9
+        and t.tx_count >= 3
+    ]
+    if tight_limit:
+        recs.append(
+            f"{len(tight_limit)} transaction type(s) have dangerously tight gas limits "
+            f"(p95 usage >90% of limit). Increase buffer to avoid out-of-gas failures."
+        )
+
+    if not recs:
+        recs.append(
+            "Gas usage looks well-optimized. Continue monitoring for regressions."
+        )
+
+    result.recommendations = recs
+    return result
 
 
 # -- Output -------------------------------------------------------------
