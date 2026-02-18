@@ -23,6 +23,8 @@ import asyncio
 import logging
 import os
 import re
+import secrets
+import time
 from contextlib import asynccontextmanager
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -72,6 +74,8 @@ PROTECT_PRICE = os.getenv("PROTECT_PRICE_USD", "$25.00")
 # For Base mainnet (eip155:8453), use the CDP facilitator:
 #   FACILITATOR_URL=https://api.cdp.coinbase.com/platform/v2/x402
 NETWORK = os.getenv("NETWORK", "eip155:84532")  # Base Sepolia (testnet)
+CDP_API_KEY_ID = os.getenv("CDP_API_KEY_ID", "")
+CDP_API_KEY_SECRET = os.getenv("CDP_API_KEY_SECRET", "")
 PORT = int(os.getenv("PORT", "4021"))
 
 ADDRESS_RE = re.compile(r"^0x[0-9a-fA-F]{40}$")
@@ -568,7 +572,44 @@ app = FastAPI(
 
 # -- x402 Payment Middleware -------------------------------------------------
 
-facilitator = HTTPFacilitatorClient(FacilitatorConfig(url=FACILITATOR_URL))
+
+def _build_cdp_jwt(uri: str = "") -> str:
+    """Build a CDP-signed JWT for facilitator API authentication."""
+    import jwt as pyjwt
+    from cryptography.hazmat.primitives import serialization
+
+    private_key = serialization.load_pem_private_key(
+        CDP_API_KEY_SECRET.encode("utf-8"), password=None,
+    )
+    payload = {
+        "sub": CDP_API_KEY_ID,
+        "iss": "cdp",
+        "nbf": int(time.time()),
+        "exp": int(time.time()) + 120,
+    }
+    if uri:
+        payload["uri"] = uri
+    return pyjwt.encode(
+        payload, private_key, algorithm="ES256",
+        headers={"kid": CDP_API_KEY_ID, "nonce": secrets.token_hex()},
+    )
+
+
+def _cdp_create_headers() -> dict[str, dict[str, str]]:
+    """Generate CDP auth headers for all facilitator endpoints."""
+    token = _build_cdp_jwt()
+    auth = {"Authorization": f"Bearer {token}"}
+    return {"verify": auth, "settle": auth, "supported": auth}
+
+
+if CDP_API_KEY_ID and CDP_API_KEY_SECRET:
+    facilitator = HTTPFacilitatorClient({
+        "url": FACILITATOR_URL,
+        "create_headers": _cdp_create_headers,
+    })
+else:
+    facilitator = HTTPFacilitatorClient(FacilitatorConfig(url=FACILITATOR_URL))
+
 server = x402ResourceServer(facilitator)
 server.register(NETWORK, ExactEvmServerScheme())
 
