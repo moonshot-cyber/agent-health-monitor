@@ -1066,30 +1066,35 @@ async def debug_config():
         pem_line_lengths = [len(line) for line in CDP_API_KEY_SECRET.split("\n")]
         # Check for carriage returns or other hidden chars
         has_cr = "\r" in CDP_API_KEY_SECRET
-        # Test JWT generation with URI claim
+        # Test JWT generation and decode to verify claims
+        jwt_decoded = None
         try:
-            headers = _cdp_create_headers()
+            import jwt as pyjwt_mod
+            base = FACILITATOR_URL.rstrip("/")
+            token = _build_cdp_jwt("GET", f"{base}/supported")
+            # Decode without verification to inspect claims
+            jwt_decoded = {
+                "header": pyjwt_mod.get_unverified_header(token),
+                "claims": pyjwt_mod.decode(token, options={"verify_signature": False}),
+            }
             jwt_test = True
         except Exception as e:
-            headers = {}
             jwt_test = f"{type(e).__name__}: {e}"
-        # Actually test calling the CDP facilitator /supported endpoint
-        facilitator_test = None
-        if jwt_test is True:
-            try:
-                import httpx
-                resp = httpx.get(
-                    f"{FACILITATOR_URL.rstrip('/')}/supported",
-                    headers=headers.get("supported", {}),
-                    timeout=10.0,
-                    follow_redirects=True,
-                )
-                facilitator_test = {
-                    "status": resp.status_code,
-                    "body": resp.text[:500],
-                }
-            except Exception as e:
-                facilitator_test = f"{type(e).__name__}: {e}"
+        # Check DER curve OID
+        import base64
+        der_curve = ""
+        try:
+            lines = CDP_API_KEY_SECRET.strip().split("\n")
+            b64 = "".join(l for l in lines if not l.startswith("-----"))
+            der = base64.b64decode(b64)
+            # Curve OID in SEC1 is after the private key at tag a0
+            for i in range(len(der) - 10):
+                if der[i] == 0xa0:
+                    oid_bytes = der[i+2:i+2+der[i+1]]
+                    der_curve = oid_bytes.hex()
+                    break
+        except Exception:
+            pass
         # Check library versions
         import sys
         try:
@@ -1130,7 +1135,8 @@ async def debug_config():
             "pem_has_cr": has_cr if cdp_configured else False,
             "secret_length": len(CDP_API_KEY_SECRET),
             "jwt_generation": jwt_test if cdp_configured else False,
-            "facilitator_test": facilitator_test if cdp_configured else None,
+            "jwt_decoded": jwt_decoded if cdp_configured else None,
+            "der_curve_oid": der_curve if cdp_configured else "",
             "python_version": sys.version,
             "cryptography_version": crypto_ver if cdp_configured else "",
             "pyjwt_version": pyjwt_ver if cdp_configured else "",
