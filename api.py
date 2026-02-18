@@ -577,9 +577,45 @@ app = FastAPI(
 _cdp_logger = logging.getLogger("cdp_auth")
 
 
+def _load_cdp_ec_key():
+    """Load the CDP EC private key, handling various formats."""
+    import base64
+    from cryptography.hazmat.primitives.asymmetric import ec
+
+    # Extract raw private key bytes from PEM (bypass load_pem_private_key)
+    lines = CDP_API_KEY_SECRET.strip().split("\n")
+    b64_data = "".join(line for line in lines if not line.startswith("-----"))
+    der_bytes = base64.b64decode(b64_data)
+
+    # SEC1 EC Private Key DER: SEQUENCE { version=1, OCTET STRING(privkey), ... }
+    # The private key bytes start at offset 7 (30 LL 02 01 01 04 20 <32 bytes>)
+    if der_bytes[5] == 0x04 and der_bytes[6] == 0x20:
+        raw_key = der_bytes[7:7 + 32]
+    else:
+        raise ValueError(f"Unexpected DER structure: bytes 5-6 = {der_bytes[5:7].hex()}")
+
+    private_key = ec.derive_private_key(
+        int.from_bytes(raw_key, "big"), ec.SECP256R1()
+    )
+    return private_key
+
+
+# Cache the loaded key to avoid re-parsing on every request
+_cdp_ec_key = None
+
+
+def _get_cdp_key():
+    global _cdp_ec_key
+    if _cdp_ec_key is None:
+        _cdp_ec_key = _load_cdp_ec_key()
+    return _cdp_ec_key
+
+
 def _build_cdp_jwt(uri: str = "") -> str:
     """Build a CDP-signed JWT for facilitator API authentication."""
     import jwt as pyjwt
+
+    private_key = _get_cdp_key()
 
     payload = {
         "sub": CDP_API_KEY_ID,
@@ -589,9 +625,8 @@ def _build_cdp_jwt(uri: str = "") -> str:
     }
     if uri:
         payload["uri"] = uri
-    # Pass PEM string directly to PyJWT — it handles key parsing internally
     token = pyjwt.encode(
-        payload, CDP_API_KEY_SECRET, algorithm="ES256",
+        payload, private_key, algorithm="ES256",
         headers={"kid": CDP_API_KEY_ID, "nonce": secrets.token_hex()},
     )
     _cdp_logger.info("CDP JWT generated successfully (kid=%s)", CDP_API_KEY_ID)
