@@ -969,6 +969,26 @@ x402_routes = {
 app.add_middleware(PaymentMiddlewareASGI, routes=x402_routes, server=server)
 
 
+# Global exception handler to surface x402 middleware errors
+from starlette.requests import Request
+from starlette.responses import JSONResponse
+
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    import traceback
+    tb = traceback.format_exception(type(exc), exc, exc.__traceback__)
+    _cdp_logger.error("Unhandled exception: %s", "".join(tb))
+    return JSONResponse(
+        status_code=500,
+        content={
+            "error": str(exc),
+            "type": type(exc).__name__,
+            "traceback": tb[-5:],  # Last 5 lines of traceback
+        },
+    )
+
+
 # -- Routes ------------------------------------------------------------------
 
 @app.get("/")
