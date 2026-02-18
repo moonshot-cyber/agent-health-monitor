@@ -611,33 +611,53 @@ def _get_cdp_key():
     return _cdp_ec_key
 
 
-def _build_cdp_jwt(uri: str = "") -> str:
-    """Build a CDP-signed JWT for facilitator API authentication."""
+def _build_cdp_jwt(method: str = "", path: str = "") -> str:
+    """Build a CDP-signed JWT for facilitator API authentication.
+
+    Args:
+        method: HTTP method (GET, POST) for the URI claim.
+        path: Full URL path for the URI claim.
+    """
     import jwt as pyjwt
+    from urllib.parse import urlparse
 
     private_key = _get_cdp_key()
 
     payload = {
         "sub": CDP_API_KEY_ID,
         "iss": "cdp",
+        "aud": ["cdp_service"],
         "nbf": int(time.time()),
         "exp": int(time.time()) + 120,
     }
-    if uri:
-        payload["uri"] = uri
+    if method and path:
+        parsed = urlparse(path)
+        # URI format: "METHOD host/path" (no scheme)
+        payload["uri"] = f"{method} {parsed.netloc}{parsed.path}"
     token = pyjwt.encode(
         payload, private_key, algorithm="ES256",
         headers={"kid": CDP_API_KEY_ID, "nonce": secrets.token_hex()},
     )
-    _cdp_logger.info("CDP JWT generated successfully (kid=%s)", CDP_API_KEY_ID)
     return token
 
 
 def _cdp_create_headers() -> dict[str, dict[str, str]]:
-    """Generate CDP auth headers for all facilitator endpoints."""
-    token = _build_cdp_jwt()
-    auth = {"Authorization": f"Bearer {token}"}
-    return {"verify": auth, "settle": auth, "supported": auth}
+    """Generate CDP auth headers for all facilitator endpoints.
+
+    Each endpoint gets its own JWT with the correct URI claim.
+    """
+    base = FACILITATOR_URL.rstrip("/")
+    return {
+        "verify": {
+            "Authorization": f"Bearer {_build_cdp_jwt('POST', f'{base}/verify')}",
+        },
+        "settle": {
+            "Authorization": f"Bearer {_build_cdp_jwt('POST', f'{base}/settle')}",
+        },
+        "supported": {
+            "Authorization": f"Bearer {_build_cdp_jwt('GET', f'{base}/supported')}",
+        },
+    }
 
 
 if CDP_API_KEY_ID and CDP_API_KEY_SECRET:
@@ -1036,9 +1056,9 @@ async def debug_config():
         pem_line_lengths = [len(line) for line in CDP_API_KEY_SECRET.split("\n")]
         # Check for carriage returns or other hidden chars
         has_cr = "\r" in CDP_API_KEY_SECRET
-        # Test JWT generation (passes PEM string directly to PyJWT)
+        # Test JWT generation with URI claim
         try:
-            _build_cdp_jwt()
+            _cdp_create_headers()
             jwt_test = True
         except Exception as e:
             jwt_test = f"{type(e).__name__}: {e}"
