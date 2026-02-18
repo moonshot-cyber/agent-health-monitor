@@ -23,8 +23,6 @@ import asyncio
 import logging
 import os
 import re
-import secrets
-import time
 from contextlib import asynccontextmanager
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -63,20 +61,14 @@ if not PAYMENT_ADDRESS:
         "Set it to your wallet address that will receive USDC payments."
     )
 
-FACILITATOR_URL = os.getenv("FACILITATOR_URL", "https://x402.org/facilitator")
+FACILITATOR_URL = os.getenv("FACILITATOR_URL", "https://api.mrdn.finance/v1")
 BASESCAN_API_KEY = os.getenv("BASESCAN_API_KEY", "")
 PRICE = os.getenv("PRICE_USD", "$0.50")
 OPTIMIZE_PRICE = os.getenv("OPTIMIZE_PRICE_USD", "$5.00")
 ALERT_PRICE = os.getenv("ALERT_PRICE_USD", "$2.00")
 RETRY_PRICE = os.getenv("RETRY_PRICE_USD", "$10.00")
 PROTECT_PRICE = os.getenv("PROTECT_PRICE_USD", "$25.00")
-# x402.org facilitator supports Base Sepolia (eip155:84532).
-# For Base mainnet (eip155:8453), use the CDP facilitator:
-#   FACILITATOR_URL=https://api.cdp.coinbase.com/platform/v2/x402
-NETWORK = os.getenv("NETWORK", "eip155:84532")  # Base Sepolia (testnet)
-CDP_API_KEY_ID = os.getenv("CDP_API_KEY_ID", "")
-# Railway may store PEM with literal \n — convert to real newlines
-CDP_API_KEY_SECRET = os.getenv("CDP_API_KEY_SECRET", "").replace("\\n", "\n")
+NETWORK = os.getenv("NETWORK", "base")  # Meridian facilitator uses "base" for mainnet
 PORT = int(os.getenv("PORT", "4021"))
 
 ADDRESS_RE = re.compile(r"^0x[0-9a-fA-F]{40}$")
@@ -566,7 +558,7 @@ app = FastAPI(
         "gas inefficiency, and nonce issues. Returns actionable health reports. "
         "Payments via x402 protocol (USDC on Base)."
     ),
-    version="1.5.0",
+    version="1.6.0",
     lifespan=lifespan,
 )
 
@@ -574,111 +566,7 @@ app = FastAPI(
 # -- x402 Payment Middleware -------------------------------------------------
 
 
-_cdp_logger = logging.getLogger("cdp_auth")
-
-
-def _load_cdp_ec_key():
-    """Load the CDP EC private key, handling various formats."""
-    import base64
-    from cryptography.hazmat.primitives.asymmetric import ec
-
-    # Extract raw private key bytes from PEM (bypass load_pem_private_key)
-    lines = CDP_API_KEY_SECRET.strip().split("\n")
-    b64_data = "".join(line for line in lines if not line.startswith("-----"))
-    der_bytes = base64.b64decode(b64_data)
-
-    # SEC1 EC Private Key DER: SEQUENCE { version=1, OCTET STRING(privkey), ... }
-    # The private key bytes start at offset 7 (30 LL 02 01 01 04 20 <32 bytes>)
-    if der_bytes[5] == 0x04 and der_bytes[6] == 0x20:
-        raw_key = der_bytes[7:7 + 32]
-    else:
-        raise ValueError(f"Unexpected DER structure: bytes 5-6 = {der_bytes[5:7].hex()}")
-
-    private_key = ec.derive_private_key(
-        int.from_bytes(raw_key, "big"), ec.SECP256R1()
-    )
-    return private_key
-
-
-# Cache the loaded key to avoid re-parsing on every request
-_cdp_ec_key = None
-
-
-def _get_cdp_key():
-    global _cdp_ec_key
-    if _cdp_ec_key is None:
-        _cdp_ec_key = _load_cdp_ec_key()
-    return _cdp_ec_key
-
-
-def _build_cdp_jwt(method: str = "", path: str = "") -> str:
-    """Build a CDP-signed JWT for facilitator API authentication.
-
-    Matches the format from @coinbase/cdp-sdk/auth generateJwt:
-    - header: alg=ES256, kid, typ=JWT, nonce (16-digit numeric)
-    - claims: sub, iss=cdp, nbf, exp, uris (plural, array)
-
-    Args:
-        method: HTTP method (GET, POST) for the uris claim.
-        path: Full URL for the uris claim.
-    """
-    import random
-    import jwt as pyjwt
-    from urllib.parse import urlparse
-
-    private_key = _get_cdp_key()
-
-    now = int(time.time())
-    payload = {
-        "sub": CDP_API_KEY_ID,
-        "iss": "cdp",
-        "nbf": now,
-        "exp": now + 120,
-    }
-    if method and path:
-        parsed = urlparse(path)
-        # URI format: "METHOD host/path" (no scheme)
-        uri = f"{method} {parsed.netloc}{parsed.path}"
-        payload["uris"] = [uri]
-
-    # Nonce: 16-digit numeric string (matches CDP SDK)
-    nonce = "".join(random.choices("0123456789", k=16))
-
-    token = pyjwt.encode(
-        payload, private_key, algorithm="ES256",
-        headers={"kid": CDP_API_KEY_ID, "typ": "JWT", "nonce": nonce},
-    )
-    return token
-
-
-def _cdp_create_headers() -> dict[str, dict[str, str]]:
-    """Generate CDP auth headers for all facilitator endpoints.
-
-    Each endpoint gets its own JWT with the correct URI claim.
-    """
-    base = FACILITATOR_URL.rstrip("/")
-    return {
-        "verify": {
-            "Authorization": f"Bearer {_build_cdp_jwt('POST', f'{base}/verify')}",
-        },
-        "settle": {
-            "Authorization": f"Bearer {_build_cdp_jwt('POST', f'{base}/settle')}",
-        },
-        "supported": {
-            "Authorization": f"Bearer {_build_cdp_jwt('GET', f'{base}/supported')}",
-        },
-    }
-
-
-if CDP_API_KEY_ID and CDP_API_KEY_SECRET:
-    _cdp_logger.info("CDP auth enabled (key_id=%s, secret_len=%d)", CDP_API_KEY_ID, len(CDP_API_KEY_SECRET))
-    facilitator = HTTPFacilitatorClient({
-        "url": FACILITATOR_URL,
-        "create_headers": _cdp_create_headers,
-    })
-else:
-    _cdp_logger.info("CDP auth NOT configured — using unauthenticated facilitator")
-    facilitator = HTTPFacilitatorClient(FacilitatorConfig(url=FACILITATOR_URL))
+facilitator = HTTPFacilitatorClient(FacilitatorConfig(url=FACILITATOR_URL))
 
 server = x402ResourceServer(facilitator)
 server.register(NETWORK, ExactEvmServerScheme())
@@ -999,26 +887,6 @@ x402_routes = {
 app.add_middleware(PaymentMiddlewareASGI, routes=x402_routes, server=server)
 
 
-# Global exception handler to surface x402 middleware errors
-from starlette.requests import Request
-from starlette.responses import JSONResponse
-
-
-@app.exception_handler(Exception)
-async def global_exception_handler(request: Request, exc: Exception):
-    import traceback
-    tb = traceback.format_exception(type(exc), exc, exc.__traceback__)
-    _cdp_logger.error("Unhandled exception: %s", "".join(tb))
-    return JSONResponse(
-        status_code=500,
-        content={
-            "error": str(exc),
-            "type": type(exc).__name__,
-            "traceback": tb[-5:],  # Last 5 lines of traceback
-        },
-    )
-
-
 # -- Routes ------------------------------------------------------------------
 
 @app.get("/")
@@ -1046,103 +914,6 @@ async def root():
 async def up():
     """Unpaid liveness probe for load balancers."""
     return {"status": "ok"}
-
-
-@app.get("/debug/config")
-async def debug_config():
-    """Show non-secret config for debugging x402 setup."""
-    cdp_configured = bool(CDP_API_KEY_ID and CDP_API_KEY_SECRET)
-    pem_ok = False
-    jwt_ok = False
-    pem_header = ""
-    pem_lines = 0
-    pem_load_ok = False
-    if cdp_configured:
-        pem_ok = CDP_API_KEY_SECRET.startswith("-----BEGIN")
-        pem_lines = CDP_API_KEY_SECRET.count("\n")
-        # Show the first line (header only, not secret data)
-        pem_header = CDP_API_KEY_SECRET.split("\n")[0] if "\n" in CDP_API_KEY_SECRET else CDP_API_KEY_SECRET[:40]
-        # Show line lengths to diagnose PEM structure issues
-        pem_line_lengths = [len(line) for line in CDP_API_KEY_SECRET.split("\n")]
-        # Check for carriage returns or other hidden chars
-        has_cr = "\r" in CDP_API_KEY_SECRET
-        # Test JWT generation and decode to verify claims
-        jwt_decoded = None
-        try:
-            import jwt as pyjwt_mod
-            base = FACILITATOR_URL.rstrip("/")
-            token = _build_cdp_jwt("GET", f"{base}/supported")
-            # Decode without verification to inspect claims
-            jwt_decoded = {
-                "header": pyjwt_mod.get_unverified_header(token),
-                "claims": pyjwt_mod.decode(token, options={"verify_signature": False}),
-            }
-            jwt_test = True
-        except Exception as e:
-            jwt_test = f"{type(e).__name__}: {e}"
-        # Check DER curve OID
-        import base64
-        der_curve = ""
-        try:
-            lines = CDP_API_KEY_SECRET.strip().split("\n")
-            b64 = "".join(l for l in lines if not l.startswith("-----"))
-            der = base64.b64decode(b64)
-            # Curve OID in SEC1 is after the private key at tag a0
-            for i in range(len(der) - 10):
-                if der[i] == 0xa0:
-                    oid_bytes = der[i+2:i+2+der[i+1]]
-                    der_curve = oid_bytes.hex()
-                    break
-        except Exception:
-            pass
-        # Check library versions
-        import sys
-        try:
-            import cryptography
-            crypto_ver = cryptography.__version__
-        except Exception:
-            crypto_ver = "unknown"
-        try:
-            import jwt as pyjwt_mod
-            pyjwt_ver = pyjwt_mod.__version__
-        except Exception:
-            pyjwt_ver = "unknown"
-        # Try loading key with cryptography directly (more verbose error)
-        try:
-            from cryptography.hazmat.primitives.asymmetric import ec
-            from cryptography.hazmat.primitives.serialization import load_pem_private_key
-            pk = load_pem_private_key(CDP_API_KEY_SECRET.encode(), password=None)
-            key_info = f"OK: {type(pk).__name__}, key_size={pk.key_size}"
-        except Exception as e:
-            import traceback
-            key_info = traceback.format_exc().split("\n")[-3:]
-        try:
-            _build_cdp_jwt()
-            jwt_ok = True
-        except Exception as e:
-            jwt_ok = f"{type(e).__name__}: {e}"
-    return {
-        "version": "1.5.0",
-        "network": NETWORK,
-        "facilitator_url": FACILITATOR_URL,
-        "payment_address": PAYMENT_ADDRESS,
-        "cdp_auth": {
-            "configured": cdp_configured,
-            "key_id": CDP_API_KEY_ID[:8] + "..." if CDP_API_KEY_ID else "",
-            "pem_header": pem_header,
-            "pem_newline_count": pem_lines,
-            "pem_line_lengths": pem_line_lengths if cdp_configured else [],
-            "pem_has_cr": has_cr if cdp_configured else False,
-            "secret_length": len(CDP_API_KEY_SECRET),
-            "jwt_generation": jwt_test if cdp_configured else False,
-            "jwt_decoded": jwt_decoded if cdp_configured else None,
-            "der_curve_oid": der_curve if cdp_configured else "",
-            "python_version": sys.version,
-            "cryptography_version": crypto_ver if cdp_configured else "",
-            "pyjwt_version": pyjwt_ver if cdp_configured else "",
-            "key_load_detail": key_info if cdp_configured else "",
-        },
-    }
 
 
 @app.get("/health/{address}", response_model=HealthResponse)
