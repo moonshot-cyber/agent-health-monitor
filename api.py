@@ -75,7 +75,8 @@ PROTECT_PRICE = os.getenv("PROTECT_PRICE_USD", "$25.00")
 #   FACILITATOR_URL=https://api.cdp.coinbase.com/platform/v2/x402
 NETWORK = os.getenv("NETWORK", "eip155:84532")  # Base Sepolia (testnet)
 CDP_API_KEY_ID = os.getenv("CDP_API_KEY_ID", "")
-CDP_API_KEY_SECRET = os.getenv("CDP_API_KEY_SECRET", "")
+# Railway may store PEM with literal \n — convert to real newlines
+CDP_API_KEY_SECRET = os.getenv("CDP_API_KEY_SECRET", "").replace("\\n", "\n")
 PORT = int(os.getenv("PORT", "4021"))
 
 ADDRESS_RE = re.compile(r"^0x[0-9a-fA-F]{40}$")
@@ -565,7 +566,7 @@ app = FastAPI(
         "gas inefficiency, and nonce issues. Returns actionable health reports. "
         "Payments via x402 protocol (USDC on Base)."
     ),
-    version="1.4.0",
+    version="1.5.0",
     lifespan=lifespan,
 )
 
@@ -573,14 +574,23 @@ app = FastAPI(
 # -- x402 Payment Middleware -------------------------------------------------
 
 
+_cdp_logger = logging.getLogger("cdp_auth")
+
+
 def _build_cdp_jwt(uri: str = "") -> str:
     """Build a CDP-signed JWT for facilitator API authentication."""
     import jwt as pyjwt
     from cryptography.hazmat.primitives import serialization
 
-    private_key = serialization.load_pem_private_key(
-        CDP_API_KEY_SECRET.encode("utf-8"), password=None,
-    )
+    try:
+        private_key = serialization.load_pem_private_key(
+            CDP_API_KEY_SECRET.encode("utf-8"), password=None,
+        )
+    except Exception as e:
+        _cdp_logger.error("Failed to load CDP PEM key: %s", e)
+        _cdp_logger.error("Key starts with: %s...", CDP_API_KEY_SECRET[:40] if CDP_API_KEY_SECRET else "(empty)")
+        raise
+
     payload = {
         "sub": CDP_API_KEY_ID,
         "iss": "cdp",
@@ -589,10 +599,12 @@ def _build_cdp_jwt(uri: str = "") -> str:
     }
     if uri:
         payload["uri"] = uri
-    return pyjwt.encode(
+    token = pyjwt.encode(
         payload, private_key, algorithm="ES256",
         headers={"kid": CDP_API_KEY_ID, "nonce": secrets.token_hex()},
     )
+    _cdp_logger.info("CDP JWT generated successfully (kid=%s)", CDP_API_KEY_ID)
+    return token
 
 
 def _cdp_create_headers() -> dict[str, dict[str, str]]:
@@ -603,11 +615,13 @@ def _cdp_create_headers() -> dict[str, dict[str, str]]:
 
 
 if CDP_API_KEY_ID and CDP_API_KEY_SECRET:
+    _cdp_logger.info("CDP auth enabled (key_id=%s, secret_len=%d)", CDP_API_KEY_ID, len(CDP_API_KEY_SECRET))
     facilitator = HTTPFacilitatorClient({
         "url": FACILITATOR_URL,
         "create_headers": _cdp_create_headers,
     })
 else:
+    _cdp_logger.info("CDP auth NOT configured — using unauthenticated facilitator")
     facilitator = HTTPFacilitatorClient(FacilitatorConfig(url=FACILITATOR_URL))
 
 server = x402ResourceServer(facilitator)
@@ -936,7 +950,7 @@ async def root():
     """Service info and pricing."""
     return {
         "service": "Agent Health Monitor",
-        "version": "1.4.0",
+        "version": "1.5.0",
         "network": "Base L2",
         "endpoints": {
             "GET /health/{address}": f"{PRICE} USDC — wallet health diagnosis",
@@ -956,6 +970,34 @@ async def root():
 async def up():
     """Unpaid liveness probe for load balancers."""
     return {"status": "ok"}
+
+
+@app.get("/debug/config")
+async def debug_config():
+    """Show non-secret config for debugging x402 setup."""
+    cdp_configured = bool(CDP_API_KEY_ID and CDP_API_KEY_SECRET)
+    pem_ok = False
+    jwt_ok = False
+    if cdp_configured:
+        pem_ok = CDP_API_KEY_SECRET.startswith("-----BEGIN")
+        try:
+            _build_cdp_jwt()
+            jwt_ok = True
+        except Exception as e:
+            jwt_ok = str(e)
+    return {
+        "version": "1.5.0",
+        "network": NETWORK,
+        "facilitator_url": FACILITATOR_URL,
+        "payment_address": PAYMENT_ADDRESS,
+        "cdp_auth": {
+            "configured": cdp_configured,
+            "key_id": CDP_API_KEY_ID[:8] + "..." if CDP_API_KEY_ID else "",
+            "pem_starts_correctly": pem_ok,
+            "secret_length": len(CDP_API_KEY_SECRET),
+            "jwt_generation": jwt_ok,
+        },
+    }
 
 
 @app.get("/health/{address}", response_model=HealthResponse)
@@ -1468,4 +1510,5 @@ async def unsubscribe_alerts(address: str):
 if __name__ == "__main__":
     import uvicorn
 
+    logging.basicConfig(level=logging.INFO)
     uvicorn.run(app, host="0.0.0.0", port=PORT)
