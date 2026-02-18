@@ -987,6 +987,27 @@ async def debug_config():
             jwt_test = True
         except Exception as e:
             jwt_test = f"{type(e).__name__}: {e}"
+        # Check library versions
+        import sys
+        try:
+            import cryptography
+            crypto_ver = cryptography.__version__
+        except Exception:
+            crypto_ver = "unknown"
+        try:
+            import jwt as pyjwt_mod
+            pyjwt_ver = pyjwt_mod.__version__
+        except Exception:
+            pyjwt_ver = "unknown"
+        # Try loading key with cryptography directly (more verbose error)
+        try:
+            from cryptography.hazmat.primitives.asymmetric import ec
+            from cryptography.hazmat.primitives.serialization import load_pem_private_key
+            pk = load_pem_private_key(CDP_API_KEY_SECRET.encode(), password=None)
+            key_info = f"OK: {type(pk).__name__}, key_size={pk.key_size}"
+        except Exception as e:
+            import traceback
+            key_info = traceback.format_exc().split("\n")[-3:]
         try:
             _build_cdp_jwt()
             jwt_ok = True
@@ -1006,6 +1027,10 @@ async def debug_config():
             "pem_has_cr": has_cr if cdp_configured else False,
             "secret_length": len(CDP_API_KEY_SECRET),
             "jwt_generation": jwt_test if cdp_configured else False,
+            "python_version": sys.version,
+            "cryptography_version": crypto_ver if cdp_configured else "",
+            "pyjwt_version": pyjwt_ver if cdp_configured else "",
+            "key_load_detail": key_info if cdp_configured else "",
         },
     }
 
