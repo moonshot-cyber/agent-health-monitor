@@ -999,6 +999,24 @@ async def debug_config():
             pem_load_ok = f"OK ({type(pk).__name__})"
         except Exception as e:
             pem_load_ok = f"{type(e).__name__}: {e}"
+        # Try DER loading to isolate PEM vs key-content issue
+        import base64
+        der_load_ok = False
+        try:
+            b64_lines = CDP_API_KEY_SECRET.strip().split("\n")[1:-1]
+            b64_data = "".join(b64_lines)
+            der_bytes = base64.b64decode(b64_data)
+            der_hex_prefix = der_bytes[:8].hex()
+            der_len = len(der_bytes)
+            try:
+                pk2 = serialization.load_der_private_key(der_bytes, password=None)
+                der_load_ok = f"OK ({type(pk2).__name__})"
+            except Exception as e2:
+                der_load_ok = f"{type(e2).__name__}: {e2}"
+        except Exception as e3:
+            der_hex_prefix = ""
+            der_len = 0
+            der_load_ok = f"base64 error: {e3}"
         try:
             _build_cdp_jwt()
             jwt_ok = True
@@ -1018,6 +1036,9 @@ async def debug_config():
             "pem_has_cr": has_cr if cdp_configured else False,
             "secret_length": len(CDP_API_KEY_SECRET),
             "pem_load": pem_load_ok,
+            "der_bytes_len": der_len if cdp_configured else 0,
+            "der_hex_prefix": der_hex_prefix if cdp_configured else "",
+            "der_load": der_load_ok if cdp_configured else False,
             "jwt_generation": jwt_ok,
         },
     }
