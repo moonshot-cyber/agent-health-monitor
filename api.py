@@ -580,16 +580,6 @@ _cdp_logger = logging.getLogger("cdp_auth")
 def _build_cdp_jwt(uri: str = "") -> str:
     """Build a CDP-signed JWT for facilitator API authentication."""
     import jwt as pyjwt
-    from cryptography.hazmat.primitives import serialization
-
-    try:
-        private_key = serialization.load_pem_private_key(
-            CDP_API_KEY_SECRET.encode("utf-8"), password=None,
-        )
-    except Exception as e:
-        _cdp_logger.error("Failed to load CDP PEM key: %s", e)
-        _cdp_logger.error("Key starts with: %s...", CDP_API_KEY_SECRET[:40] if CDP_API_KEY_SECRET else "(empty)")
-        raise
 
     payload = {
         "sub": CDP_API_KEY_ID,
@@ -599,8 +589,9 @@ def _build_cdp_jwt(uri: str = "") -> str:
     }
     if uri:
         payload["uri"] = uri
+    # Pass PEM string directly to PyJWT — it handles key parsing internally
     token = pyjwt.encode(
-        payload, private_key, algorithm="ES256",
+        payload, CDP_API_KEY_SECRET, algorithm="ES256",
         headers={"kid": CDP_API_KEY_ID, "nonce": secrets.token_hex()},
     )
     _cdp_logger.info("CDP JWT generated successfully (kid=%s)", CDP_API_KEY_ID)
@@ -990,33 +981,12 @@ async def debug_config():
         pem_line_lengths = [len(line) for line in CDP_API_KEY_SECRET.split("\n")]
         # Check for carriage returns or other hidden chars
         has_cr = "\r" in CDP_API_KEY_SECRET
-        # Test PEM loading separately from JWT encoding
+        # Test JWT generation (passes PEM string directly to PyJWT)
         try:
-            from cryptography.hazmat.primitives import serialization
-            pk = serialization.load_pem_private_key(
-                CDP_API_KEY_SECRET.encode("utf-8"), password=None,
-            )
-            pem_load_ok = f"OK ({type(pk).__name__})"
+            _build_cdp_jwt()
+            jwt_test = True
         except Exception as e:
-            pem_load_ok = f"{type(e).__name__}: {e}"
-        # Try DER loading to isolate PEM vs key-content issue
-        import base64
-        der_load_ok = False
-        try:
-            b64_lines = CDP_API_KEY_SECRET.strip().split("\n")[1:-1]
-            b64_data = "".join(b64_lines)
-            der_bytes = base64.b64decode(b64_data)
-            der_hex_prefix = der_bytes[:8].hex()
-            der_len = len(der_bytes)
-            try:
-                pk2 = serialization.load_der_private_key(der_bytes, password=None)
-                der_load_ok = f"OK ({type(pk2).__name__})"
-            except Exception as e2:
-                der_load_ok = f"{type(e2).__name__}: {e2}"
-        except Exception as e3:
-            der_hex_prefix = ""
-            der_len = 0
-            der_load_ok = f"base64 error: {e3}"
+            jwt_test = f"{type(e).__name__}: {e}"
         try:
             _build_cdp_jwt()
             jwt_ok = True
@@ -1035,11 +1005,7 @@ async def debug_config():
             "pem_line_lengths": pem_line_lengths if cdp_configured else [],
             "pem_has_cr": has_cr if cdp_configured else False,
             "secret_length": len(CDP_API_KEY_SECRET),
-            "pem_load": pem_load_ok,
-            "der_bytes_len": der_len if cdp_configured else 0,
-            "der_hex_prefix": der_hex_prefix if cdp_configured else "",
-            "der_load": der_load_ok if cdp_configured else False,
-            "jwt_generation": jwt_ok,
+            "jwt_generation": jwt_test if cdp_configured else False,
         },
     }
 
