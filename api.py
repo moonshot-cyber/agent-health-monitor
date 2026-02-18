@@ -14,6 +14,7 @@ Environment variables:
     FACILITATOR_URL  - x402 facilitator endpoint (optional)
     PRICE_USD        - Price per health check, e.g. "$0.50" (optional)
     RETRY_PRICE_USD  - Price per retry analysis, e.g. "$10.00" (optional)
+    PROTECT_PRICE_USD - Price per protection agent run, e.g. "$25.00" (optional)
     NETWORK          - CAIP-2 network ID (optional, default: Base mainnet)
     PORT             - Server port (optional, default: 4021)
 """
@@ -46,6 +47,7 @@ from monitor import (
     get_eth_price,
     is_contract_address,
     optimize_gas,
+    run_protection_agent,
 )
 
 load_dotenv()
@@ -65,6 +67,7 @@ PRICE = os.getenv("PRICE_USD", "$0.50")
 OPTIMIZE_PRICE = os.getenv("OPTIMIZE_PRICE_USD", "$5.00")
 ALERT_PRICE = os.getenv("ALERT_PRICE_USD", "$2.00")
 RETRY_PRICE = os.getenv("RETRY_PRICE_USD", "$10.00")
+PROTECT_PRICE = os.getenv("PROTECT_PRICE_USD", "$25.00")
 # x402.org facilitator supports Base Sepolia (eip155:84532).
 # For Base mainnet (eip155:8453), use the CDP facilitator:
 #   FACILITATOR_URL=https://api.cdp.coinbase.com/platform/v2/x402
@@ -188,6 +191,51 @@ class RetryPreviewResponse(BaseModel):
     retryable_count: int
     total_estimated_retry_cost_usd: float
     potential_value_recovered_usd: float
+    message: str
+
+
+# -- Protection Agent Models -------------------------------------------------
+
+class ProtectionActionItem(BaseModel):
+    priority: int
+    action: str
+    description: str
+    potential_value_usd: float = 0.0
+    potential_savings_monthly_usd: float = 0.0
+
+
+class ProtectionSummaryModel(BaseModel):
+    total_issues_found: int
+    total_potential_savings_usd: float
+    retry_transactions_ready: int
+    estimated_retry_cost_usd: float
+
+
+class ProtectionReport(BaseModel):
+    address: str
+    risk_level: str
+    health_score: float
+    services_run: list[str]
+    summary: ProtectionSummaryModel
+    health_report: HealthReport
+    gas_optimization: Optional[GasOptimizationReport] = None
+    retry_transactions: Optional[list[RetryTransactionItem]] = None
+    recommended_actions: list[ProtectionActionItem]
+    analyzed_at: str
+
+
+class ProtectionResponse(BaseModel):
+    status: str
+    report: ProtectionReport
+
+
+class ProtectionPreviewResponse(BaseModel):
+    status: str
+    address: str
+    risk_level: str
+    health_score: float
+    services_recommended: list[str]
+    estimated_issues: int
     message: str
 
 
@@ -513,7 +561,7 @@ app = FastAPI(
         "gas inefficiency, and nonce issues. Returns actionable health reports. "
         "Payments via x402 protocol (USDC on Base)."
     ),
-    version="1.3.0",
+    version="1.4.0",
     lifespan=lifespan,
 )
 
@@ -718,6 +766,63 @@ x402_routes = {
             },
         },
     ),
+    "GET /agent/protect/[address]": RouteConfig(
+        accepts=[
+            PaymentOption(
+                scheme="exact",
+                pay_to=PAYMENT_ADDRESS,
+                price=PROTECT_PRICE,
+                network=NETWORK,
+            ),
+        ],
+        mime_type="application/json",
+        description=(
+            "Protection Agent: Autonomous orchestrator that triages wallet risk "
+            "and runs the appropriate combination of health check, gas optimization, "
+            "and retry bot services. Returns a unified report with prioritized "
+            "actions ranked by potential value recovered."
+        ),
+        extensions={
+            "bazaar": {
+                "info": {
+                    "input": {
+                        "type": "http",
+                        "method": "GET",
+                        "queryParams": {
+                            "address": "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
+                        },
+                    },
+                    "output": {
+                        "type": "json",
+                        "example": {
+                            "status": "ok",
+                            "report": {
+                                "address": "0xd8da6bf26964af9d7eed9e03e53415d37aa96045",
+                                "risk_level": "high",
+                                "health_score": 58,
+                                "services_run": ["health_check", "gas_optimizer", "retry_bot"],
+                                "summary": {
+                                    "total_issues_found": 15,
+                                    "total_potential_savings_usd": 156.00,
+                                    "retry_transactions_ready": 8,
+                                    "estimated_retry_cost_usd": 2.40,
+                                },
+                                "recommended_actions": [
+                                    {
+                                        "priority": 1,
+                                        "action": "Execute retry transactions",
+                                        "potential_value_usd": 85.00,
+                                        "description": "8 failed transactions can be retried with optimized gas",
+                                    },
+                                ],
+                                "analyzed_at": "2026-02-18T12:00:00Z",
+                            },
+                        },
+                    },
+                },
+            },
+        },
+    ),
     "GET /retry/[address]": RouteConfig(
         accepts=[
             PaymentOption(
@@ -790,7 +895,7 @@ async def root():
     """Service info and pricing."""
     return {
         "service": "Agent Health Monitor",
-        "version": "1.3.0",
+        "version": "1.4.0",
         "network": "Base L2",
         "endpoints": {
             "GET /health/{address}": f"{PRICE} USDC — wallet health diagnosis",
@@ -798,6 +903,8 @@ async def root():
             "GET /optimize/{address}": f"{OPTIMIZE_PRICE} USDC — gas optimization report",
             "GET /retry/{address}": f"{RETRY_PRICE} USDC — optimized retry transactions for recent failures",
             "GET /retry/preview/{address}": "free — preview retryable failure count and estimated savings",
+            "GET /agent/protect/{address}": f"{PROTECT_PRICE} USDC — autonomous protection agent (runs all services)",
+            "GET /agent/protect/preview/{address}": "free — preview risk level and recommended services",
         },
         "payment": "x402 protocol (USDC on Base)",
         "docs": "/docs",
@@ -919,6 +1026,195 @@ async def get_optimization_report(address: str):
     )
 
     return OptimizeResponse(status="ok", report=report)
+
+
+# -- Protection Agent Endpoints -----------------------------------------------
+
+@app.get("/agent/protect/preview/{address}", response_model=ProtectionPreviewResponse)
+async def protection_preview(address: str):
+    """
+    Free preview of protection agent analysis.
+
+    Shows wallet risk level, health score, and which services
+    would be run without executing the full analysis.
+    """
+    if not ADDRESS_RE.match(address):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid Ethereum address format: {address}",
+        )
+
+    address = address.lower()
+    loop = asyncio.get_running_loop()
+
+    eth_price, transactions = await asyncio.gather(
+        loop.run_in_executor(None, partial(get_eth_price, BASESCAN_API_KEY)),
+        loop.run_in_executor(None, partial(fetch_transactions, address, BASESCAN_API_KEY)),
+    )
+
+    health = await loop.run_in_executor(
+        None, partial(analyze_address, address, transactions, eth_price),
+    )
+
+    score = health.health_score
+    if score >= 90:
+        risk_level = "low"
+        services = ["health_check"]
+    elif score >= 70:
+        risk_level = "medium"
+        services = ["health_check", "gas_optimizer"]
+    elif score >= 50:
+        risk_level = "high"
+        services = ["health_check", "gas_optimizer", "retry_bot"]
+    else:
+        risk_level = "critical"
+        services = ["health_check", "gas_optimizer", "retry_bot"]
+
+    estimated_issues = health.failed + health.nonce_gap_count + health.retry_count
+
+    message = (
+        f"Risk level: {risk_level.upper()}. Health score: {score}/100. "
+        f"{estimated_issues} issue(s) detected. "
+        f"Protection agent will run: {', '.join(services)}. "
+        f"Pay {PROTECT_PRICE} USDC via GET /agent/protect/{address} "
+        f"for full analysis with prioritized action plan."
+    )
+
+    return ProtectionPreviewResponse(
+        status="ok",
+        address=address,
+        risk_level=risk_level,
+        health_score=score,
+        services_recommended=services,
+        estimated_issues=estimated_issues,
+        message=message,
+    )
+
+
+@app.get("/agent/protect/{address}", response_model=ProtectionResponse)
+async def get_protection_report(address: str):
+    """
+    Autonomous protection agent — full wallet analysis and action plan.
+
+    Requires x402 payment ($25.00 USDC on Base).
+
+    Triages wallet risk and runs the appropriate services:
+    - Score 90-100: Low risk — health report + recommend alerts
+    - Score 70-89: Medium risk — health + gas optimization
+    - Score 50-69: High risk — health + gas optimization + retry bot
+    - Score 0-49: Critical — all services, urgent flagging
+
+    Returns a unified report with all results and prioritized actions
+    ranked by potential value recovered.
+    """
+    if not ADDRESS_RE.match(address):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid Ethereum address format: {address}",
+        )
+
+    address = address.lower()
+    loop = asyncio.get_running_loop()
+
+    eth_price, transactions, is_contract = await asyncio.gather(
+        loop.run_in_executor(None, partial(get_eth_price, BASESCAN_API_KEY)),
+        loop.run_in_executor(None, partial(fetch_transactions, address, BASESCAN_API_KEY)),
+        loop.run_in_executor(None, partial(is_contract_address, address)),
+    )
+
+    protection = await loop.run_in_executor(
+        None, partial(run_protection_agent, address, transactions, eth_price),
+    )
+    protection.health.is_contract = is_contract
+
+    # Build health report with recommendations
+    recommendations = generate_recommendations(protection.health)
+    now_str = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    health_report = HealthReport(
+        **{k: v for k, v in asdict(protection.health).items()},
+        recommendations=recommendations,
+        eth_price_usd=eth_price,
+        analyzed_at=now_str,
+    )
+
+    # Build gas optimization report if available
+    gas_report = None
+    if protection.gas_optimization:
+        opt = protection.gas_optimization
+        gas_report = GasOptimizationReport(
+            address=opt.address,
+            total_transactions_analyzed=opt.total_transactions_analyzed,
+            current_monthly_gas_usd=opt.current_monthly_gas_usd,
+            optimized_monthly_gas_usd=opt.optimized_monthly_gas_usd,
+            estimated_monthly_savings_usd=opt.estimated_monthly_savings_usd,
+            total_wasted_gas_eth=opt.total_wasted_gas_eth,
+            total_wasted_gas_usd=opt.total_wasted_gas_usd,
+            tx_types=[
+                TransactionTypeOptimization(
+                    contract=t.contract,
+                    method_id=t.method_id,
+                    method_label=t.method_label,
+                    tx_count=t.tx_count,
+                    failed_count=t.failed_count,
+                    failure_rate_pct=t.failure_rate_pct,
+                    current_avg_gas_limit=t.current_avg_gas_limit,
+                    current_p50_gas_used=t.current_p50_gas_used,
+                    current_p95_gas_used=t.current_p95_gas_used,
+                    optimal_gas_limit=t.optimal_gas_limit,
+                    gas_limit_reduction_pct=t.gas_limit_reduction_pct,
+                    wasted_gas_eth=t.wasted_gas_eth,
+                    wasted_gas_usd=t.wasted_gas_usd,
+                )
+                for t in opt.tx_types
+            ],
+            recommendations=opt.recommendations,
+            eth_price_usd=eth_price,
+            analyzed_at=now_str,
+        )
+
+    # Build retry transactions list if available
+    retry_items = None
+    if protection.retry_analysis and protection.retry_analysis.retryable_count > 0:
+        retry_items = [
+            RetryTransactionItem(
+                original_tx_hash=rt.original_tx_hash,
+                failure_reason=rt.failure_reason,
+                optimized_transaction=OptimizedTransaction(**rt.optimized_transaction),
+                estimated_gas_cost_usd=rt.estimated_gas_cost_usd,
+                confidence=rt.confidence,
+            )
+            for rt in protection.retry_analysis.retry_transactions
+        ]
+
+    report = ProtectionReport(
+        address=protection.address,
+        risk_level=protection.risk_level,
+        health_score=protection.health_score,
+        services_run=protection.services_run,
+        summary=ProtectionSummaryModel(
+            total_issues_found=protection.summary.total_issues_found,
+            total_potential_savings_usd=protection.summary.total_potential_savings_usd,
+            retry_transactions_ready=protection.summary.retry_transactions_ready,
+            estimated_retry_cost_usd=protection.summary.estimated_retry_cost_usd,
+        ),
+        health_report=health_report,
+        gas_optimization=gas_report,
+        retry_transactions=retry_items,
+        recommended_actions=[
+            ProtectionActionItem(
+                priority=a.priority,
+                action=a.action,
+                description=a.description,
+                potential_value_usd=a.potential_value_usd,
+                potential_savings_monthly_usd=a.potential_savings_monthly_usd,
+            )
+            for a in protection.recommended_actions
+        ],
+        analyzed_at=now_str,
+    )
+
+    return ProtectionResponse(status="ok", report=report)
 
 
 # -- RetryBot Endpoints ------------------------------------------------------

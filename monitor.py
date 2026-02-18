@@ -745,6 +745,165 @@ def optimize_gas(
     return result
 
 
+# -- Protection Agent Orchestrator --------------------------------------
+
+@dataclass
+class RecommendedAction:
+    """A prioritized action from the protection agent."""
+    priority: int
+    action: str
+    description: str
+    potential_value_usd: float = 0.0
+    potential_savings_monthly_usd: float = 0.0
+
+
+@dataclass
+class ProtectionSummary:
+    """Summary of the protection agent analysis."""
+    total_issues_found: int = 0
+    total_potential_savings_usd: float = 0.0
+    retry_transactions_ready: int = 0
+    estimated_retry_cost_usd: float = 0.0
+
+
+@dataclass
+class ProtectionResult:
+    """Full result from the protection agent orchestrator."""
+    address: str
+    risk_level: str = "low"
+    health_score: float = 0.0
+    services_run: list[str] = field(default_factory=list)
+    summary: ProtectionSummary = field(default_factory=ProtectionSummary)
+    health: AgentHealth = field(default_factory=lambda: AgentHealth(address=""))
+    gas_optimization: GasOptimization | None = None
+    retry_analysis: RetryAnalysis | None = None
+    recommended_actions: list[RecommendedAction] = field(default_factory=list)
+
+
+def run_protection_agent(
+    address: str, transactions: list[dict], eth_price: float,
+) -> ProtectionResult:
+    """
+    Autonomous protection agent orchestrator.
+
+    Triages based on health score and runs the appropriate services:
+      90-100: Low risk — health report only
+      70-89:  Medium risk — health + gas optimization
+      50-69:  High risk — health + gas optimization + retry bot
+      0-49:   Critical — all services, urgent flagging
+    """
+    result = ProtectionResult(address=address)
+
+    # Step 1: Always run health analysis
+    health = analyze_address(address, transactions, eth_price)
+    result.health = health
+    result.health_score = health.health_score
+    result.services_run.append("health_check")
+
+    # Determine risk level from health score
+    score = health.health_score
+    if score >= 90:
+        result.risk_level = "low"
+    elif score >= 70:
+        result.risk_level = "medium"
+    elif score >= 50:
+        result.risk_level = "high"
+    else:
+        result.risk_level = "critical"
+
+    total_savings = 0.0
+    total_issues = health.failed + health.nonce_gap_count + health.retry_count
+    actions: list[RecommendedAction] = []
+
+    # Step 2: Run GasOptimizer for medium risk and above (score < 90)
+    gas_opt = None
+    if score < 90:
+        gas_opt = optimize_gas(address, transactions, eth_price)
+        result.gas_optimization = gas_opt
+        result.services_run.append("gas_optimizer")
+
+        if gas_opt.estimated_monthly_savings_usd > 0:
+            over_limit_types = [
+                t for t in gas_opt.tx_types
+                if t.gas_limit_reduction_pct > 10 and t.tx_count >= 3
+            ]
+            total_savings += gas_opt.estimated_monthly_savings_usd
+            actions.append(RecommendedAction(
+                priority=0,  # ranked later
+                action="Apply gas limit optimizations",
+                description=(
+                    f"Reduce gas limits on {len(over_limit_types)} transaction type(s). "
+                    f"Current monthly spend: ${gas_opt.current_monthly_gas_usd:.2f}, "
+                    f"optimized: ${gas_opt.optimized_monthly_gas_usd:.2f}."
+                ),
+                potential_savings_monthly_usd=gas_opt.estimated_monthly_savings_usd,
+            ))
+
+    # Step 3: Run RetryBot for high risk and above (score < 70)
+    retry = None
+    if score < 70:
+        retry = analyze_retryable_transactions(address, transactions, eth_price)
+        result.retry_analysis = retry
+        result.services_run.append("retry_bot")
+
+        if retry.retryable_count > 0:
+            total_savings += retry.potential_value_recovered_usd
+            actions.append(RecommendedAction(
+                priority=0,
+                action="Execute retry transactions",
+                description=(
+                    f"{retry.retryable_count} failed transactions can be retried "
+                    f"with optimized gas parameters."
+                ),
+                potential_value_usd=retry.potential_value_recovered_usd,
+            ))
+
+    # Step 4: Always recommend monitoring for anything below low risk
+    if score < 90:
+        actions.append(RecommendedAction(
+            priority=0,
+            action="Set up monitoring alerts",
+            description=(
+                f"Subscribe to automated health monitoring at /alerts/subscribe/{address} "
+                f"to get webhook alerts when health score drops below thresholds."
+            ),
+        ))
+
+    # Step 5: Add urgent flag for critical wallets
+    if result.risk_level == "critical":
+        actions.insert(0, RecommendedAction(
+            priority=0,
+            action="URGENT: Investigate transaction failures immediately",
+            description=(
+                f"Health score is {score}/100 (CRITICAL). "
+                f"{health.failed} failed transactions, "
+                f"{health.out_of_gas_count} out-of-gas, "
+                f"{health.reverted_count} reverted. "
+                f"Estimated ${health.estimated_monthly_waste_usd:.2f}/month wasted."
+            ),
+            potential_value_usd=health.estimated_monthly_waste_usd,
+        ))
+
+    # Rank actions by potential value (highest first)
+    actions.sort(
+        key=lambda a: max(a.potential_value_usd, a.potential_savings_monthly_usd),
+        reverse=True,
+    )
+    for i, action in enumerate(actions, 1):
+        action.priority = i
+    result.recommended_actions = actions
+
+    # Build summary
+    result.summary = ProtectionSummary(
+        total_issues_found=total_issues,
+        total_potential_savings_usd=round(total_savings, 2),
+        retry_transactions_ready=retry.retryable_count if retry else 0,
+        estimated_retry_cost_usd=retry.total_estimated_retry_cost_usd if retry else 0.0,
+    )
+
+    return result
+
+
 # -- Output -------------------------------------------------------------
 
 CSV_FIELDS = [
