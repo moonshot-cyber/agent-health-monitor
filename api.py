@@ -614,29 +614,39 @@ def _get_cdp_key():
 def _build_cdp_jwt(method: str = "", path: str = "") -> str:
     """Build a CDP-signed JWT for facilitator API authentication.
 
+    Matches the format from @coinbase/cdp-sdk/auth generateJwt:
+    - header: alg=ES256, kid, typ=JWT, nonce (16-digit numeric)
+    - claims: sub, iss=cdp, nbf, exp, uris (plural, array)
+
     Args:
-        method: HTTP method (GET, POST) for the URI claim.
-        path: Full URL path for the URI claim.
+        method: HTTP method (GET, POST) for the uris claim.
+        path: Full URL for the uris claim.
     """
+    import random
     import jwt as pyjwt
     from urllib.parse import urlparse
 
     private_key = _get_cdp_key()
 
+    now = int(time.time())
     payload = {
         "sub": CDP_API_KEY_ID,
         "iss": "cdp",
-        "aud": ["cdp_service"],
-        "nbf": int(time.time()),
-        "exp": int(time.time()) + 120,
+        "nbf": now,
+        "exp": now + 120,
     }
     if method and path:
         parsed = urlparse(path)
         # URI format: "METHOD host/path" (no scheme)
-        payload["uri"] = f"{method} {parsed.netloc}{parsed.path}"
+        uri = f"{method} {parsed.netloc}{parsed.path}"
+        payload["uris"] = [uri]
+
+    # Nonce: 16-digit numeric string (matches CDP SDK)
+    nonce = "".join(random.choices("0123456789", k=16))
+
     token = pyjwt.encode(
         payload, private_key, algorithm="ES256",
-        headers={"kid": CDP_API_KEY_ID, "nonce": secrets.token_hex()},
+        headers={"kid": CDP_API_KEY_ID, "typ": "JWT", "nonce": nonce},
     )
     return token
 
@@ -1058,10 +1068,28 @@ async def debug_config():
         has_cr = "\r" in CDP_API_KEY_SECRET
         # Test JWT generation with URI claim
         try:
-            _cdp_create_headers()
+            headers = _cdp_create_headers()
             jwt_test = True
         except Exception as e:
+            headers = {}
             jwt_test = f"{type(e).__name__}: {e}"
+        # Actually test calling the CDP facilitator /supported endpoint
+        facilitator_test = None
+        if jwt_test is True:
+            try:
+                import httpx
+                resp = httpx.get(
+                    f"{FACILITATOR_URL.rstrip('/')}/supported",
+                    headers=headers.get("supported", {}),
+                    timeout=10.0,
+                    follow_redirects=True,
+                )
+                facilitator_test = {
+                    "status": resp.status_code,
+                    "body": resp.text[:500],
+                }
+            except Exception as e:
+                facilitator_test = f"{type(e).__name__}: {e}"
         # Check library versions
         import sys
         try:
@@ -1102,6 +1130,7 @@ async def debug_config():
             "pem_has_cr": has_cr if cdp_configured else False,
             "secret_length": len(CDP_API_KEY_SECRET),
             "jwt_generation": jwt_test if cdp_configured else False,
+            "facilitator_test": facilitator_test if cdp_configured else None,
             "python_version": sys.version,
             "cryptography_version": crypto_ver if cdp_configured else "",
             "pyjwt_version": pyjwt_ver if cdp_configured else "",
