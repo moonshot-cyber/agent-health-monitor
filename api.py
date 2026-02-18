@@ -986,6 +986,10 @@ async def debug_config():
         pem_lines = CDP_API_KEY_SECRET.count("\n")
         # Show the first line (header only, not secret data)
         pem_header = CDP_API_KEY_SECRET.split("\n")[0] if "\n" in CDP_API_KEY_SECRET else CDP_API_KEY_SECRET[:40]
+        # Show line lengths to diagnose PEM structure issues
+        pem_line_lengths = [len(line) for line in CDP_API_KEY_SECRET.split("\n")]
+        # Check for carriage returns or other hidden chars
+        has_cr = "\r" in CDP_API_KEY_SECRET
         # Test PEM loading separately from JWT encoding
         try:
             from cryptography.hazmat.primitives import serialization
@@ -1010,6 +1014,8 @@ async def debug_config():
             "key_id": CDP_API_KEY_ID[:8] + "..." if CDP_API_KEY_ID else "",
             "pem_header": pem_header,
             "pem_newline_count": pem_lines,
+            "pem_line_lengths": pem_line_lengths if cdp_configured else [],
+            "pem_has_cr": has_cr if cdp_configured else False,
             "secret_length": len(CDP_API_KEY_SECRET),
             "pem_load": pem_load_ok,
             "jwt_generation": jwt_ok,
