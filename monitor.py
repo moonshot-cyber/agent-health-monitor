@@ -144,6 +144,227 @@ def classify_failure(tx: dict) -> str:
     return "reverted"
 
 
+def classify_retry_failure(tx: dict, all_txs: list[dict]) -> str:
+    """Detailed failure classification for retry analysis."""
+    gas_used = int(tx.get("gasUsed", 0))
+    gas_limit = int(tx.get("gas", 0))
+    nonce = int(tx.get("nonce", 0))
+
+    # Out of gas: used >= 95% of limit
+    if gas_limit > 0 and gas_used >= gas_limit * 0.95:
+        return "out_of_gas"
+
+    # Nonce conflict: another tx with the same nonce succeeded
+    same_nonce = [
+        t for t in all_txs
+        if int(t.get("nonce", -1)) == nonce
+        and t.get("hash") != tx.get("hash")
+        and t.get("isError") != "1"
+        and t.get("txreceipt_status") != "0"
+    ]
+    if same_nonce:
+        return "nonce_conflict"
+
+    # Slippage: common DEX method selectors with low gas usage (reverted early)
+    inp = tx.get("input", "0x")
+    selector = inp[:10] if len(inp) >= 10 else "0x"
+    dex_selectors = {
+        "0x5ae401dc", "0x3593564c", "0x38ed1739", "0x7ff36ab5",
+        "0x18cbafe5", "0xb6f9de95", "0x791ac947",
+    }
+    if selector in dex_selectors and gas_limit > 0 and gas_used < gas_limit * 0.5:
+        return "slippage"
+
+    return "reverted"
+
+
+def is_retryable(failure_reason: str, tx: dict, all_txs: list[dict]) -> bool:
+    """Determine if a failed transaction is worth retrying."""
+    # Nonce conflicts: another tx already succeeded with that nonce
+    if failure_reason == "nonce_conflict":
+        return False
+
+    # Pure reverts with very low gas usage are likely contract-level logic failures
+    # that would fail again (e.g., insufficient balance, unauthorized)
+    if failure_reason == "reverted":
+        gas_used = int(tx.get("gasUsed", 0))
+        gas_limit = int(tx.get("gas", 0))
+        # If reverted using < 10% of gas, it's likely a require() check
+        # that would fail again with the same calldata
+        if gas_limit > 0 and gas_used < gas_limit * 0.10:
+            return False
+
+    # out_of_gas and slippage are retryable with corrected parameters
+    return True
+
+
+def get_current_gas_params() -> dict:
+    """Fetch current base fee and estimate priority fee from Base RPC."""
+    result = {"base_fee_gwei": 0.1, "priority_fee_gwei": 0.05}
+    try:
+        # Get latest block for base fee
+        resp = requests.post(BASE_RPC_URL, json={
+            "jsonrpc": "2.0",
+            "method": "eth_getBlockByNumber",
+            "params": ["latest", False],
+            "id": 1,
+        }, timeout=10)
+        block = resp.json().get("result", {})
+        base_fee_hex = block.get("baseFeePerGas", "0x0")
+        base_fee_wei = int(base_fee_hex, 16)
+        result["base_fee_gwei"] = base_fee_wei / 1e9
+
+        # Priority fee estimate
+        resp2 = requests.post(BASE_RPC_URL, json={
+            "jsonrpc": "2.0",
+            "method": "eth_maxPriorityFeePerGas",
+            "params": [],
+            "id": 2,
+        }, timeout=10)
+        prio_hex = resp2.json().get("result", "0x0")
+        prio_wei = int(prio_hex, 16)
+        result["priority_fee_gwei"] = prio_wei / 1e9
+    except (requests.RequestException, ValueError, KeyError):
+        pass
+    return result
+
+
+@dataclass
+class RetryTransaction:
+    """An optimized retry transaction ready for signing."""
+    original_tx_hash: str
+    failure_reason: str
+    optimized_transaction: dict  # to, data, value, gas_limit, max_fee_per_gas, max_priority_fee_per_gas
+    estimated_gas_cost_usd: float = 0.0
+    confidence: str = "medium"  # "high", "medium", "low"
+
+
+@dataclass
+class RetryAnalysis:
+    """Full retry analysis for a wallet."""
+    address: str
+    failed_transactions_analyzed: int = 0
+    retryable_count: int = 0
+    retry_transactions: list[RetryTransaction] = field(default_factory=list)
+    total_estimated_retry_cost_usd: float = 0.0
+    potential_value_recovered_usd: float = 0.0
+
+
+def analyze_retryable_transactions(
+    address: str, transactions: list[dict], eth_price: float,
+) -> RetryAnalysis:
+    """Analyze failed transactions and build optimized retry transactions."""
+    result = RetryAnalysis(address=address)
+
+    if not transactions:
+        return result
+
+    outgoing = [
+        tx for tx in transactions if tx.get("from", "").lower() == address.lower()
+    ]
+    if not outgoing:
+        return result
+
+    # Identify failed transactions
+    failed_txs = [
+        tx for tx in outgoing
+        if tx.get("isError") == "1" or tx.get("txreceipt_status") == "0"
+    ]
+    result.failed_transactions_analyzed = len(failed_txs)
+
+    if not failed_txs:
+        return result
+
+    # Get current gas parameters from the network
+    gas_params = get_current_gas_params()
+    base_fee_wei = int(gas_params["base_fee_gwei"] * 1e9)
+    priority_fee_wei = int(gas_params["priority_fee_gwei"] * 1e9)
+    # max_fee = 2x base fee + priority fee (EIP-1559 best practice)
+    max_fee_wei = base_fee_wei * 2 + priority_fee_wei
+
+    # Build gas optimization data for p95 gas limits per tx type
+    optimization = optimize_gas(address, transactions, eth_price)
+    # Map contract:method -> optimal gas limit from GasOptimizer
+    optimal_gas_map: dict[str, int] = {}
+    for tx_type in optimization.tx_types:
+        key = f"{tx_type.contract}:{tx_type.method_id}"
+        optimal_gas_map[key] = tx_type.optimal_gas_limit
+
+    # Compute total value of failed txs (ETH value + gas cost paid)
+    total_value_wei = 0
+    total_retry_cost = 0.0
+
+    for tx in failed_txs:
+        reason = classify_retry_failure(tx, outgoing)
+
+        if not is_retryable(reason, tx, outgoing):
+            continue
+
+        # Build the optimized replacement transaction
+        to_addr = tx.get("to") or ""
+        inp = tx.get("input", "0x")
+        value_hex = tx.get("value", "0")
+        value_wei = int(value_hex)
+
+        # Determine optimal gas limit
+        selector = inp[:10] if len(inp) >= 10 else "0x"
+        type_key = f"{to_addr.lower()}:{selector}"
+        if type_key in optimal_gas_map and optimal_gas_map[type_key] > 0:
+            # Use p95 * 1.2 safety margin (optimizer already uses 1.15, bump to 1.2)
+            opt_limit = optimal_gas_map[type_key]
+            gas_limit = int(opt_limit * (1.2 / 1.15))
+        else:
+            # Fallback: original gas limit * 1.2 for out_of_gas, or same for others
+            original_limit = int(tx.get("gas", 0))
+            if reason == "out_of_gas":
+                gas_limit = int(original_limit * 1.5)
+            else:
+                gas_limit = int(original_limit * 1.2) if original_limit > 0 else 200000
+
+        # Estimate cost
+        estimated_gas_cost_wei = gas_limit * max_fee_wei
+        estimated_gas_cost_usd = round((estimated_gas_cost_wei / 1e18) * eth_price, 4)
+        total_retry_cost += estimated_gas_cost_usd
+
+        # Track value that could be recovered
+        total_value_wei += value_wei
+        # Also count the gas already wasted on the failed tx
+        wasted_gas_wei = int(tx.get("gasUsed", 0)) * int(tx.get("gasPrice", 0))
+        total_value_wei += wasted_gas_wei
+
+        # Confidence level
+        if reason == "out_of_gas":
+            confidence = "high"
+        elif reason == "slippage":
+            confidence = "medium"
+        else:
+            confidence = "low"
+
+        retry_tx = RetryTransaction(
+            original_tx_hash=tx.get("hash", ""),
+            failure_reason=reason,
+            optimized_transaction={
+                "to": to_addr,
+                "data": inp,
+                "value": hex(value_wei),
+                "gas_limit": hex(gas_limit),
+                "max_fee_per_gas": hex(max_fee_wei),
+                "max_priority_fee_per_gas": hex(priority_fee_wei),
+            },
+            estimated_gas_cost_usd=estimated_gas_cost_usd,
+            confidence=confidence,
+        )
+        result.retry_transactions.append(retry_tx)
+
+    result.retryable_count = len(result.retry_transactions)
+    result.total_estimated_retry_cost_usd = round(total_retry_cost, 2)
+    result.potential_value_recovered_usd = round(
+        (total_value_wei / 1e18) * eth_price, 2
+    )
+
+    return result
+
+
 def detect_nonce_issues(transactions: list[dict]) -> tuple[int, int]:
     """Detect nonce gaps and retry attempts."""
     nonces = [int(tx.get("nonce", 0)) for tx in transactions]

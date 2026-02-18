@@ -13,6 +13,7 @@ Environment variables:
     BASESCAN_API_KEY - Blockscout API key for higher rate limits (optional)
     FACILITATOR_URL  - x402 facilitator endpoint (optional)
     PRICE_USD        - Price per health check, e.g. "$0.50" (optional)
+    RETRY_PRICE_USD  - Price per retry analysis, e.g. "$10.00" (optional)
     NETWORK          - CAIP-2 network ID (optional, default: Base mainnet)
     PORT             - Server port (optional, default: 4021)
 """
@@ -40,6 +41,7 @@ from x402.server import x402ResourceServer
 
 from monitor import (
     analyze_address,
+    analyze_retryable_transactions,
     fetch_transactions,
     get_eth_price,
     is_contract_address,
@@ -62,6 +64,7 @@ BASESCAN_API_KEY = os.getenv("BASESCAN_API_KEY", "")
 PRICE = os.getenv("PRICE_USD", "$0.50")
 OPTIMIZE_PRICE = os.getenv("OPTIMIZE_PRICE_USD", "$5.00")
 ALERT_PRICE = os.getenv("ALERT_PRICE_USD", "$2.00")
+RETRY_PRICE = os.getenv("RETRY_PRICE_USD", "$10.00")
 # x402.org facilitator supports Base Sepolia (eip155:84532).
 # For Base mainnet (eip155:8453), use the CDP facilitator:
 #   FACILITATOR_URL=https://api.cdp.coinbase.com/platform/v2/x402
@@ -142,6 +145,50 @@ class GasOptimizationReport(BaseModel):
 class OptimizeResponse(BaseModel):
     status: str
     report: GasOptimizationReport
+
+
+# -- Retry Models -----------------------------------------------------------
+
+class OptimizedTransaction(BaseModel):
+    to: str
+    data: str
+    value: str
+    gas_limit: str
+    max_fee_per_gas: str
+    max_priority_fee_per_gas: str
+
+
+class RetryTransactionItem(BaseModel):
+    original_tx_hash: str
+    failure_reason: str
+    optimized_transaction: OptimizedTransaction
+    estimated_gas_cost_usd: float
+    confidence: str
+
+
+class RetryReport(BaseModel):
+    address: str
+    failed_transactions_analyzed: int
+    retryable_count: int
+    retry_transactions: list[RetryTransactionItem]
+    total_estimated_retry_cost_usd: float
+    potential_value_recovered_usd: float
+    analyzed_at: str
+
+
+class RetryResponse(BaseModel):
+    status: str
+    report: RetryReport
+
+
+class RetryPreviewResponse(BaseModel):
+    status: str
+    address: str
+    failed_transactions_analyzed: int
+    retryable_count: int
+    total_estimated_retry_cost_usd: float
+    potential_value_recovered_usd: float
+    message: str
 
 
 # -- Alert Models & Store ----------------------------------------------------
@@ -466,7 +513,7 @@ app = FastAPI(
         "gas inefficiency, and nonce issues. Returns actionable health reports. "
         "Payments via x402 protocol (USDC on Base)."
     ),
-    version="1.2.0",
+    version="1.3.0",
     lifespan=lifespan,
 )
 
@@ -671,6 +718,66 @@ x402_routes = {
             },
         },
     ),
+    "GET /retry/[address]": RouteConfig(
+        accepts=[
+            PaymentOption(
+                scheme="exact",
+                pay_to=PAYMENT_ADDRESS,
+                price=RETRY_PRICE,
+                network=NETWORK,
+            ),
+        ],
+        mime_type="application/json",
+        description=(
+            "RetryBot: Non-custodial failed transaction retry service. "
+            "Analyzes failed transactions, classifies failure reasons, "
+            "and returns optimized ready-to-sign replacement transactions "
+            "with corrected gas parameters. Agent signs and submits."
+        ),
+        extensions={
+            "bazaar": {
+                "info": {
+                    "input": {
+                        "type": "http",
+                        "method": "GET",
+                        "queryParams": {
+                            "address": "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
+                        },
+                    },
+                    "output": {
+                        "type": "json",
+                        "example": {
+                            "status": "ok",
+                            "report": {
+                                "address": "0xd8da6bf26964af9d7eed9e03e53415d37aa96045",
+                                "failed_transactions_analyzed": 50,
+                                "retryable_count": 12,
+                                "retry_transactions": [
+                                    {
+                                        "original_tx_hash": "0xabc123...",
+                                        "failure_reason": "out_of_gas",
+                                        "optimized_transaction": {
+                                            "to": "0x3fc91a3afd70395cd496c647d5a6cc9d4b2b7fad",
+                                            "data": "0x3593564c...",
+                                            "value": "0x0",
+                                            "gas_limit": "0x55730",
+                                            "max_fee_per_gas": "0x5f5e100",
+                                            "max_priority_fee_per_gas": "0x2faf080",
+                                        },
+                                        "estimated_gas_cost_usd": 0.12,
+                                        "confidence": "high",
+                                    },
+                                ],
+                                "total_estimated_retry_cost_usd": 1.44,
+                                "potential_value_recovered_usd": 85.00,
+                                "analyzed_at": "2026-02-18T12:00:00Z",
+                            },
+                        },
+                    },
+                },
+            },
+        },
+    ),
 }
 
 app.add_middleware(PaymentMiddlewareASGI, routes=x402_routes, server=server)
@@ -683,12 +790,14 @@ async def root():
     """Service info and pricing."""
     return {
         "service": "Agent Health Monitor",
-        "version": "1.2.0",
+        "version": "1.3.0",
         "network": "Base L2",
         "endpoints": {
             "GET /health/{address}": f"{PRICE} USDC — wallet health diagnosis",
             "GET /alerts/subscribe/{address}": f"{ALERT_PRICE} USDC/month — automated monitoring & webhook alerts",
             "GET /optimize/{address}": f"{OPTIMIZE_PRICE} USDC — gas optimization report",
+            "GET /retry/{address}": f"{RETRY_PRICE} USDC — optimized retry transactions for recent failures",
+            "GET /retry/preview/{address}": "free — preview retryable failure count and estimated savings",
         },
         "payment": "x402 protocol (USDC on Base)",
         "docs": "/docs",
@@ -810,6 +919,111 @@ async def get_optimization_report(address: str):
     )
 
     return OptimizeResponse(status="ok", report=report)
+
+
+# -- RetryBot Endpoints ------------------------------------------------------
+
+@app.get("/retry/preview/{address}", response_model=RetryPreviewResponse)
+async def retry_preview(address: str):
+    """
+    Free preview of retryable failed transactions.
+
+    Shows count of retryable failures and estimated savings
+    without returning the full optimized transactions.
+    """
+    if not ADDRESS_RE.match(address):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid Ethereum address format: {address}",
+        )
+
+    address = address.lower()
+    loop = asyncio.get_running_loop()
+
+    eth_price, transactions = await asyncio.gather(
+        loop.run_in_executor(None, partial(get_eth_price, BASESCAN_API_KEY)),
+        loop.run_in_executor(None, partial(fetch_transactions, address, BASESCAN_API_KEY)),
+    )
+
+    analysis = await loop.run_in_executor(
+        None, partial(analyze_retryable_transactions, address, transactions, eth_price),
+    )
+
+    message = (
+        f"Found {analysis.retryable_count} retryable failures out of "
+        f"{analysis.failed_transactions_analyzed} failed transactions. "
+        f"Pay {RETRY_PRICE} USDC via GET /retry/{address} to get optimized "
+        f"ready-to-sign retry transactions."
+        if analysis.retryable_count > 0
+        else f"Analyzed {analysis.failed_transactions_analyzed} failed transactions. "
+        f"No retryable failures found."
+    )
+
+    return RetryPreviewResponse(
+        status="ok",
+        address=address,
+        failed_transactions_analyzed=analysis.failed_transactions_analyzed,
+        retryable_count=analysis.retryable_count,
+        total_estimated_retry_cost_usd=analysis.total_estimated_retry_cost_usd,
+        potential_value_recovered_usd=analysis.potential_value_recovered_usd,
+        message=message,
+    )
+
+
+@app.get("/retry/{address}", response_model=RetryResponse)
+async def get_retry_transactions(address: str):
+    """
+    Analyze failed transactions and return optimized retry transactions.
+
+    Requires x402 payment ($10.00 USDC on Base).
+
+    Non-custodial: returns ready-to-sign transaction objects.
+    The agent signs and submits the transactions themselves.
+
+    - Fetches failed transactions from Blockscout
+    - Classifies failure reasons: out_of_gas, reverted, nonce_conflict, slippage
+    - Filters to retryable failures only
+    - Builds optimized replacements with corrected gas parameters
+    - Returns ready-to-sign EIP-1559 transaction objects
+    """
+    if not ADDRESS_RE.match(address):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid Ethereum address format: {address}",
+        )
+
+    address = address.lower()
+    loop = asyncio.get_running_loop()
+
+    eth_price, transactions = await asyncio.gather(
+        loop.run_in_executor(None, partial(get_eth_price, BASESCAN_API_KEY)),
+        loop.run_in_executor(None, partial(fetch_transactions, address, BASESCAN_API_KEY)),
+    )
+
+    analysis = await loop.run_in_executor(
+        None, partial(analyze_retryable_transactions, address, transactions, eth_price),
+    )
+
+    report = RetryReport(
+        address=analysis.address,
+        failed_transactions_analyzed=analysis.failed_transactions_analyzed,
+        retryable_count=analysis.retryable_count,
+        retry_transactions=[
+            RetryTransactionItem(
+                original_tx_hash=rt.original_tx_hash,
+                failure_reason=rt.failure_reason,
+                optimized_transaction=OptimizedTransaction(**rt.optimized_transaction),
+                estimated_gas_cost_usd=rt.estimated_gas_cost_usd,
+                confidence=rt.confidence,
+            )
+            for rt in analysis.retry_transactions
+        ],
+        total_estimated_retry_cost_usd=analysis.total_estimated_retry_cost_usd,
+        potential_value_recovered_usd=analysis.potential_value_recovered_usd,
+        analyzed_at=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    )
+
+    return RetryResponse(status="ok", report=report)
 
 
 # -- Alert Endpoints ---------------------------------------------------------
