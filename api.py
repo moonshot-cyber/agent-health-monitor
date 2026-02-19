@@ -571,6 +571,7 @@ app = FastAPI(
 if CDP_API_KEY_ID and CDP_API_KEY_SECRET:
     from urllib.parse import urlparse
     from cdp.auth import generate_jwt, JwtOptions
+    logging.info(f"CDP key starts with: {CDP_API_KEY_SECRET[:30]!r}, newlines: {CDP_API_KEY_SECRET.count(chr(10))}, backslash-n: {CDP_API_KEY_SECRET.count(chr(92)+chr(110))}")
 
     def _cdp_create_headers() -> dict[str, dict[str, str]]:
         parsed = urlparse(FACILITATOR_URL)
