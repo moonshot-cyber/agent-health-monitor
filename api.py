@@ -70,7 +70,7 @@ RETRY_PRICE = os.getenv("RETRY_PRICE_USD", "$10.00")
 PROTECT_PRICE = os.getenv("PROTECT_PRICE_USD", "$25.00")
 NETWORK = os.getenv("NETWORK", "eip155:8453")  # Base mainnet
 CDP_API_KEY_ID = os.getenv("CDP_API_KEY_ID", "")
-CDP_API_KEY_SECRET = os.getenv("CDP_API_KEY_SECRET", "").replace("\\n", "\n")
+CDP_API_KEY_SECRET = os.getenv("CDP_API_KEY_SECRET", "")
 PORT = int(os.getenv("PORT", "4021"))
 
 ADDRESS_RE = re.compile(r"^0x[0-9a-fA-F]{40}$")
@@ -571,7 +571,6 @@ app = FastAPI(
 if CDP_API_KEY_ID and CDP_API_KEY_SECRET:
     from urllib.parse import urlparse
     from cdp.auth import generate_jwt, JwtOptions
-    logging.info(f"CDP key starts with: {CDP_API_KEY_SECRET[:30]!r}, newlines: {CDP_API_KEY_SECRET.count(chr(10))}, backslash-n: {CDP_API_KEY_SECRET.count(chr(92)+chr(110))}")
 
     def _cdp_create_headers() -> dict[str, dict[str, str]]:
         parsed = urlparse(FACILITATOR_URL)
