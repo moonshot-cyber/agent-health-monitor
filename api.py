@@ -923,10 +923,12 @@ app.add_middleware(PaymentMiddlewareASGI, routes=x402_routes, server=server)
 @app.get("/")
 async def root():
     """Service info and pricing."""
+    import cryptography
     return {
         "service": "Agent Health Monitor",
-        "version": "1.5.0",
+        "version": "1.6.1",
         "network": "Base L2",
+        "cryptography_version": cryptography.__version__,
         "endpoints": {
             "GET /health/{address}": f"{PRICE} USDC — wallet health diagnosis",
             "GET /alerts/subscribe/{address}": f"{ALERT_PRICE} USDC/month — automated monitoring & webhook alerts",
