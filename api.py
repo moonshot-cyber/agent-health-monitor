@@ -61,7 +61,7 @@ if not PAYMENT_ADDRESS:
         "Set it to your wallet address that will receive USDC payments."
     )
 
-FACILITATOR_URL = os.getenv("FACILITATOR_URL", "https://api.cdp.coinbase.com/platform/v2/x402")
+FACILITATOR_URL = os.getenv("FACILITATOR_URL", "https://facilitator.payai.network")
 BASESCAN_API_KEY = os.getenv("BASESCAN_API_KEY", "")
 PRICE = os.getenv("PRICE_USD", "$0.50")
 OPTIMIZE_PRICE = os.getenv("OPTIMIZE_PRICE_USD", "$5.00")
@@ -69,8 +69,6 @@ ALERT_PRICE = os.getenv("ALERT_PRICE_USD", "$2.00")
 RETRY_PRICE = os.getenv("RETRY_PRICE_USD", "$10.00")
 PROTECT_PRICE = os.getenv("PROTECT_PRICE_USD", "$25.00")
 NETWORK = os.getenv("NETWORK", "eip155:8453")  # Base mainnet
-CDP_API_KEY_ID = os.getenv("CDP_API_KEY_ID", "")
-CDP_API_KEY_SECRET = os.getenv("CDP_API_KEY_SECRET", "").replace("\\n", "\n")
 PORT = int(os.getenv("PORT", "4021"))
 
 ADDRESS_RE = re.compile(r"^0x[0-9a-fA-F]{40}$")
@@ -568,36 +566,7 @@ app = FastAPI(
 # -- x402 Payment Middleware -------------------------------------------------
 
 
-if CDP_API_KEY_ID and CDP_API_KEY_SECRET:
-    from urllib.parse import urlparse
-    from cdp.auth import generate_jwt, JwtOptions
-
-    def _cdp_create_headers() -> dict[str, dict[str, str]]:
-        parsed = urlparse(FACILITATOR_URL)
-        host = parsed.netloc
-        base_path = parsed.path.rstrip("/")
-
-        def _jwt_for(method: str, endpoint: str) -> str:
-            return generate_jwt(JwtOptions(
-                api_key_id=CDP_API_KEY_ID,
-                api_key_secret=CDP_API_KEY_SECRET,
-                request_method=method,
-                request_host=host,
-                request_path=f"{base_path}/{endpoint}",
-            ))
-
-        return {
-            "verify": {"Authorization": f"Bearer {_jwt_for('POST', 'verify')}"},
-            "settle": {"Authorization": f"Bearer {_jwt_for('POST', 'settle')}"},
-            "supported": {"Authorization": f"Bearer {_jwt_for('GET', 'supported')}"},
-        }
-
-    facilitator = HTTPFacilitatorClient({
-        "url": FACILITATOR_URL,
-        "create_headers": _cdp_create_headers,
-    })
-else:
-    facilitator = HTTPFacilitatorClient(FacilitatorConfig(url=FACILITATOR_URL))
+facilitator = HTTPFacilitatorClient(FacilitatorConfig(url=FACILITATOR_URL))
 
 server = x402ResourceServer(facilitator)
 server.register(NETWORK, ExactEvmServerScheme())
