@@ -70,7 +70,7 @@ RETRY_PRICE = os.getenv("RETRY_PRICE_USD", "$10.00")
 PROTECT_PRICE = os.getenv("PROTECT_PRICE_USD", "$25.00")
 NETWORK = os.getenv("NETWORK", "eip155:8453")  # Base mainnet
 CDP_API_KEY_ID = os.getenv("CDP_API_KEY_ID", "")
-CDP_API_KEY_SECRET = os.getenv("CDP_API_KEY_SECRET", "")
+CDP_API_KEY_SECRET = os.getenv("CDP_API_KEY_SECRET", "").replace("\\n", "\n")
 PORT = int(os.getenv("PORT", "4021"))
 
 ADDRESS_RE = re.compile(r"^0x[0-9a-fA-F]{40}$")
