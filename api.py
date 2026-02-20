@@ -32,7 +32,7 @@ from typing import Optional
 
 import httpx as httpx_client
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
@@ -970,9 +970,27 @@ class ChatRequest(BaseModel):
     context: Optional[dict] = None
 
 
+# Chat rate limiting: 10 messages per IP per hour
+_chat_rate: dict[str, list[float]] = {}
+CHAT_RATE_LIMIT = 10
+CHAT_RATE_WINDOW = 3600  # seconds
+
+
+def _check_chat_rate(ip: str):
+    import time
+    now = time.time()
+    timestamps = _chat_rate.get(ip, [])
+    timestamps = [t for t in timestamps if now - t < CHAT_RATE_WINDOW]
+    if len(timestamps) >= CHAT_RATE_LIMIT:
+        raise HTTPException(status_code=429, detail="Rate limit exceeded")
+    timestamps.append(now)
+    _chat_rate[ip] = timestamps
+
+
 @app.post("/chat")
-async def chat(req: ChatRequest):
+async def chat(req: ChatRequest, request: Request):
     """AI chat about wallet analysis results."""
+    _check_chat_rate(request.client.host)
     if not ANTHROPIC_API_KEY:
         raise HTTPException(status_code=503, detail="Chat not configured")
 
