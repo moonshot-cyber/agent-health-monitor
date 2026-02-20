@@ -1105,11 +1105,13 @@
     const panel = document.getElementById('results-panel');
     const body = document.getElementById('results-body');
     const ts = document.getElementById('results-timestamp');
+    // Unwrap: API returns {status, report: {...}} — use report if present
+    const r = data.report ?? data;
 
     ts.textContent = new Date().toISOString().replace('T', ' ').slice(0, 19) + ' UTC';
 
-    const score = data.health_score ?? data.score ?? null;
-    const priority = data.priority ?? null;
+    const score = r.health_score ?? r.score ?? null;
+    const priority = r.optimization_priority ?? r.priority ?? null;
     const scoreClass = score >= 70 ? 'high' : score >= 40 ? 'medium' : 'low';
 
     let html = '';
@@ -1128,12 +1130,18 @@
 
     // Key metrics grid
     const metrics = [];
-    if (data.total_transactions !== undefined) metrics.push(['Total Txns', data.total_transactions]);
-    if (data.reverted_transactions !== undefined) metrics.push(['Reverted', data.reverted_transactions]);
-    if (data.success_rate !== undefined) metrics.push(['Success Rate', (data.success_rate * 100).toFixed(1) + '%']);
-    if (data.wallet_age_days !== undefined) metrics.push(['Wallet Age', data.wallet_age_days + ' days']);
-    if (data.unique_contracts !== undefined) metrics.push(['Contracts Used', data.unique_contracts]);
-    if (data.avg_gas_price_gwei !== undefined) metrics.push(['Avg Gas', data.avg_gas_price_gwei.toFixed(2) + ' gwei']);
+    if (r.total_transactions !== undefined) metrics.push(['Total Txns', r.total_transactions]);
+    if (r.successful !== undefined) metrics.push(['Successful', r.successful]);
+    if (r.failed !== undefined) metrics.push(['Failed', r.failed]);
+    if (r.success_rate_pct !== undefined) metrics.push(['Success Rate', r.success_rate_pct.toFixed(1) + '%']);
+    if (r.total_gas_spent_eth !== undefined) metrics.push(['Gas Spent', r.total_gas_spent_eth.toFixed(6) + ' ETH']);
+    if (r.wasted_gas_eth !== undefined) metrics.push(['Wasted Gas', r.wasted_gas_eth.toFixed(6) + ' ETH']);
+    if (r.estimated_monthly_waste_usd !== undefined) metrics.push(['Monthly Waste', '$' + r.estimated_monthly_waste_usd.toFixed(2)]);
+    if (r.avg_gas_efficiency_pct !== undefined) metrics.push(['Gas Efficiency', r.avg_gas_efficiency_pct.toFixed(1) + '%']);
+    if (r.out_of_gas_count !== undefined) metrics.push(['Out of Gas', r.out_of_gas_count]);
+    if (r.reverted_count !== undefined) metrics.push(['Reverted', r.reverted_count]);
+    if (r.nonce_gap_count !== undefined) metrics.push(['Nonce Gaps', r.nonce_gap_count]);
+    if (r.top_failure_type !== undefined) metrics.push(['Top Failure', r.top_failure_type]);
 
     if (metrics.length) {
       html += `<div class="result-grid">` +
@@ -1145,13 +1153,19 @@
         `</div>`;
     }
 
-    // Alerts/recommendations
-    if (data.alerts?.length) {
+    // Recommendations
+    const recs = r.recommendations ?? data.alerts ?? [];
+    if (recs.length) {
       html += `<div style="margin-bottom:1rem">` +
-        data.alerts.map(a => `
-          <div style="padding:0.5rem 0.75rem; border-left:2px solid var(--amber); margin-bottom:0.5rem; font-family:var(--mono); font-size:0.75rem; color:var(--text)">
-            ${typeof a === 'string' ? a : JSON.stringify(a)}
-          </div>`).join('') +
+        recs.map(a => {
+          const msg = a.message ?? (typeof a === 'string' ? a : JSON.stringify(a));
+          const sev = a.severity ?? 'info';
+          const color = sev === 'critical' ? 'var(--red)' : sev === 'high' ? 'var(--amber)' : 'var(--cyan-dim)';
+          return `<div style="padding:0.5rem 0.75rem; border-left:2px solid ${color}; margin-bottom:0.5rem; font-family:var(--mono); font-size:0.75rem; color:var(--text)">
+            <span style="color:${color};font-size:0.6rem;letter-spacing:0.1em">${(a.category ?? '').toUpperCase()} // ${sev.toUpperCase()}</span><br>
+            ${msg}
+          </div>`;
+        }).join('') +
         `</div>`;
     }
 
@@ -1191,23 +1205,17 @@
     const typingEl = appendMsg('assistant', '<span class="loader"></span> Analysing...');
 
     try {
-      const context = lastResults
-        ? `The user ran a wallet health analysis. Results: ${JSON.stringify(lastResults, null, 2)}\n\nUser question: ${msg}`
-        : msg;
-
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
+      const res = await fetch(`${API_BASE}/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
-          max_tokens: 1000,
-          system: 'You are a blockchain analyst assistant for Agent Health Monitor, a wallet intelligence service on Base mainnet. Be concise, technical, and helpful. When discussing wallet health scores and metrics, give specific actionable advice.',
-          messages: [{ role: 'user', content: context }]
+          message: msg,
+          context: lastResults
         })
       });
 
       const data = await res.json();
-      const reply = data.content?.[0]?.text ?? 'Unable to get response.';
+      const reply = data.reply ?? 'Unable to get response.';
       typingEl.innerHTML = reply;
 
     } catch (e) {

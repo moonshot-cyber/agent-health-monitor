@@ -72,6 +72,7 @@ RETRY_PRICE = os.getenv("RETRY_PRICE_USD", "$10.00")
 PROTECT_PRICE = os.getenv("PROTECT_PRICE_USD", "$25.00")
 NETWORK = os.getenv("NETWORK", "eip155:8453")  # Base mainnet
 VALID_COUPONS = set(c.strip().upper() for c in os.getenv("VALID_COUPONS", "").split(",") if c.strip())
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 PORT = int(os.getenv("PORT", "4021"))
 
 ADDRESS_RE = re.compile(r"^0x[0-9a-fA-F]{40}$")
@@ -962,6 +963,44 @@ async def coupon_protect(code: str, address: str):
 async def coupon_alerts(code: str, address: str):
     _require_coupon(code)
     return await subscribe_alerts(address)
+
+
+class ChatRequest(BaseModel):
+    message: str
+    context: Optional[dict] = None
+
+
+@app.post("/chat")
+async def chat(req: ChatRequest):
+    """AI chat about wallet analysis results."""
+    if not ANTHROPIC_API_KEY:
+        raise HTTPException(status_code=503, detail="Chat not configured")
+
+    import anthropic
+
+    user_content = req.message
+    if req.context:
+        user_content = (
+            f"The user ran a wallet health analysis. Results:\n"
+            f"{__import__('json').dumps(req.context, indent=2)}\n\n"
+            f"User question: {req.message}"
+        )
+
+    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+    response = client.messages.create(
+        model="claude-sonnet-4-20250514",
+        max_tokens=1000,
+        system=(
+            "You are a blockchain analyst assistant for Agent Health Monitor, "
+            "a wallet intelligence service on Base mainnet. Be concise, technical, "
+            "and helpful. When discussing wallet health scores and metrics, give "
+            "specific actionable advice."
+        ),
+        messages=[{"role": "user", "content": user_content}],
+    )
+
+    reply = response.content[0].text if response.content else "Unable to get response."
+    return {"reply": reply}
 
 
 @app.get("/up")
