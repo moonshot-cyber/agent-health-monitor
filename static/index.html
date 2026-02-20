@@ -946,7 +946,7 @@
   // For now we check locally as a demo; real validation happens server-side
   const DEMO_COUPONS = ['EARLY001','EARLY002','EARLY003','REDDIT50','SUBSTACK1'];
 
-  let selectedEndpoint = { path: '/health', price: 0.50, name: '/health' };
+  let selectedEndpoint = { path: '/health', price: 0.50, name: 'health', couponPath: '/coupon/health' };
   let lastResults = null;
   let couponValid = false;
 
@@ -957,7 +957,8 @@
     selectedEndpoint = {
       path: el.dataset.path,
       price: parseFloat(el.dataset.price),
-      name: el.dataset.endpoint
+      name: el.dataset.endpoint,
+      couponPath: '/coupon/' + el.dataset.endpoint
     };
     document.getElementById('price-tag').textContent =
       couponValid ? 'COST: FREE (COUPON APPLIED)' : `COST: $${el.dataset.price} USDC`;
@@ -972,7 +973,8 @@
     arrow.textContent = field.classList.contains('visible') ? '▼' : '▶';
   }
 
-  function validateCoupon() {
+  let _couponTimeout;
+  async function validateCoupon() {
     const code = document.getElementById('coupon-input').value.trim().toUpperCase();
     const status = document.getElementById('coupon-status');
     const btn = document.getElementById('execute-btn');
@@ -986,20 +988,31 @@
       return;
     }
 
-    if (DEMO_COUPONS.includes(code)) {
-      status.textContent = '✓ VALID — FREE ACCESS GRANTED';
-      status.className = 'coupon-status valid';
-      couponValid = true;
-      priceTag.textContent = 'COST: FREE (COUPON APPLIED)';
-      btn.textContent = '▶ EXECUTE FREE ANALYSIS';
-      btn.className = 'execute-btn free';
-    } else {
-      status.textContent = '✗ INVALID CODE';
-      status.className = 'coupon-status invalid';
-      couponValid = false;
-      priceTag.textContent = `COST: $${selectedEndpoint.price.toFixed(2)} USDC`;
-      updateBtn();
-    }
+    clearTimeout(_couponTimeout);
+    _couponTimeout = setTimeout(async () => {
+      try {
+        const res = await fetch(`${API_BASE}/coupon/validate/${code}`);
+        const data = await res.json();
+        if (data.valid) {
+          status.textContent = '✓ VALID — FREE ACCESS GRANTED';
+          status.className = 'coupon-status valid';
+          couponValid = true;
+          priceTag.textContent = 'COST: FREE (COUPON APPLIED)';
+          btn.textContent = '▶ EXECUTE FREE ANALYSIS';
+          btn.className = 'execute-btn free';
+        } else {
+          status.textContent = '✗ INVALID CODE';
+          status.className = 'coupon-status invalid';
+          couponValid = false;
+          priceTag.textContent = `COST: $${selectedEndpoint.price.toFixed(2)} USDC`;
+          updateBtn();
+        }
+      } catch (e) {
+        status.textContent = '✗ VALIDATION ERROR';
+        status.className = 'coupon-status invalid';
+        couponValid = false;
+      }
+    }, 300);
   }
 
   function updateBtn() {
@@ -1042,8 +1055,10 @@
     document.getElementById('results-panel').classList.remove('active');
     document.getElementById('chat-panel').style.display = 'none';
 
-    const url = `${API_BASE}${selectedEndpoint.path}/${wallet}`;
     const coupon = document.getElementById('coupon-input')?.value?.trim().toUpperCase();
+    const url = couponValid && coupon
+      ? `${API_BASE}${selectedEndpoint.couponPath}/${coupon}/${wallet}`
+      : `${API_BASE}${selectedEndpoint.path}/${wallet}`;
 
     terminal([
       ['t-dim', `ENDPOINT: ${selectedEndpoint.path}`],
@@ -1054,10 +1069,7 @@
     ]);
 
     try {
-      const headers = {};
-      if (couponValid && coupon) headers['X-Coupon-Code'] = coupon;
-
-      const res = await fetch(url, { headers });
+      const res = await fetch(url);
 
       if (res.status === 402) {
         termAppend('t-info', 'STATUS: 402 — Payment required, initiating x402 flow...');

@@ -928,6 +928,42 @@ async def validate_coupon(code: str):
     return {"valid": code.strip().upper() in VALID_COUPONS}
 
 
+def _require_coupon(code: str):
+    """Validate a coupon code or raise 403."""
+    if code.strip().upper() not in VALID_COUPONS:
+        raise HTTPException(status_code=403, detail="Invalid coupon code")
+
+
+@app.get("/coupon/health/{code}/{address}")
+async def coupon_health(code: str, address: str):
+    _require_coupon(code)
+    return await get_health_report(address)
+
+
+@app.get("/coupon/optimize/{code}/{address}")
+async def coupon_optimize(code: str, address: str):
+    _require_coupon(code)
+    return await get_optimization_report(address)
+
+
+@app.get("/coupon/retry/{code}/{address}")
+async def coupon_retry(code: str, address: str):
+    _require_coupon(code)
+    return await get_retry_transactions(address)
+
+
+@app.get("/coupon/protect/{code}/{address}")
+async def coupon_protect(code: str, address: str):
+    _require_coupon(code)
+    return await get_protection_report(address)
+
+
+@app.get("/coupon/alerts/{code}/{address}")
+async def coupon_alerts(code: str, address: str):
+    _require_coupon(code)
+    return await subscribe_alerts(address)
+
+
 @app.get("/up")
 async def up():
     """Unpaid liveness probe for load balancers."""
