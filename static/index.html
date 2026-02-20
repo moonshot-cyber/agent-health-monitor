@@ -921,9 +921,7 @@
         <div class="msg-content">Analysis complete. Ask me anything about your wallet health report — I can explain scores, suggest improvements, or dig into specific issues.</div>
       </div>
     </div>
-    <div style="padding:0.5rem 1rem 0; display:flex; gap:0.5rem">
-      <button onclick="suggestPrompt('What should I do to improve this score?')" style="background:none; border:1px solid var(--cyan-dim); color:var(--cyan); font-family:var(--mono); font-size:0.6rem; padding:0.3rem 0.6rem; cursor:pointer; transition:all 0.2s; letter-spacing:0.05em; white-space:nowrap" onmouseover="this.style.borderColor='var(--cyan)';this.style.background='rgba(0,245,255,0.08)'" onmouseout="this.style.borderColor='var(--cyan-dim)';this.style.background='none'">💡 What should I do to improve this score?</button>
-    </div>
+    <div id="chat-suggestions" style="padding:0.5rem 1rem 0; display:flex; flex-wrap:wrap; gap:0.5rem"></div>
     <div class="chat-input-row">
       <input type="text" class="chat-input" id="chat-input" placeholder="Ask about your results..." onkeydown="if(event.key==='Enter') sendChat()" />
       <button class="chat-send" onclick="sendChat()">SEND ▶</button>
@@ -1181,6 +1179,9 @@
     body.innerHTML = html;
     panel.classList.add('active');
     document.getElementById('chat-panel').style.display = 'block';
+    chatTurn = 0;
+    recommendedEndpoint = null;
+    renderSuggestions();
 
     // Animate score bar
     setTimeout(() => {
@@ -1197,6 +1198,58 @@
   }
 
   // ─── CHAT ───
+  let chatTurn = 0;
+  let recommendedEndpoint = null;
+
+  function renderSuggestions() {
+    const box = document.getElementById('chat-suggestions');
+    const r = lastResults?.report ?? lastResults ?? {};
+    box.innerHTML = '';
+
+    if (chatTurn === 0) {
+      // Initial suggestion
+      addSuggestionBtn(box, '💡 What should I do to improve this score?');
+    } else if (chatTurn === 1) {
+      // Contextual follow-ups based on report
+      if ((r.reverted_count ?? 0) > 50) {
+        addSuggestionBtn(box, 'Fix my failed transactions with /retry ($10)');
+        recommendedEndpoint = 'retry';
+      }
+      if ((r.wasted_gas_eth ?? 0) > 0.001) {
+        addSuggestionBtn(box, 'Optimise gas usage with /optimize ($5)');
+        recommendedEndpoint = recommendedEndpoint || 'optimize';
+      }
+      addSuggestionBtn(box, 'Run full protection suite /protect ($25)');
+      recommendedEndpoint = recommendedEndpoint || 'protect';
+    } else if (chatTurn === 2) {
+      // Final CTA button
+      const ep = recommendedEndpoint || 'protect';
+      const btn = document.createElement('button');
+      btn.textContent = `Run /${ep} now →`;
+      btn.style.cssText = 'background:var(--cyan); border:none; color:var(--bg); font-family:var(--display); font-size:0.7rem; font-weight:700; padding:0.4rem 1rem; cursor:pointer; letter-spacing:0.15em; text-transform:uppercase; transition:all 0.2s;';
+      btn.onmouseover = () => { btn.style.boxShadow = '0 0 20px rgba(0,245,255,0.5)'; };
+      btn.onmouseout = () => { btn.style.boxShadow = 'none'; };
+      btn.onclick = () => {
+        const card = document.querySelector(`.endpoint-card[data-endpoint="${ep}"]`);
+        if (card) {
+          selectEndpoint(card);
+          card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      };
+      box.appendChild(btn);
+    }
+  }
+
+  function addSuggestionBtn(container, text) {
+    const btn = document.createElement('button');
+    btn.textContent = text;
+    btn.style.cssText = 'background:none; border:1px solid var(--cyan-dim); color:var(--cyan); font-family:var(--mono); font-size:0.6rem; padding:0.3rem 0.6rem; cursor:pointer; transition:all 0.2s; letter-spacing:0.05em; white-space:nowrap;';
+    btn.onmouseover = () => { btn.style.borderColor = 'var(--cyan)'; btn.style.background = 'rgba(0,245,255,0.08)'; };
+    btn.onmouseout = () => { btn.style.borderColor = 'var(--cyan-dim)'; btn.style.background = 'none'; };
+    btn.onclick = () => suggestPrompt(text);
+    container.appendChild(btn);
+  }
+
   async function sendChat() {
     const input = document.getElementById('chat-input');
     const msg = input.value.trim();
@@ -1220,6 +1273,8 @@
       const data = await res.json();
       const reply = data.reply ?? 'Unable to get response.';
       typingEl.innerHTML = mdToHtml(reply);
+      chatTurn++;
+      renderSuggestions();
 
     } catch (e) {
       typingEl.innerHTML = `<span style="color:var(--red)">Error: ${e.message}</span>`;
