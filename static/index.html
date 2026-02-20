@@ -921,6 +921,9 @@
         <div class="msg-content">Analysis complete. Ask me anything about your wallet health report — I can explain scores, suggest improvements, or dig into specific issues.</div>
       </div>
     </div>
+    <div style="padding:0.5rem 1rem 0; display:flex; gap:0.5rem">
+      <button onclick="suggestPrompt('What should I do to improve this score?')" style="background:none; border:1px solid var(--cyan-dim); color:var(--cyan); font-family:var(--mono); font-size:0.6rem; padding:0.3rem 0.6rem; cursor:pointer; transition:all 0.2s; letter-spacing:0.05em; white-space:nowrap" onmouseover="this.style.borderColor='var(--cyan)';this.style.background='rgba(0,245,255,0.08)'" onmouseout="this.style.borderColor='var(--cyan-dim)';this.style.background='none'">💡 What should I do to improve this score?</button>
+    </div>
     <div class="chat-input-row">
       <input type="text" class="chat-input" id="chat-input" placeholder="Ask about your results..." onkeydown="if(event.key==='Enter') sendChat()" />
       <button class="chat-send" onclick="sendChat()">SEND ▶</button>
@@ -1216,7 +1219,7 @@
 
       const data = await res.json();
       const reply = data.reply ?? 'Unable to get response.';
-      typingEl.innerHTML = reply;
+      typingEl.innerHTML = mdToHtml(reply);
 
     } catch (e) {
       typingEl.innerHTML = `<span style="color:var(--red)">Error: ${e.message}</span>`;
@@ -1225,16 +1228,33 @@
     document.getElementById('chat-messages').scrollTop = 9999;
   }
 
+  function mdToHtml(text) {
+    return text
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\*(.+?)\*/g, '<em>$1</em>')
+      .replace(/`(.+?)`/g, '<code style="background:var(--bg3);padding:0.1rem 0.3rem;font-size:0.8em">$1</code>')
+      .replace(/^(\d+)\.\s+/gm, '<br>$1. ')
+      .replace(/^[-•]\s+/gm, '<br>• ')
+      .replace(/\n\n/g, '<br><br>')
+      .replace(/\n/g, ' ');
+  }
+
   function appendMsg(role, content) {
     const container = document.getElementById('chat-messages');
     const div = document.createElement('div');
     div.className = `msg ${role}`;
+    const formatted = role === 'assistant' ? mdToHtml(content) : content;
     div.innerHTML = `
       <div class="msg-avatar">${role === 'assistant' ? 'AI' : 'YOU'}</div>
-      <div class="msg-content">${content}</div>`;
+      <div class="msg-content">${formatted}</div>`;
     container.appendChild(div);
     container.scrollTop = 9999;
     return div.querySelector('.msg-content');
+  }
+
+  function suggestPrompt(text) {
+    document.getElementById('chat-input').value = text;
+    sendChat();
   }
 
   // ─── INIT ───
