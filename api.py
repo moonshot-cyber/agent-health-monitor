@@ -27,11 +27,13 @@ from contextlib import asynccontextmanager
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta, timezone
 from functools import partial
+from pathlib import Path
 from typing import Optional
 
 import httpx as httpx_client
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from x402.http import FacilitatorConfig, HTTPFacilitatorClient, PaymentOption
@@ -69,6 +71,7 @@ ALERT_PRICE = os.getenv("ALERT_PRICE_USD", "$2.00")
 RETRY_PRICE = os.getenv("RETRY_PRICE_USD", "$10.00")
 PROTECT_PRICE = os.getenv("PROTECT_PRICE_USD", "$25.00")
 NETWORK = os.getenv("NETWORK", "eip155:8453")  # Base mainnet
+VALID_COUPONS = set(c.strip().upper() for c in os.getenv("VALID_COUPONS", "").split(",") if c.strip())
 PORT = int(os.getenv("PORT", "4021"))
 
 ADDRESS_RE = re.compile(r"^0x[0-9a-fA-F]{40}$")
@@ -889,15 +892,22 @@ app.add_middleware(PaymentMiddlewareASGI, routes=x402_routes, server=server)
 
 # -- Routes ------------------------------------------------------------------
 
+STATIC_DIR = Path(__file__).parent / "static"
+
+
 @app.get("/")
 async def root():
+    """Serve the landing page."""
+    return FileResponse(STATIC_DIR / "index.html")
+
+
+@app.get("/api/info")
+async def api_info():
     """Service info and pricing."""
-    import cryptography
     return {
         "service": "Agent Health Monitor",
-        "version": "1.6.1",
+        "version": "1.7.0",
         "network": "Base L2",
-        "cryptography_version": cryptography.__version__,
         "endpoints": {
             "GET /health/{address}": f"{PRICE} USDC — wallet health diagnosis",
             "GET /alerts/subscribe/{address}": f"{ALERT_PRICE} USDC/month — automated monitoring & webhook alerts",
@@ -910,6 +920,12 @@ async def root():
         "payment": "x402 protocol (USDC on Base)",
         "docs": "/docs",
     }
+
+
+@app.get("/coupon/validate/{code}")
+async def validate_coupon(code: str):
+    """Check if a coupon code is valid."""
+    return {"valid": code.strip().upper() in VALID_COUPONS}
 
 
 @app.get("/up")
