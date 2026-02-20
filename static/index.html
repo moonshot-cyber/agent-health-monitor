@@ -777,6 +777,77 @@
     display: inline-block;
   }
 
+  /* ─── TIER BADGE ─── */
+  .score-tier {
+    font-family: var(--display);
+    font-size: 0.9rem;
+    font-weight: 700;
+    letter-spacing: 0.3em;
+    margin-top: 0.75rem;
+  }
+
+  .score-tier.tier-elite { color: var(--green); text-shadow: 0 0 15px var(--green); }
+  .score-tier.tier-healthy { color: var(--green); }
+  .score-tier.tier-atrisk { color: var(--amber); text-shadow: 0 0 10px var(--amber); }
+  .score-tier.tier-critical { color: var(--red); text-shadow: 0 0 10px var(--red); }
+
+  /* ─── SCORE DELTA ─── */
+  .score-delta {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    margin-top: 0.5rem;
+    letter-spacing: 0.05em;
+  }
+
+  .score-delta.up { color: var(--green); }
+  .score-delta.down { color: var(--red); }
+  .score-delta.same { color: var(--text-dim); }
+
+  /* ─── ELITE GLOW ─── */
+  .results-panel.elite-glow {
+    border-color: var(--green);
+    animation: elitePulse 2s ease-in-out infinite;
+  }
+
+  @keyframes elitePulse {
+    0%, 100% { box-shadow: 0 0 10px rgba(0,255,136,0.1); }
+    50% { box-shadow: 0 0 25px rgba(0,255,136,0.3), inset 0 0 15px rgba(0,255,136,0.03); }
+  }
+
+  /* ─── TOAST ─── */
+  .toast {
+    position: fixed;
+    top: 80px;
+    left: 50%;
+    transform: translateX(-50%) translateY(-20px);
+    background: var(--panel);
+    border: 1px solid var(--cyan);
+    padding: 0.75rem 1.5rem;
+    font-family: var(--display);
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.2em;
+    color: var(--cyan);
+    z-index: 9999;
+    opacity: 0;
+    animation: toastIn 0.3s ease forwards, toastOut 0.3s ease 2.5s forwards;
+    box-shadow: 0 0 30px rgba(0,245,255,0.3);
+  }
+
+  .toast.green {
+    border-color: var(--green);
+    color: var(--green);
+    box-shadow: 0 0 30px rgba(0,255,136,0.3);
+  }
+
+  @keyframes toastIn {
+    to { opacity: 1; transform: translateX(-50%) translateY(0); }
+  }
+
+  @keyframes toastOut {
+    to { opacity: 0; transform: translateX(-50%) translateY(-20px); }
+  }
+
   /* responsive */
   @media (max-width: 600px) {
     .hero-stats { gap: 1.5rem; }
@@ -1114,6 +1185,46 @@
     const score = r.health_score ?? r.score ?? null;
     const priority = r.optimization_priority ?? r.priority ?? null;
     const scoreClass = score >= 70 ? 'high' : score >= 40 ? 'medium' : 'low';
+    const wallet = (r.address ?? document.getElementById('wallet-input').value.trim()).toLowerCase();
+
+    // Tier calculation
+    const tier = score >= 85 ? 'ELITE' : score >= 70 ? 'HEALTHY' : score >= 50 ? 'AT RISK' : 'CRITICAL';
+    const tierClass = score >= 85 ? 'tier-elite' : score >= 70 ? 'tier-healthy' : score >= 50 ? 'tier-atrisk' : 'tier-critical';
+
+    // Score history
+    const historyKey = `ahm_history_${wallet}`;
+    const history = JSON.parse(localStorage.getItem(historyKey) || '[]');
+    const prevEntry = history.length > 0 ? history[history.length - 1] : null;
+    const isFirstEver = history.length === 0;
+    const prevBestTier = history.reduce((best, h) => {
+      const t = h.tier;
+      if (t === 'ELITE' || t === 'HEALTHY') return true;
+      return best;
+    }, false);
+
+    // Save current score
+    history.push({ score, tier, date: new Date().toISOString().slice(0, 10) });
+    if (history.length > 20) history.splice(0, history.length - 20);
+    localStorage.setItem(historyKey, JSON.stringify(history));
+
+    // Delta display
+    let deltaHtml = '';
+    if (prevEntry) {
+      const delta = score - prevEntry.score;
+      const arrow = delta > 0 ? '\u2191' : delta < 0 ? '\u2193' : '\u2192';
+      const cls = delta > 0 ? 'up' : delta < 0 ? 'down' : 'same';
+      deltaHtml = `<div class="score-delta ${cls}">PREVIOUS: ${prevEntry.score.toFixed(1)} \u2192 TODAY: ${score.toFixed(1)} ${arrow}${Math.abs(delta).toFixed(1)}</div>`;
+    }
+
+    // Elite celebration
+    const isElite = score >= 85;
+    panel.classList.toggle('elite-glow', isElite);
+
+    // Milestone toasts
+    if (isFirstEver) showToast('FIRST SCAN COMPLETE');
+    if ((tier === 'HEALTHY' || tier === 'ELITE') && !prevBestTier) {
+      setTimeout(() => showToast('WALLET STATUS: HEALTHY ACHIEVED', true), isFirstEver ? 3200 : 0);
+    }
 
     let html = '';
 
@@ -1122,9 +1233,11 @@
         <div class="health-score">
           <div class="score-label">// HEALTH SCORE</div>
           <div class="score-number ${scoreClass}">${score.toFixed(1)}<span style="font-size:2rem;opacity:0.4">/100</span></div>
+          <div class="score-tier ${tierClass}">${tier}</div>
           <div class="score-bar-container">
             <div class="score-bar-fill ${scoreClass}" style="width:${score}%"></div>
           </div>
+          ${deltaHtml}
           ${priority ? `<div class="score-priority priority-${priority}">${priority} PRIORITY</div>` : ''}
         </div>`;
     }
@@ -1181,6 +1294,15 @@
     document.getElementById('chat-panel').style.display = 'block';
     chatTurn = 0;
     recommendedEndpoint = null;
+
+    // Update initial chat message for elite scores
+    const chatMsg = document.querySelector('#chat-messages .msg.assistant .msg-content');
+    if (chatMsg) {
+      chatMsg.textContent = isElite
+        ? 'Outstanding wallet health! Your score puts you in the top tier. Run /alerts ($2 USDC) to maintain this status with automated monitoring.'
+        : 'Analysis complete. Ask me anything about your wallet health report \u2014 I can explain scores, suggest improvements, or dig into specific issues.';
+    }
+
     renderSuggestions();
 
     // Animate score bar
@@ -1310,6 +1432,14 @@
   function suggestPrompt(text) {
     document.getElementById('chat-input').value = text;
     sendChat();
+  }
+
+  function showToast(text, green) {
+    const el = document.createElement('div');
+    el.className = 'toast' + (green ? ' green' : '');
+    el.textContent = text;
+    document.body.appendChild(el);
+    setTimeout(() => el.remove(), 3000);
   }
 
   // ─── INIT ───
