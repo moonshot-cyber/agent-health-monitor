@@ -1115,9 +1115,52 @@
   }
 
   // ─── EXECUTE ───
+  // ─── TEST MODE ───
+  const TEST_MODES = {
+    'TEST-ELITE': 92, 'TEST-HEALTHY': 76, 'TEST-ATRISK': 58, 'TEST-CRITICAL': 35
+  };
+
+  function mockResult(score) {
+    const failed = Math.round((1 - score / 100) * 500);
+    const success = 500 - failed;
+    return {
+      status: 'ok',
+      report: {
+        address: '0x' + 'test'.repeat(10).slice(0, 40),
+        is_contract: false,
+        health_score: score,
+        optimization_priority: score >= 85 ? 'LOW' : score >= 70 ? 'MEDIUM' : score >= 50 ? 'HIGH' : 'CRITICAL',
+        total_transactions: 500,
+        successful: success,
+        failed: failed,
+        success_rate_pct: (success / 500 * 100),
+        total_gas_spent_eth: 0.025 + (100 - score) * 0.001,
+        wasted_gas_eth: score < 70 ? 0.0052 : 0.0003,
+        estimated_monthly_waste_usd: score < 70 ? 71.50 : 4.20,
+        avg_gas_efficiency_pct: score * 0.7,
+        out_of_gas_count: score < 50 ? 12 : score < 70 ? 3 : 0,
+        reverted_count: failed,
+        nonce_gap_count: score < 50 ? 5 : 0,
+        retry_count: score < 70 ? 8 : 0,
+        top_failure_type: failed > 0 ? 'reverted' : 'none',
+        first_seen: '2024-06-01',
+        last_seen: '2026-02-20',
+        recommendations: [
+          score < 70 ? { category: 'reliability', severity: 'high', message: `Success rate is ${(success / 500 * 100).toFixed(1)}%. Review contract interactions and add pre-flight simulation.` } : null,
+          score < 85 ? { category: 'gas_efficiency', severity: 'medium', message: `Gas efficiency at ${(score * 0.7).toFixed(1)}%. Use tighter estimates via eth_estimateGas.` } : null,
+          score >= 85 ? { category: 'general', severity: 'info', message: `Health score ${score}/100. This agent is operating well. Continue monitoring for regressions.` } : null,
+        ].filter(Boolean),
+        eth_price_usd: 2650.00,
+        analyzed_at: new Date().toISOString(),
+      }
+    };
+  }
+
   async function execute() {
     const wallet = document.getElementById('wallet-input').value.trim();
-    if (!wallet || !wallet.match(/^0x[0-9a-fA-F]{40}$/)) {
+    const testScore = TEST_MODES[wallet.toUpperCase()];
+
+    if (!testScore && (!wallet || !wallet.match(/^0x[0-9a-fA-F]{40}$/))) {
       terminal([['t-error', 'ERROR: Invalid wallet address format']]);
       return;
     }
@@ -1126,6 +1169,21 @@
     btn.disabled = true;
     document.getElementById('results-panel').classList.remove('active');
     document.getElementById('chat-panel').style.display = 'none';
+
+    // Test mode — inject mock data
+    if (testScore) {
+      terminal([
+        ['t-dim', `ENDPOINT: ${selectedEndpoint.path}`],
+        ['t-dim', `TARGET: ${wallet}`],
+        ['t-info', `TEST MODE — injecting mock data (score: ${testScore})`],
+      ]);
+      const data = mockResult(testScore);
+      lastResults = data;
+      termAppend('t-success', 'STATUS: 200 OK — Mock analysis complete');
+      renderResults(data);
+      btn.disabled = false;
+      return;
+    }
 
     const coupon = document.getElementById('coupon-input')?.value?.trim().toUpperCase();
     const url = couponValid && coupon
