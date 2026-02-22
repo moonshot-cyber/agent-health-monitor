@@ -597,6 +597,7 @@ x402_routes = {
                     "input": {
                         "type": "http",
                         "method": "GET",
+                        "discoverable": True,
                         "queryParams": {
                             "address": "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
                         },
@@ -701,6 +702,35 @@ x402_routes = {
             "when health score, failure rate, or gas waste thresholds are breached. "
             "$2.00 USDC for 30 days of monitoring."
         ),
+        extensions={
+            "bazaar": {
+                "info": {
+                    "input": {
+                        "type": "http",
+                        "method": "GET",
+                        "discoverable": True,
+                        "queryParams": {
+                            "address": "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
+                        },
+                    },
+                    "output": {
+                        "type": "json",
+                        "example": {
+                            "status": "ok",
+                            "message": "Subscription active. Configure your webhook via POST /alerts/configure.",
+                            "subscription": {
+                                "address": "0xd8da6bf26964af9d7eed9e03e53415d37aa96045",
+                                "active": True,
+                                "webhook_configured": False,
+                                "webhook_type": "generic",
+                                "expires_at": "2026-03-22T12:00:00Z",
+                                "alerts_sent": 0,
+                            },
+                        },
+                    },
+                },
+            },
+        },
     ),
     "GET /optimize/*": RouteConfig(
         accepts=[
@@ -723,6 +753,7 @@ x402_routes = {
                     "input": {
                         "type": "http",
                         "method": "GET",
+                        "discoverable": True,
                         "queryParams": {
                             "address": "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
                         },
@@ -791,6 +822,7 @@ x402_routes = {
                     "input": {
                         "type": "http",
                         "method": "GET",
+                        "discoverable": True,
                         "queryParams": {
                             "address": "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
                         },
@@ -848,6 +880,7 @@ x402_routes = {
                     "input": {
                         "type": "http",
                         "method": "GET",
+                        "discoverable": True,
                         "queryParams": {
                             "address": "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
                         },
