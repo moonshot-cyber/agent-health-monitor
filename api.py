@@ -935,6 +935,57 @@ async def root():
     return FileResponse(STATIC_DIR / "index.html")
 
 
+@app.get("/.well-known/x402")
+async def x402_discovery(request: Request):
+    """
+    x402 discovery document — lists all paid endpoints with payment
+    requirements and bazaar metadata so crawlers like x402scan can
+    auto-register the service.
+    """
+    base_url = str(request.base_url).rstrip("/")
+    endpoints = []
+
+    for route_pattern, config in x402_routes.items():
+        parts = route_pattern.split(" ", 1)
+        method = parts[0] if len(parts) == 2 else "GET"
+        path = parts[1] if len(parts) == 2 else parts[0]
+
+        accepts = config.accepts if isinstance(config.accepts, list) else [config.accepts]
+        payment_options = []
+        for opt in accepts:
+            payment_options.append({
+                "scheme": opt.scheme,
+                "network": opt.network,
+                "pay_to": opt.pay_to,
+                "price": opt.price,
+            })
+
+        endpoint_entry = {
+            "url": f"{base_url}{path}",
+            "method": method,
+            "description": config.description,
+            "mime_type": config.mime_type,
+            "payment": payment_options,
+        }
+
+        if config.extensions and "bazaar" in config.extensions:
+            endpoint_entry["bazaar"] = config.extensions["bazaar"]
+
+        endpoints.append(endpoint_entry)
+
+    return {
+        "x402": True,
+        "version": "1.0",
+        "service": "Agent Health Monitor",
+        "description": (
+            "Pay-per-use API that analyzes Base blockchain agent wallets "
+            "for transaction failures, gas waste, and optimization opportunities."
+        ),
+        "facilitator": FACILITATOR_URL,
+        "endpoints": endpoints,
+    }
+
+
 @app.get("/api/info")
 async def api_info():
     """Service info and pricing."""
