@@ -943,6 +943,9 @@ async def x402_discovery(request: Request):
     auto-register the service.
     """
     base_url = str(request.base_url).rstrip("/")
+    # Railway terminates TLS at the proxy — ensure discovery URLs use https
+    if base_url.startswith("http://") and "railway.app" in base_url:
+        base_url = "https://" + base_url[7:]
     endpoints = []
 
     for route_pattern, config in x402_routes.items():
