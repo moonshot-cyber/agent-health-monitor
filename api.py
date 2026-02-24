@@ -584,11 +584,16 @@ app = FastAPI(
 
 class InternalKeyBypassMiddleware:
     """
-    Middleware to skip x402 payment middleware if X-Internal-Key header is valid.
-    Runs BEFORE x402 middleware to properly intercept and bypass payment.
+    ASGI middleware that skips x402 payment when X-Internal-Key header is valid.
+
+    Must be added AFTER PaymentMiddlewareASGI so it wraps the outside
+    (last added = outermost in Starlette's middleware stack).
+
+    When the key matches, we call self.app.app — the inner app that
+    PaymentMiddlewareASGI wraps — skipping the payment check entirely.
     """
     def __init__(self, app):
-        self.app = app
+        self.app = app  # This is PaymentMiddlewareASGI
 
     async def __call__(self, scope, receive, send):
         if scope["type"] != "http":
@@ -598,21 +603,14 @@ class InternalKeyBypassMiddleware:
         # Check for internal API key in headers
         headers = dict(scope.get("headers", []))
         internal_key = headers.get(b"x-internal-key", b"").decode()
-        
+
         if internal_key and internal_key == INTERNAL_API_KEY:
-            # Internal key is valid — bypass x402 and go straight to endpoint
-            # Create a custom send wrapper that marks response as authorized
-            async def send_with_auth(message):
-                if message["type"] == "http.response.start":
-                    # Add header to indicate internal request
-                    headers = list(message.get("headers", []))
-                    headers.append((b"x-internal-request", b"true"))
-                    message["headers"] = headers
-                await send(message)
-            
-            await self.app(scope, receive, send_with_auth)
+            # Valid key — skip x402 by jumping past PaymentMiddlewareASGI
+            # to the inner app it wraps (self.app.app)
+            inner_app = getattr(self.app, "app", self.app)
+            await inner_app(scope, receive, send)
         else:
-            # No valid internal key — pass through to x402 middleware
+            # No valid key — normal flow through x402
             await self.app(scope, receive, send)
 
 
@@ -623,9 +621,6 @@ facilitator = HTTPFacilitatorClient(FacilitatorConfig(url=FACILITATOR_URL))
 
 server = x402ResourceServer(facilitator)
 server.register(NETWORK, ExactEvmServerScheme())
-
-# Apply internal key bypass middleware BEFORE x402 so it intercepts requests first
-app.add_middleware(InternalKeyBypassMiddleware)
 
 x402_routes = {
     "GET /health/*": RouteConfig(
@@ -974,6 +969,10 @@ x402_routes = {
 }
 
 app.add_middleware(PaymentMiddlewareASGI, routes=x402_routes, server=server)
+
+# Add internal key bypass AFTER x402 — last added = outermost = runs first.
+# When valid X-Internal-Key is present, skips x402 entirely.
+app.add_middleware(InternalKeyBypassMiddleware)
 
 
 # -- Routes ------------------------------------------------------------------
