@@ -17,12 +17,14 @@ Environment variables:
     PROTECT_PRICE_USD - Price per protection agent run, e.g. "$25.00" (optional)
     NETWORK          - CAIP-2 network ID (optional, default: Base mainnet)
     PORT             - Server port (optional, default: 4021)
+    INTERNAL_API_KEY - Secret key for ACP bridge bypass (optional, auto-generated if not set)
 """
 
 import asyncio
 import logging
 import os
 import re
+import secrets
 from contextlib import asynccontextmanager
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -74,6 +76,17 @@ NETWORK = os.getenv("NETWORK", "eip155:8453")  # Base mainnet
 VALID_COUPONS = set(c.strip().upper() for c in os.getenv("VALID_COUPONS", "").split(",") if c.strip())
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 PORT = int(os.getenv("PORT", "4021"))
+
+# -- Internal API Key (for ACP bridge bypass) --------------------------------
+# If not set, generate a secure random key at startup
+INTERNAL_API_KEY = os.getenv("INTERNAL_API_KEY")
+if not INTERNAL_API_KEY:
+    INTERNAL_API_KEY = secrets.token_urlsafe(32)
+    logging.warning(
+        "INTERNAL_API_KEY not set. Generated random key: %s. "
+        "Set INTERNAL_API_KEY in .env to persist across restarts.",
+        INTERNAL_API_KEY
+    )
 
 ADDRESS_RE = re.compile(r"^0x[0-9a-fA-F]{40}$")
 
@@ -541,7 +554,19 @@ def generate_recommendations(health) -> list[Recommendation]:
     return recs
 
 
-# -- FastAPI App -------------------------------------------------------------
+# -- Internal API Key Middleware Check ----------------------------------------
+
+def _check_internal_api_key(request: Request) -> bool:
+    """
+    Check if request has valid X-Internal-Key header.
+    Used to bypass x402 payment middleware for ACP bridge calls.
+    Returns True if header matches INTERNAL_API_KEY, False otherwise.
+    """
+    auth_header = request.headers.get("X-Internal-Key", "")
+    return auth_header == INTERNAL_API_KEY
+
+
+# -- FastAPI App with Lifecycle & Custom Middleware --------------------------
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -565,6 +590,31 @@ app = FastAPI(
     version="1.6.0",
     lifespan=lifespan,
 )
+
+
+# -- Custom Middleware to Bypass x402 on Internal Calls ----------------------
+
+class InternalKeyBypassMiddleware:
+    """
+    Middleware to skip x402 payment middleware if X-Internal-Key header is valid.
+    This allows ACP bridge to call endpoints without triggering payment flow.
+    """
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http":
+            # Create a Request object to check headers
+            request = Request(scope, receive)
+            if _check_internal_api_key(request):
+                # Mark request as internally authorized
+                scope["internal_authorized"] = True
+        
+        await self.app(scope, receive, send)
+
+
+# Apply middleware BEFORE x402 middleware so it can intercept
+app.add_middleware(InternalKeyBypassMiddleware)
 
 
 # -- x402 Payment Middleware -------------------------------------------------
@@ -1130,7 +1180,7 @@ async def get_health_report(address: str):
     """
     Analyze a Base wallet address and return a health report.
 
-    Requires x402 payment ($0.50 USDC on Base).
+    Requires x402 payment ($0.50 USDC on Base) OR valid X-Internal-Key header.
 
     - Fetches transaction history from Blockscout
     - Calculates success rate, gas efficiency, nonce health
@@ -1176,7 +1226,7 @@ async def get_optimization_report(address: str):
     """
     Analyze a Base wallet and return a gas optimization report.
 
-    Requires x402 payment ($5.00 USDC on Base).
+    Requires x402 payment ($5.00 USDC on Base) OR valid X-Internal-Key header.
 
     - Groups transactions by type (contract + method)
     - Calculates optimal gas limits per type
@@ -1304,7 +1354,7 @@ async def get_protection_report(address: str):
     """
     Autonomous protection agent — full wallet analysis and action plan.
 
-    Requires x402 payment ($25.00 USDC on Base).
+    Requires x402 payment ($25.00 USDC on Base) OR valid X-Internal-Key header.
 
     Triages wallet risk and runs the appropriate services:
     - Score 90-100: Low risk — health report + recommend alerts
@@ -1479,7 +1529,7 @@ async def get_retry_transactions(address: str):
     """
     Analyze failed transactions and return optimized retry transactions.
 
-    Requires x402 payment ($10.00 USDC on Base).
+    Requires x402 payment ($10.00 USDC on Base) OR valid X-Internal-Key header.
 
     Non-custodial: returns ready-to-sign transaction objects.
     The agent signs and submits the transactions themselves.
