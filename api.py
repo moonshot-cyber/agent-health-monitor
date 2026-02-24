@@ -554,18 +554,6 @@ def generate_recommendations(health) -> list[Recommendation]:
     return recs
 
 
-# -- Internal API Key Middleware Check ----------------------------------------
-
-def _check_internal_api_key(request: Request) -> bool:
-    """
-    Check if request has valid X-Internal-Key header.
-    Used to bypass x402 payment middleware for ACP bridge calls.
-    Returns True if header matches INTERNAL_API_KEY, False otherwise.
-    """
-    auth_header = request.headers.get("X-Internal-Key", "")
-    return auth_header == INTERNAL_API_KEY
-
-
 # -- FastAPI App with Lifecycle & Custom Middleware --------------------------
 
 @asynccontextmanager
@@ -597,24 +585,35 @@ app = FastAPI(
 class InternalKeyBypassMiddleware:
     """
     Middleware to skip x402 payment middleware if X-Internal-Key header is valid.
-    This allows ACP bridge to call endpoints without triggering payment flow.
+    Runs BEFORE x402 middleware to properly intercept and bypass payment.
     """
     def __init__(self, app):
         self.app = app
 
     async def __call__(self, scope, receive, send):
-        if scope["type"] == "http":
-            # Create a Request object to check headers
-            request = Request(scope, receive)
-            if _check_internal_api_key(request):
-                # Mark request as internally authorized
-                scope["internal_authorized"] = True
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        # Check for internal API key in headers
+        headers = dict(scope.get("headers", []))
+        internal_key = headers.get(b"x-internal-key", b"").decode()
         
-        await self.app(scope, receive, send)
-
-
-# Apply middleware BEFORE x402 middleware so it can intercept
-app.add_middleware(InternalKeyBypassMiddleware)
+        if internal_key and internal_key == INTERNAL_API_KEY:
+            # Internal key is valid — bypass x402 and go straight to endpoint
+            # Create a custom send wrapper that marks response as authorized
+            async def send_with_auth(message):
+                if message["type"] == "http.response.start":
+                    # Add header to indicate internal request
+                    headers = list(message.get("headers", []))
+                    headers.append((b"x-internal-request", b"true"))
+                    message["headers"] = headers
+                await send(message)
+            
+            await self.app(scope, receive, send_with_auth)
+        else:
+            # No valid internal key — pass through to x402 middleware
+            await self.app(scope, receive, send)
 
 
 # -- x402 Payment Middleware -------------------------------------------------
@@ -624,6 +623,9 @@ facilitator = HTTPFacilitatorClient(FacilitatorConfig(url=FACILITATOR_URL))
 
 server = x402ResourceServer(facilitator)
 server.register(NETWORK, ExactEvmServerScheme())
+
+# Apply internal key bypass middleware BEFORE x402 so it intercepts requests first
+app.add_middleware(InternalKeyBypassMiddleware)
 
 x402_routes = {
     "GET /health/*": RouteConfig(
