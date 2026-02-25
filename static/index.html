@@ -909,6 +909,11 @@
     </div>
     <div class="panel-body">
       <div class="endpoint-grid">
+        <div class="endpoint-card" data-endpoint="risk" data-price="0.01" data-path="/risk" onclick="selectEndpoint(this)">
+          <div class="ep-price">$0.01</div>
+          <div class="ep-name">/risk</div>
+          <div class="ep-desc">Quick risk score for pre-flight checks</div>
+        </div>
         <div class="endpoint-card selected" data-endpoint="health" data-price="0.50" data-path="/health" onclick="selectEndpoint(this)">
           <div class="ep-price">$0.50</div>
           <div class="ep-name">/health</div>
@@ -1240,6 +1245,30 @@
     const r = data.report ?? data;
 
     ts.textContent = new Date().toISOString().replace('T', ' ').slice(0, 19) + ' UTC';
+
+    // Risk endpoint returns {risk_score, risk_level, verdict} — handle specially
+    if (r.risk_score !== undefined && r.verdict !== undefined) {
+      ts.textContent = new Date().toISOString().replace('T', ' ').slice(0, 19) + ' UTC';
+      const rs = r.risk_score;
+      const rsClass = rs >= 75 ? 'low' : rs >= 50 ? 'low' : rs >= 25 ? 'medium' : 'high';
+      body.innerHTML = `
+        <div class="health-score">
+          <div class="score-label">// RISK SCORE</div>
+          <div class="score-number ${rsClass}">${rs}<span style="font-size:2rem;opacity:0.4">/100</span></div>
+          <div class="score-tier ${rs >= 75 ? 'tier-critical' : rs >= 50 ? 'tier-atrisk' : rs >= 25 ? 'tier-healthy' : 'tier-elite'}">${r.risk_level}</div>
+          <div class="score-bar-container">
+            <div class="score-bar-fill ${rsClass}" style="width:${rs}%"></div>
+          </div>
+        </div>
+        <div style="padding:0.5rem 0.75rem; border-left:2px solid var(--cyan-dim); margin-bottom:1rem; font-family:var(--mono); font-size:0.8rem; color:var(--text)">${r.verdict}</div>
+        <button class="toggle-raw" onclick="toggleRaw()">▶ VIEW RAW JSON</button>
+        <pre class="raw-json" id="raw-json">${JSON.stringify(data, null, 2)}</pre>
+      `;
+      panel.classList.add('active');
+      panel.classList.remove('elite-glow');
+      setTimeout(() => { const bar = document.querySelector('.score-bar-fill'); if (bar) bar.style.width = rs + '%'; }, 50);
+      return;
+    }
 
     const score = r.health_score ?? r.score ?? null;
     const priority = r.optimization_priority ?? r.priority ?? null;
