@@ -72,6 +72,7 @@ OPTIMIZE_PRICE = os.getenv("OPTIMIZE_PRICE_USD", "$5.00")
 ALERT_PRICE = os.getenv("ALERT_PRICE_USD", "$2.00")
 RETRY_PRICE = os.getenv("RETRY_PRICE_USD", "$10.00")
 PROTECT_PRICE = os.getenv("PROTECT_PRICE_USD", "$25.00")
+RISK_PRICE = os.getenv("RISK_PRICE_USD", "$0.001")
 NETWORK = os.getenv("NETWORK", "eip155:8453")  # Base mainnet
 VALID_COUPONS = set(c.strip().upper() for c in os.getenv("VALID_COUPONS", "").split(",") if c.strip())
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
@@ -251,6 +252,14 @@ class ProtectionPreviewResponse(BaseModel):
     services_recommended: list[str]
     estimated_issues: int
     message: str
+
+
+# -- Risk Score Model --------------------------------------------------------
+
+class RiskResponse(BaseModel):
+    risk_score: int
+    risk_level: str
+    verdict: str
 
 
 # -- Alert Models & Store ----------------------------------------------------
@@ -905,6 +914,22 @@ x402_routes = {
             },
         },
     ),
+    "GET /risk/*": RouteConfig(
+        accepts=[
+            PaymentOption(
+                scheme="exact",
+                pay_to=PAYMENT_ADDRESS,
+                price=RISK_PRICE,
+                network=NETWORK,
+            ),
+        ],
+        mime_type="application/json",
+        description=(
+            "Quick risk score for agent pre-flight checks. "
+            "Returns a 0-100 risk score and one-line verdict. "
+            "Designed for high-volume, low-latency use."
+        ),
+    ),
     "GET /retry/[address]": RouteConfig(
         accepts=[
             PaymentOption(
@@ -1048,6 +1073,7 @@ async def api_info():
         "version": "1.7.0",
         "network": "Base L2",
         "endpoints": {
+            "GET /risk/{address}": f"{RISK_PRICE} USDC — quick risk score for pre-flight checks",
             "GET /health/{address}": f"{PRICE} USDC — wallet health diagnosis",
             "GET /alerts/subscribe/{address}": f"{ALERT_PRICE} USDC/month — automated monitoring & webhook alerts",
             "GET /optimize/{address}": f"{OPTIMIZE_PRICE} USDC — gas optimization report",
@@ -1174,6 +1200,80 @@ async def chat(req: ChatRequest, request: Request):
 async def up():
     """Unpaid liveness probe for load balancers."""
     return {"status": "ok"}
+
+
+@app.get("/risk/{address}", response_model=RiskResponse)
+async def get_risk_score(address: str):
+    """
+    Quick risk score for agent pre-flight checks.
+
+    Requires x402 payment ($0.001 USDC on Base) OR valid X-Internal-Key header.
+
+    Returns a 0-100 risk score derived from transaction failure rate,
+    wallet age, and contract interaction patterns. Designed for
+    high-volume, low-latency use.
+    """
+    if not ADDRESS_RE.match(address):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid Ethereum address format: {address}",
+        )
+
+    address = address.lower()
+    loop = asyncio.get_running_loop()
+
+    eth_price, transactions = await asyncio.gather(
+        loop.run_in_executor(None, partial(get_eth_price, BASESCAN_API_KEY)),
+        loop.run_in_executor(None, partial(fetch_transactions, address, BASESCAN_API_KEY)),
+    )
+
+    health = await loop.run_in_executor(
+        None, partial(analyze_address, address, transactions, eth_price),
+    )
+
+    # Derive risk score (inverse of health: 100 = max risk, 0 = no risk)
+    risk_score = max(0, min(100, 100 - int(health.health_score)))
+
+    # Classify risk level
+    if risk_score >= 75:
+        risk_level = "CRITICAL"
+    elif risk_score >= 50:
+        risk_level = "HIGH"
+    elif risk_score >= 25:
+        risk_level = "MEDIUM"
+    else:
+        risk_level = "LOW"
+
+    # Build one-line verdict from dominant signals
+    failure_rate = 100 - health.success_rate_pct
+    signals = []
+    if failure_rate > 20:
+        signals.append("high failure rate")
+    elif failure_rate > 5:
+        signals.append("elevated failure rate")
+    if health.out_of_gas_count > 0:
+        signals.append("out-of-gas errors")
+    if health.nonce_gap_count > 0:
+        signals.append("nonce gaps")
+    if health.reverted_count > 5:
+        signals.append("suspicious contract interactions")
+    elif health.reverted_count > 0:
+        signals.append("contract reverts")
+    if health.estimated_monthly_waste_usd > 50:
+        signals.append("significant gas waste")
+
+    if health.total_transactions == 0:
+        verdict = "No transaction history found"
+    elif not signals:
+        verdict = "Wallet operating normally with no significant issues detected"
+    else:
+        verdict = f"{risk_level.capitalize()} — {' with '.join(signals)} detected"
+
+    return RiskResponse(
+        risk_score=risk_score,
+        risk_level=risk_level,
+        verdict=verdict,
+    )
 
 
 @app.get("/health/{address}", response_model=HealthResponse)
