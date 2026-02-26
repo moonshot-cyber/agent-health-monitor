@@ -880,11 +880,11 @@
   <p class="hero-sub">// Pay-per-call blockchain analysis for agents and humans.<br>No accounts. No subscriptions. Just USDC on Base.</p>
   <div class="hero-stats">
     <div class="stat">
-      <div class="stat-val">5</div>
+      <div class="stat-val">6</div>
       <div class="stat-label">Endpoints</div>
     </div>
     <div class="stat">
-      <div class="stat-val">$0.50</div>
+      <div class="stat-val">$0.01</div>
       <div class="stat-label">From</div>
     </div>
     <div class="stat">
@@ -905,16 +905,16 @@
   <div class="panel">
     <div class="panel-header">
       <span class="panel-title">// SELECT_ENDPOINT</span>
-      <span class="panel-tag">5 services available</span>
+      <span class="panel-tag">6 services available</span>
     </div>
     <div class="panel-body">
       <div class="endpoint-grid">
-        <div class="endpoint-card" data-endpoint="risk" data-price="0.01" data-path="/risk" onclick="selectEndpoint(this)">
+        <div class="endpoint-card selected" data-endpoint="risk" data-price="0.01" data-path="/risk" onclick="selectEndpoint(this)">
           <div class="ep-price">$0.01</div>
           <div class="ep-name">/risk</div>
           <div class="ep-desc">Quick risk score for pre-flight checks</div>
         </div>
-        <div class="endpoint-card selected" data-endpoint="health" data-price="0.50" data-path="/health" onclick="selectEndpoint(this)">
+        <div class="endpoint-card" data-endpoint="health" data-price="0.50" data-path="/health" onclick="selectEndpoint(this)">
           <div class="ep-price">$0.50</div>
           <div class="ep-name">/health</div>
           <div class="ep-desc">Full wallet health score with risk analysis</div>
@@ -947,7 +947,7 @@
   <div class="panel">
     <div class="panel-header">
       <span class="panel-title">// EXECUTE_QUERY</span>
-      <span class="panel-tag" id="price-tag">COST: $0.50 USDC</span>
+      <span class="panel-tag" id="price-tag">COST: $0.01 USDC</span>
     </div>
     <div class="panel-body">
       <div class="input-group">
@@ -1024,7 +1024,7 @@
   // For now we check locally as a demo; real validation happens server-side
   const DEMO_COUPONS = ['EARLY001','EARLY002','EARLY003','REDDIT50','SUBSTACK1'];
 
-  let selectedEndpoint = { path: '/health', price: 0.50, name: 'health', couponPath: '/coupon/health' };
+  let selectedEndpoint = { path: '/risk', price: 0.01, name: 'risk', couponPath: '/coupon/risk' };
   let lastResults = null;
   let couponValid = false;
 
