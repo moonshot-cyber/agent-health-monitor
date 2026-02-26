@@ -30,8 +30,8 @@ Pay-per-use API that analyzes Base blockchain agent wallets for transaction fail
 
 | | |
 |---|---|
-| **Base URL** | `https://web-production-a512e.up.railway.app` |
-| **Docs** | `https://web-production-a512e.up.railway.app/docs` |
+| **Base URL** | `https://agenthealthmonitor.xyz` |
+| **Docs** | `https://agenthealthmonitor.xyz/docs` |
 | **Payment** | USDC via x402 protocol |
 | **Network** | Base Sepolia (eip155:84532) |
 
@@ -44,7 +44,7 @@ GET /health/{wallet_address}
 ```
 
 ```bash
-curl https://web-production-a512e.up.railway.app/health/0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045
+curl https://agenthealthmonitor.xyz/health/0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045
 ```
 
 Without an x402 payment header, you'll get a `402 Payment Required` response with payment instructions. An x402-enabled client handles this automatically.
@@ -107,7 +107,7 @@ Pays $2.00 USDC and activates 30 days of monitoring. If already subscribed, exte
 #### Step 2: Configure webhook (free)
 
 ```bash
-curl -X POST https://web-production-a512e.up.railway.app/alerts/configure \
+curl -X POST https://agenthealthmonitor.xyz/alerts/configure \
   -H "Content-Type: application/json" \
   -d '{
     "address": "0x1234...abcd",
@@ -155,7 +155,7 @@ GET /optimize/{wallet_address}
 ```
 
 ```bash
-curl https://web-production-a512e.up.railway.app/optimize/0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045
+curl https://agenthealthmonitor.xyz/optimize/0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045
 ```
 
 #### Example Response
@@ -223,7 +223,7 @@ GET /retry/{wallet_address}
 ```
 
 ```bash
-curl https://web-production-a512e.up.railway.app/retry/0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045
+curl https://agenthealthmonitor.xyz/retry/0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045
 ```
 
 #### Free Preview
@@ -291,7 +291,7 @@ GET /agent/protect/{wallet_address}
 ```
 
 ```bash
-curl https://web-production-a512e.up.railway.app/agent/protect/0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045
+curl https://agenthealthmonitor.xyz/agent/protect/0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045
 ```
 
 #### Free Preview
@@ -446,19 +446,19 @@ client = x402Client()
 client.register("eip155:*", ExactEvmScheme(signer=your_wallet))
 
 # Diagnose
-health = client.get("https://web-production-a512e.up.railway.app/health/0x1234...")
+health = client.get("https://agenthealthmonitor.xyz/health/0x1234...")
 
 # Subscribe to alerts
-sub = client.get("https://web-production-a512e.up.railway.app/alerts/subscribe/0x1234...")
+sub = client.get("https://agenthealthmonitor.xyz/alerts/subscribe/0x1234...")
 
 # Optimize
-optimization = client.get("https://web-production-a512e.up.railway.app/optimize/0x1234...")
+optimization = client.get("https://agenthealthmonitor.xyz/optimize/0x1234...")
 
 # Retry failed transactions
-retries = client.get("https://web-production-a512e.up.railway.app/retry/0x1234...")
+retries = client.get("https://agenthealthmonitor.xyz/retry/0x1234...")
 
 # Full autonomous protection (recommended)
-protection = client.get("https://web-production-a512e.up.railway.app/agent/protect/0x1234...")
+protection = client.get("https://agenthealthmonitor.xyz/agent/protect/0x1234...")
 ```
 
 ## Tech Stack
