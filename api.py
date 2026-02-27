@@ -1358,7 +1358,7 @@ async def get_premium_risk_score(address: str):
         for item in nansen_raw:
             if isinstance(item, dict):
                 nansen_labels.append(NansenLabel(
-                    label=item.get("label", item.get("name", str(item))).replace("\u200b", "").strip(),
+                    label=item.get("label", item.get("name", str(item))).replace("\u200b", "").replace("\u00e2\u20ac\u2039", "").replace("\ufeff", "").replace("\u200c", "").replace("\u200d", "").strip(),
                     category=item.get("category"),
                     definition=item.get("definition"),
                 ))
@@ -1499,7 +1499,7 @@ async def get_health_report(address: str):
         for item in nansen_raw:
             if isinstance(item, dict):
                 nansen_labels.append(NansenLabel(
-                    label=item.get("label", item.get("name", str(item))).replace("\u200b", "").strip(),
+                    label=item.get("label", item.get("name", str(item))).replace("\u200b", "").replace("\u00e2\u20ac\u2039", "").replace("\ufeff", "").replace("\u200c", "").replace("\u200d", "").strip(),
                     category=item.get("category"),
                     definition=item.get("definition"),
                 ))
