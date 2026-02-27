@@ -311,7 +311,7 @@ async def fetch_nansen_labels(address: str) -> list[dict] | None:
             response = await http.post(NANSEN_API_URL, json=body)
         if response.status_code == 200:
             data = response.json()
-            return data.get("labels", data.get("data", []))
+            return data if isinstance(data, list) else data.get("labels", data.get("data", []))
         return None
     except Exception as e:
         logging.warning("Nansen API call failed: %s", e)
