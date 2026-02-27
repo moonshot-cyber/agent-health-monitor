@@ -284,8 +284,8 @@ class RiskResponse(BaseModel):
 
 class NansenLabel(BaseModel):
     label: str
-    tag: Optional[str] = None
-    entity: Optional[str] = None
+    category: Optional[str] = None
+    definition: Optional[str] = None
 
 
 class PremiumRiskResponse(BaseModel):
@@ -1347,7 +1347,7 @@ async def get_premium_risk_score(address: str):
     elif not signals:
         verdict = "Wallet operating normally with no significant issues detected"
     else:
-        verdict = f"{risk_level.capitalize()} — {' with '.join(signals)} detected"
+        verdict = f"{risk_level.capitalize()} - {' with '.join(signals)} detected"
 
     # Format Nansen labels
     nansen_labels = []
@@ -1357,8 +1357,8 @@ async def get_premium_risk_score(address: str):
             if isinstance(item, dict):
                 nansen_labels.append(NansenLabel(
                     label=item.get("label", item.get("name", str(item))),
-                    tag=item.get("tag"),
-                    entity=item.get("entity"),
+                    category=item.get("category"),
+                    definition=item.get("definition"),
                 ))
 
     return PremiumRiskResponse(
@@ -1435,7 +1435,7 @@ async def get_risk_score(address: str):
     elif not signals:
         verdict = "Wallet operating normally with no significant issues detected"
     else:
-        verdict = f"{risk_level.capitalize()} — {' with '.join(signals)} detected"
+        verdict = f"{risk_level.capitalize()} - {' with '.join(signals)} detected"
 
     return RiskResponse(
         risk_score=risk_score,
