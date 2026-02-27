@@ -148,6 +148,8 @@ class HealthReport(BaseModel):
 class HealthResponse(BaseModel):
     status: str
     report: HealthReport
+    nansen_labels: list[NansenLabel] = []
+    nansen_available: bool = False
 
 
 class TransactionTypeOptimization(BaseModel):
@@ -1464,13 +1466,16 @@ async def get_health_report(address: str):
 
     address = address.lower()
 
-    # Run blocking I/O from monitor.py in thread pool
+    # Run blocking I/O from monitor.py in thread pool + Nansen in parallel
     loop = asyncio.get_running_loop()
 
-    eth_price, transactions, is_contract = await asyncio.gather(
-        loop.run_in_executor(None, partial(get_eth_price, BASESCAN_API_KEY)),
-        loop.run_in_executor(None, partial(fetch_transactions, address, BASESCAN_API_KEY)),
-        loop.run_in_executor(None, partial(is_contract_address, address)),
+    (eth_price, transactions, is_contract), nansen_raw = await asyncio.gather(
+        asyncio.gather(
+            loop.run_in_executor(None, partial(get_eth_price, BASESCAN_API_KEY)),
+            loop.run_in_executor(None, partial(fetch_transactions, address, BASESCAN_API_KEY)),
+            loop.run_in_executor(None, partial(is_contract_address, address)),
+        ),
+        fetch_nansen_labels(address),
     )
 
     health = await loop.run_in_executor(
@@ -1487,7 +1492,24 @@ async def get_health_report(address: str):
         analyzed_at=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
     )
 
-    return HealthResponse(status="ok", report=report)
+    # Format Nansen labels
+    nansen_labels = []
+    nansen_available = nansen_raw is not None
+    if nansen_raw:
+        for item in nansen_raw:
+            if isinstance(item, dict):
+                nansen_labels.append(NansenLabel(
+                    label=item.get("label", item.get("name", str(item))),
+                    category=item.get("category"),
+                    definition=item.get("definition"),
+                ))
+
+    return HealthResponse(
+        status="ok",
+        report=report,
+        nansen_labels=nansen_labels,
+        nansen_available=nansen_available,
+    )
 
 
 @app.get("/optimize/{address}", response_model=OptimizeResponse)
