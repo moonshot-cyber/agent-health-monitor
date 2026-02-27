@@ -880,7 +880,7 @@
   <p class="hero-sub">// Pay-per-call blockchain analysis for agents and humans.<br>No accounts. No subscriptions. Just USDC on Base.</p>
   <div class="hero-stats">
     <div class="stat">
-      <div class="stat-val">6</div>
+      <div class="stat-val">7</div>
       <div class="stat-label">Endpoints</div>
     </div>
     <div class="stat">
@@ -905,7 +905,7 @@
   <div class="panel">
     <div class="panel-header">
       <span class="panel-title">// SELECT_ENDPOINT</span>
-      <span class="panel-tag">6 services available</span>
+      <span class="panel-tag">7 services available</span>
     </div>
     <div class="panel-body">
       <div class="endpoint-grid">
@@ -913,6 +913,11 @@
           <div class="ep-price">$0.01</div>
           <div class="ep-name">/risk</div>
           <div class="ep-desc">Quick risk score for pre-flight checks</div>
+        </div>
+        <div class="endpoint-card" data-endpoint="risk-premium" data-price="0.05" data-path="/risk/premium" onclick="selectEndpoint(this)">
+          <div class="ep-price">$0.05</div>
+          <div class="ep-name">/risk/premium</div>
+          <div class="ep-desc">Risk score + Nansen smart money labels</div>
         </div>
         <div class="endpoint-card" data-endpoint="health" data-price="0.50" data-path="/health" onclick="selectEndpoint(this)">
           <div class="ep-price">$0.50</div>
@@ -1183,7 +1188,23 @@
         ['t-dim', `TARGET: ${wallet}`],
         ['t-info', `TEST MODE — injecting mock data (score: ${testScore})`],
       ]);
-      const data = mockResult(testScore);
+      let data;
+      if (selectedEndpoint.name === 'risk-premium') {
+        const riskScore = Math.max(0, Math.min(100, 100 - testScore));
+        data = {
+          risk_score: riskScore,
+          risk_level: riskScore >= 75 ? 'CRITICAL' : riskScore >= 50 ? 'HIGH' : riskScore >= 25 ? 'MEDIUM' : 'LOW',
+          verdict: riskScore >= 50 ? 'High — elevated failure rate with contract reverts detected' : 'Wallet operating normally',
+          nansen_labels: [
+            { label: 'Smart Money', tag: 'defi_trader', entity: null },
+            { label: 'Uniswap Power User', tag: 'dex_trader', entity: 'Uniswap' },
+            { label: 'Airdrop Hunter', tag: 'airdrop', entity: null },
+          ],
+          nansen_available: true,
+        };
+      } else {
+        data = mockResult(testScore);
+      }
       lastResults = data;
       termAppend('t-success', 'STATUS: 200 OK — Mock analysis complete');
       renderResults(data);
@@ -1261,6 +1282,14 @@
           </div>
         </div>
         <div style="padding:0.5rem 0.75rem; border-left:2px solid var(--cyan-dim); margin-bottom:1rem; font-family:var(--mono); font-size:0.8rem; color:var(--text)">${r.verdict}</div>
+        ${r.nansen_labels && r.nansen_labels.length > 0 ? `
+          <div style="margin-bottom:1rem">
+            <div style="font-family:var(--mono); font-size:0.6rem; letter-spacing:0.2em; color:var(--text-dim); margin-bottom:0.5rem">// NANSEN WALLET LABELS</div>
+            <div style="display:flex; flex-wrap:wrap; gap:0.4rem">
+              ${r.nansen_labels.map(l => `<span style="border:1px solid var(--cyan-dim); padding:0.25rem 0.6rem; font-family:var(--mono); font-size:0.65rem; color:var(--cyan); background:rgba(0,245,255,0.05)">${l.label}${l.tag ? ' <span style=&quot;color:var(--text-dim)&quot;>[' + l.tag + ']</span>' : ''}${l.entity ? ' <span style=&quot;color:var(--amber)&quot;>' + l.entity + '</span>' : ''}</span>`).join('')}
+            </div>
+          </div>` : r.nansen_available === false && r.nansen_labels !== undefined ? `
+          <div style="font-family:var(--mono); font-size:0.65rem; color:var(--text-dim); margin-bottom:1rem; opacity:0.6">// Nansen enrichment unavailable</div>` : ''}
         <button class="toggle-raw" onclick="toggleRaw()">▶ VIEW RAW JSON</button>
         <pre class="raw-json" id="raw-json">${JSON.stringify(data, null, 2)}</pre>
       `;

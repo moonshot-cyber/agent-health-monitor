@@ -41,8 +41,13 @@ from pydantic import BaseModel
 from x402.http import FacilitatorConfig, HTTPFacilitatorClient, PaymentOption
 from x402.http.middleware.fastapi import PaymentMiddlewareASGI
 from x402.http.types import RouteConfig
-from x402.mechanisms.evm.exact import ExactEvmServerScheme
+from x402.mechanisms.evm.exact import ExactEvmServerScheme, register_exact_evm_client
 from x402.server import x402ResourceServer
+
+from x402 import x402Client as x402PayerClient
+from x402.mechanisms.evm.signers import EthAccountSigner
+from x402.http.clients.httpx import x402HttpxClient
+from eth_account import Account as EthAccount
 
 from monitor import (
     analyze_address,
@@ -73,6 +78,8 @@ ALERT_PRICE = os.getenv("ALERT_PRICE_USD", "$2.00")
 RETRY_PRICE = os.getenv("RETRY_PRICE_USD", "$10.00")
 PROTECT_PRICE = os.getenv("PROTECT_PRICE_USD", "$25.00")
 RISK_PRICE = os.getenv("RISK_PRICE_USD", "$0.001")
+PREMIUM_RISK_PRICE = os.getenv("PREMIUM_RISK_PRICE_USD", "$0.05")
+NANSEN_PAYER_PRIVATE_KEY = os.getenv("NANSEN_PAYER_PRIVATE_KEY", "")
 NETWORK = os.getenv("NETWORK", "eip155:8453")  # Base mainnet
 VALID_COUPONS = set(c.strip().upper() for c in os.getenv("VALID_COUPONS", "").split(",") if c.strip())
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
@@ -90,6 +97,19 @@ if not INTERNAL_API_KEY:
     )
 
 ADDRESS_RE = re.compile(r"^0x[0-9a-fA-F]{40}$")
+
+# -- Nansen x402 Client (for premium risk endpoint) -------------------------
+NANSEN_API_URL = "https://nansen.api.corbits.dev/api/beta/profiler/address/labels"
+_nansen_x402_client = None
+if NANSEN_PAYER_PRIVATE_KEY:
+    try:
+        _nansen_account = EthAccount.from_key(NANSEN_PAYER_PRIVATE_KEY)
+        _nansen_signer = EthAccountSigner(_nansen_account)
+        _nansen_x402_client = x402PayerClient()
+        register_exact_evm_client(_nansen_x402_client, _nansen_signer, networks=[NETWORK])
+        logging.info("Nansen x402 client initialized (payer: %s)", _nansen_account.address)
+    except Exception as e:
+        logging.warning("Failed to initialize Nansen x402 client: %s", e)
 
 
 # -- Response Models ---------------------------------------------------------
@@ -260,6 +280,42 @@ class RiskResponse(BaseModel):
     risk_score: int
     risk_level: str
     verdict: str
+
+
+class NansenLabel(BaseModel):
+    label: str
+    tag: Optional[str] = None
+    entity: Optional[str] = None
+
+
+class PremiumRiskResponse(BaseModel):
+    risk_score: int
+    risk_level: str
+    verdict: str
+    nansen_labels: list[NansenLabel]
+    nansen_available: bool
+
+
+# -- Nansen Helper -----------------------------------------------------------
+
+async def fetch_nansen_labels(address: str) -> list[dict] | None:
+    """Fetch wallet labels from Nansen via x402-paid API call."""
+    if not _nansen_x402_client:
+        return None
+    body = {
+        "parameters": {"chain": "all", "address": address},
+        "pagination": {"page": 1, "recordsPerPage": 100},
+    }
+    try:
+        async with x402HttpxClient(_nansen_x402_client, timeout=httpx_client.Timeout(30.0)) as http:
+            response = await http.post(NANSEN_API_URL, json=body)
+        if response.status_code == 200:
+            data = response.json()
+            return data.get("labels", data.get("data", []))
+        return None
+    except Exception as e:
+        logging.warning("Nansen API call failed: %s", e)
+        return None
 
 
 # -- Alert Models & Store ----------------------------------------------------
@@ -914,6 +970,21 @@ x402_routes = {
             },
         },
     ),
+    "GET /risk/premium/*": RouteConfig(
+        accepts=[
+            PaymentOption(
+                scheme="exact",
+                pay_to=PAYMENT_ADDRESS,
+                price=PREMIUM_RISK_PRICE,
+                network=NETWORK,
+            ),
+        ],
+        mime_type="application/json",
+        description=(
+            "Premium risk score enriched with Nansen wallet intelligence labels. "
+            "Includes smart money tags, entity identification, and behavioral signals."
+        ),
+    ),
     "GET /risk/*": RouteConfig(
         accepts=[
             PaymentOption(
@@ -1074,6 +1145,7 @@ async def api_info():
         "network": "Base L2",
         "endpoints": {
             "GET /risk/{address}": f"{RISK_PRICE} USDC — quick risk score for pre-flight checks",
+            "GET /risk/premium/{address}": f"{PREMIUM_RISK_PRICE} USDC — premium risk score with Nansen wallet labels",
             "GET /health/{address}": f"{PRICE} USDC — wallet health diagnosis",
             "GET /alerts/subscribe/{address}": f"{ALERT_PRICE} USDC/month — automated monitoring & webhook alerts",
             "GET /optimize/{address}": f"{OPTIMIZE_PRICE} USDC — gas optimization report",
@@ -1127,6 +1199,12 @@ async def coupon_protect(code: str, address: str):
 async def coupon_alerts(code: str, address: str):
     _require_coupon(code)
     return await subscribe_alerts(address)
+
+
+@app.get("/coupon/risk-premium/{code}/{address}")
+async def coupon_premium_risk(code: str, address: str):
+    _require_coupon(code)
+    return await get_premium_risk_score(address)
 
 
 class ChatRequest(BaseModel):
@@ -1200,6 +1278,96 @@ async def chat(req: ChatRequest, request: Request):
 async def up():
     """Unpaid liveness probe for load balancers."""
     return {"status": "ok"}
+
+
+@app.get("/risk/premium/{address}", response_model=PremiumRiskResponse)
+async def get_premium_risk_score(address: str):
+    """
+    Premium risk score enriched with Nansen wallet intelligence labels.
+
+    Requires x402 payment ($0.05 USDC on Base) OR valid X-Internal-Key header.
+
+    Returns a 0-100 risk score plus Nansen smart money tags,
+    entity labels, and behavioral signals for the wallet.
+    """
+    if not ADDRESS_RE.match(address):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid Ethereum address format: {address}",
+        )
+
+    address = address.lower()
+    loop = asyncio.get_running_loop()
+
+    # Run risk analysis + Nansen fetch in parallel
+    risk_task = asyncio.gather(
+        loop.run_in_executor(None, partial(get_eth_price, BASESCAN_API_KEY)),
+        loop.run_in_executor(None, partial(fetch_transactions, address, BASESCAN_API_KEY)),
+    )
+    nansen_task = fetch_nansen_labels(address)
+
+    (eth_price, transactions), nansen_raw = await asyncio.gather(risk_task, nansen_task)
+
+    health = await loop.run_in_executor(
+        None, partial(analyze_address, address, transactions, eth_price),
+    )
+
+    # Derive risk score (same logic as /risk)
+    risk_score = max(0, min(100, 100 - int(health.health_score)))
+
+    if risk_score >= 75:
+        risk_level = "CRITICAL"
+    elif risk_score >= 50:
+        risk_level = "HIGH"
+    elif risk_score >= 25:
+        risk_level = "MEDIUM"
+    else:
+        risk_level = "LOW"
+
+    # Build verdict
+    failure_rate = 100 - health.success_rate_pct
+    signals = []
+    if failure_rate > 20:
+        signals.append("high failure rate")
+    elif failure_rate > 5:
+        signals.append("elevated failure rate")
+    if health.out_of_gas_count > 0:
+        signals.append("out-of-gas errors")
+    if health.nonce_gap_count > 0:
+        signals.append("nonce gaps")
+    if health.reverted_count > 5:
+        signals.append("suspicious contract interactions")
+    elif health.reverted_count > 0:
+        signals.append("contract reverts")
+    if health.estimated_monthly_waste_usd > 50:
+        signals.append("significant gas waste")
+
+    if health.total_transactions == 0:
+        verdict = "No transaction history found"
+    elif not signals:
+        verdict = "Wallet operating normally with no significant issues detected"
+    else:
+        verdict = f"{risk_level.capitalize()} — {' with '.join(signals)} detected"
+
+    # Format Nansen labels
+    nansen_labels = []
+    nansen_available = nansen_raw is not None
+    if nansen_raw:
+        for item in nansen_raw:
+            if isinstance(item, dict):
+                nansen_labels.append(NansenLabel(
+                    label=item.get("label", item.get("name", str(item))),
+                    tag=item.get("tag"),
+                    entity=item.get("entity"),
+                ))
+
+    return PremiumRiskResponse(
+        risk_score=risk_score,
+        risk_level=risk_level,
+        verdict=verdict,
+        nansen_labels=nansen_labels,
+        nansen_available=nansen_available,
+    )
 
 
 @app.get("/risk/{address}", response_model=RiskResponse)
