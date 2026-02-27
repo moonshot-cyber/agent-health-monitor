@@ -145,6 +145,12 @@ class HealthReport(BaseModel):
     analyzed_at: str
 
 
+class NansenLabel(BaseModel):
+    label: str
+    category: Optional[str] = None
+    definition: Optional[str] = None
+
+
 class HealthResponse(BaseModel):
     status: str
     report: HealthReport
@@ -282,12 +288,6 @@ class RiskResponse(BaseModel):
     risk_score: int
     risk_level: str
     verdict: str
-
-
-class NansenLabel(BaseModel):
-    label: str
-    category: Optional[str] = None
-    definition: Optional[str] = None
 
 
 class PremiumRiskResponse(BaseModel):
