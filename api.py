@@ -449,8 +449,16 @@ async def fetch_nansen_counterparties(address: str) -> list[dict] | None:
     if not _nansen_x402_client:
         logging.debug("Nansen counterparties skipped: x402 client not initialized")
         return None
+    now = datetime.now(timezone.utc)
     body = {
-        "parameters": {"chain": "all", "address": address},
+        "parameters": {
+            "chain": "all",
+            "address": address,
+            "date": {
+                "from": (now - timedelta(days=180)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "to": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            },
+        },
         "pagination": {"page": 1, "recordsPerPage": 25},
     }
     try:
@@ -459,7 +467,8 @@ async def fetch_nansen_counterparties(address: str) -> list[dict] | None:
         logging.info("Nansen counterparties response: status=%s length=%s", response.status_code, len(response.content))
         if response.status_code == 200:
             data = response.json()
-            result = data if isinstance(data, list) else data.get("counterparties", data.get("data", []))
+            logging.info("Nansen counterparties raw response: %s", str(data)[:1000])
+            result = data if isinstance(data, list) else data.get("data", data.get("counterparties", []))
             logging.info("Nansen counterparties parsed: %d items", len(result) if isinstance(result, list) else 0)
             return result
         logging.warning("Nansen counterparties non-200: status=%s body=%s", response.status_code, response.text[:500])
@@ -1574,12 +1583,25 @@ async def get_counterparties(address: str):
     if raw:
         for item in raw:
             if isinstance(item, dict):
+                # Nansen returns labels as an array; join into a single string
+                raw_labels = item.get("counterparty_address_label", item.get("labels", []))
+                if isinstance(raw_labels, list) and raw_labels:
+                    label = ", ".join(
+                        str(l).replace("\u200b", "").replace("\u00e2\u20ac\u2039", "")
+                        .replace("\ufeff", "").replace("\u200c", "").replace("\u200d", "").strip()
+                        for l in raw_labels if l
+                    ) or None
+                elif isinstance(raw_labels, str) and raw_labels:
+                    label = raw_labels.replace("\u200b", "").replace("\u00e2\u20ac\u2039", "").replace("\ufeff", "").replace("\u200c", "").replace("\u200d", "").strip() or None
+                else:
+                    label = item.get("label", item.get("name"))
+
                 counterparties.append(Counterparty(
-                    address=item.get("address", item.get("counterparty", "")),
-                    label=item.get("label", item.get("name")),
-                    interaction_count=int(item.get("interactionCount", item.get("interaction_count", 0))),
-                    volume_usd=float(item.get("volumeUsd", item.get("volume_usd", item.get("volume", 0)))),
-                    last_interaction=item.get("lastInteraction", item.get("last_interaction")),
+                    address=item.get("counterparty_address", item.get("address", "")),
+                    label=label,
+                    interaction_count=int(item.get("interaction_count", item.get("interactionCount", 0))),
+                    volume_usd=float(item.get("total_volume_usd", item.get("volumeUsd", item.get("volume", 0)))),
+                    last_interaction=item.get("last_interaction_date", item.get("lastInteraction", item.get("last_interaction"))),
                 ))
 
     logging.info(
