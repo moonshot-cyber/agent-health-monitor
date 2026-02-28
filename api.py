@@ -365,6 +365,67 @@ async def fetch_nansen_balances(address: str) -> list[dict] | None:
         return None
 
 
+async def fetch_nansen_enrichment(address: str) -> tuple[list[dict] | None, list[dict] | None]:
+    """Fetch labels AND balances through a single x402 session.
+
+    Running two x402-paid calls concurrently from the same payer client
+    causes nonce conflicts (both try to sign a payment simultaneously).
+    This function serialises the two calls through one HTTP session so
+    only one x402 payment flow is active at a time.
+    """
+    if not _nansen_x402_client:
+        logging.debug("Nansen enrichment skipped: x402 client not initialized")
+        return None, None
+
+    labels_result: list[dict] | None = None
+    balances_result: list[dict] | None = None
+
+    try:
+        async with x402HttpxClient(_nansen_x402_client, timeout=httpx_client.Timeout(30.0)) as http:
+            # --- Labels ---
+            try:
+                labels_body = {
+                    "parameters": {"chain": "all", "address": address},
+                    "pagination": {"page": 1, "recordsPerPage": 100},
+                }
+                resp = await http.post(NANSEN_API_URL, json=labels_body)
+                logging.info("Nansen labels response: status=%s length=%s", resp.status_code, len(resp.content))
+                if resp.status_code == 200:
+                    data = resp.json()
+                    labels_result = data if isinstance(data, list) else data.get("labels", data.get("data", []))
+                    logging.info("Nansen labels parsed: %d items", len(labels_result) if isinstance(labels_result, list) else 0)
+                else:
+                    logging.warning("Nansen labels non-200: status=%s body=%s", resp.status_code, resp.text[:500])
+            except Exception as e:
+                logging.warning("Nansen labels call failed: %s", e, exc_info=True)
+
+            # --- Balances ---
+            try:
+                balances_body = {
+                    "parameters": {
+                        "chain": "all",
+                        "walletAddresses": [address],
+                        "suspiciousFilter": "on",
+                    },
+                    "pagination": {"page": 1, "recordsPerPage": 100},
+                }
+                resp = await http.post(NANSEN_BALANCES_URL, json=balances_body)
+                logging.info("Nansen balances response: status=%s length=%s", resp.status_code, len(resp.content))
+                if resp.status_code == 200:
+                    data = resp.json()
+                    balances_result = data if isinstance(data, list) else data.get("balances", data.get("data", []))
+                    logging.info("Nansen balances parsed: %d items", len(balances_result) if isinstance(balances_result, list) else 0)
+                else:
+                    logging.warning("Nansen balances non-200: status=%s body=%s", resp.status_code, resp.text[:500])
+            except Exception as e:
+                logging.warning("Nansen balances call failed: %s", e, exc_info=True)
+
+    except Exception as e:
+        logging.warning("Nansen enrichment session failed: %s", e, exc_info=True)
+
+    return labels_result, balances_result
+
+
 # -- Alert Models & Store ----------------------------------------------------
 
 @dataclass
@@ -1511,35 +1572,18 @@ async def get_health_report(address: str):
 
     address = address.lower()
 
-    # Run blocking I/O from monitor.py in thread pool + Nansen in parallel
+    # Run blocking I/O and Nansen enrichment in parallel.
+    # Nansen labels + balances share a single x402 session (serialised)
+    # to avoid payer-nonce conflicts from concurrent x402 payment flows.
     loop = asyncio.get_running_loop()
-
-    # Use return_exceptions=True so a failure in one Nansen call doesn't
-    # cancel the other or crash the blocking-IO gather.
-    io_result, nansen_raw, balances_raw = await asyncio.gather(
+    (eth_price, transactions, is_contract), (nansen_raw, balances_raw) = await asyncio.gather(
         asyncio.gather(
             loop.run_in_executor(None, partial(get_eth_price, BASESCAN_API_KEY)),
             loop.run_in_executor(None, partial(fetch_transactions, address, BASESCAN_API_KEY)),
             loop.run_in_executor(None, partial(is_contract_address, address)),
         ),
-        fetch_nansen_labels(address),
-        fetch_nansen_balances(address),
-        return_exceptions=True,
+        fetch_nansen_enrichment(address),
     )
-
-    # The inner gather (blocking I/O) is critical — re-raise if it failed
-    if isinstance(io_result, BaseException):
-        logging.error("/health blocking I/O gather failed: %s", io_result, exc_info=io_result)
-        raise io_result
-    eth_price, transactions, is_contract = io_result
-
-    # If a Nansen call returned an exception instead of data, log it and treat as None
-    if isinstance(nansen_raw, BaseException):
-        logging.error("/health Nansen labels returned exception: %s", nansen_raw, exc_info=nansen_raw)
-        nansen_raw = None
-    if isinstance(balances_raw, BaseException):
-        logging.error("/health Nansen balances returned exception: %s", balances_raw, exc_info=balances_raw)
-        balances_raw = None
 
     logging.info(
         "/health [%s] nansen_raw=%s balances_raw=%s",
