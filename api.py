@@ -314,6 +314,7 @@ class PremiumRiskResponse(BaseModel):
 async def fetch_nansen_labels(address: str) -> list[dict] | None:
     """Fetch wallet labels from Nansen via x402-paid API call."""
     if not _nansen_x402_client:
+        logging.debug("Nansen labels skipped: x402 client not initialized")
         return None
     body = {
         "parameters": {"chain": "all", "address": address},
@@ -322,18 +323,23 @@ async def fetch_nansen_labels(address: str) -> list[dict] | None:
     try:
         async with x402HttpxClient(_nansen_x402_client, timeout=httpx_client.Timeout(30.0)) as http:
             response = await http.post(NANSEN_API_URL, json=body)
+        logging.info("Nansen labels response: status=%s length=%s", response.status_code, len(response.content))
         if response.status_code == 200:
             data = response.json()
-            return data if isinstance(data, list) else data.get("labels", data.get("data", []))
+            result = data if isinstance(data, list) else data.get("labels", data.get("data", []))
+            logging.info("Nansen labels parsed: %d items", len(result) if isinstance(result, list) else 0)
+            return result
+        logging.warning("Nansen labels non-200: status=%s body=%s", response.status_code, response.text[:500])
         return None
     except Exception as e:
-        logging.warning("Nansen API call failed: %s", e)
+        logging.warning("Nansen labels call failed: %s", e, exc_info=True)
         return None
 
 
 async def fetch_nansen_balances(address: str) -> list[dict] | None:
     """Fetch token balances from Nansen via x402-paid API call."""
     if not _nansen_x402_client:
+        logging.debug("Nansen balances skipped: x402 client not initialized")
         return None
     body = {
         "parameters": {
@@ -346,12 +352,16 @@ async def fetch_nansen_balances(address: str) -> list[dict] | None:
     try:
         async with x402HttpxClient(_nansen_x402_client, timeout=httpx_client.Timeout(30.0)) as http:
             response = await http.post(NANSEN_BALANCES_URL, json=body)
+        logging.info("Nansen balances response: status=%s length=%s", response.status_code, len(response.content))
         if response.status_code == 200:
             data = response.json()
-            return data if isinstance(data, list) else data.get("balances", data.get("data", []))
+            result = data if isinstance(data, list) else data.get("balances", data.get("data", []))
+            logging.info("Nansen balances parsed: %d items", len(result) if isinstance(result, list) else 0)
+            return result
+        logging.warning("Nansen balances non-200: status=%s body=%s", response.status_code, response.text[:500])
         return None
     except Exception as e:
-        logging.warning("Nansen balances API call failed: %s", e)
+        logging.warning("Nansen balances call failed: %s", e, exc_info=True)
         return None
 
 
@@ -1504,7 +1514,9 @@ async def get_health_report(address: str):
     # Run blocking I/O from monitor.py in thread pool + Nansen in parallel
     loop = asyncio.get_running_loop()
 
-    (eth_price, transactions, is_contract), nansen_raw, balances_raw = await asyncio.gather(
+    # Use return_exceptions=True so a failure in one Nansen call doesn't
+    # cancel the other or crash the blocking-IO gather.
+    io_result, nansen_raw, balances_raw = await asyncio.gather(
         asyncio.gather(
             loop.run_in_executor(None, partial(get_eth_price, BASESCAN_API_KEY)),
             loop.run_in_executor(None, partial(fetch_transactions, address, BASESCAN_API_KEY)),
@@ -1512,6 +1524,28 @@ async def get_health_report(address: str):
         ),
         fetch_nansen_labels(address),
         fetch_nansen_balances(address),
+        return_exceptions=True,
+    )
+
+    # The inner gather (blocking I/O) is critical — re-raise if it failed
+    if isinstance(io_result, BaseException):
+        logging.error("/health blocking I/O gather failed: %s", io_result, exc_info=io_result)
+        raise io_result
+    eth_price, transactions, is_contract = io_result
+
+    # If a Nansen call returned an exception instead of data, log it and treat as None
+    if isinstance(nansen_raw, BaseException):
+        logging.error("/health Nansen labels returned exception: %s", nansen_raw, exc_info=nansen_raw)
+        nansen_raw = None
+    if isinstance(balances_raw, BaseException):
+        logging.error("/health Nansen balances returned exception: %s", balances_raw, exc_info=balances_raw)
+        balances_raw = None
+
+    logging.info(
+        "/health [%s] nansen_raw=%s balances_raw=%s",
+        address,
+        type(nansen_raw).__name__ if not isinstance(nansen_raw, list) else f"list[{len(nansen_raw)}]",
+        type(balances_raw).__name__ if not isinstance(balances_raw, list) else f"list[{len(balances_raw)}]",
     )
 
     health = await loop.run_in_executor(
@@ -1553,6 +1587,11 @@ async def get_health_report(address: str):
                     usd_value=float(item.get("usdValue", 0)),
                 ))
     total_portfolio_usd = sum(tb.usd_value for tb in token_balances)
+
+    logging.info(
+        "/health [%s] result: nansen_available=%s labels=%d balances=%d portfolio=$%.2f",
+        address, nansen_available, len(nansen_labels), len(token_balances), total_portfolio_usd,
+    )
 
     return HealthResponse(
         status="ok",
