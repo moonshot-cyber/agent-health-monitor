@@ -919,6 +919,11 @@
           <div class="ep-name">/risk/premium</div>
           <div class="ep-desc">Risk score + Nansen smart money labels</div>
         </div>
+        <div class="endpoint-card" data-endpoint="counterparties" data-price="0.10" data-path="/counterparties" onclick="selectEndpoint(this)">
+          <div class="ep-price">$0.10</div>
+          <div class="ep-name">/counterparties</div>
+          <div class="ep-desc">Know Your Counterparty — top interactions + Nansen</div>
+        </div>
         <div class="endpoint-card" data-endpoint="health" data-price="0.50" data-path="/health" onclick="selectEndpoint(this)">
           <div class="ep-price">$0.50</div>
           <div class="ep-name">/health</div>
@@ -1208,6 +1213,20 @@
           ],
           nansen_available: true,
         };
+      } else if (selectedEndpoint.name === 'counterparties') {
+        data = {
+          status: 'ok',
+          address: '0x' + 'test'.repeat(10).slice(0, 40),
+          counterparties: [
+            { address: '0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D', label: 'Uniswap V2: Router', interaction_count: 142, volume_usd: 385000.00, last_interaction: '2026-02-27' },
+            { address: '0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45', label: 'Uniswap V3: Router 2', interaction_count: 89, volume_usd: 220000.00, last_interaction: '2026-02-26' },
+            { address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', label: 'USDC Token', interaction_count: 67, volume_usd: 150000.00, last_interaction: '2026-02-28' },
+            { address: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2', label: 'WETH Token', interaction_count: 55, volume_usd: 98000.00, last_interaction: '2026-02-25' },
+            { address: '0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984', label: null, interaction_count: 12, volume_usd: 4500.00, last_interaction: '2026-02-20' },
+          ],
+          total_counterparties: 5,
+          nansen_available: true,
+        };
       } else {
         data = mockResult(testScore);
       }
@@ -1302,6 +1321,46 @@
       panel.classList.add('active');
       panel.classList.remove('elite-glow');
       setTimeout(() => { const bar = document.querySelector('.score-bar-fill'); if (bar) bar.style.width = rs + '%'; }, 50);
+      return;
+    }
+
+    // Counterparties endpoint returns {counterparties: [...]} — handle specially
+    if (data.counterparties !== undefined && data.total_counterparties !== undefined) {
+      const cps = data.counterparties ?? [];
+      const totalVol = cps.reduce((s, c) => s + (c.volume_usd ?? 0), 0);
+      body.innerHTML = `
+        <div style="margin-bottom:1rem">
+          <div style="font-family:var(--mono); font-size:0.6rem; letter-spacing:0.2em; color:var(--text-dim); margin-bottom:0.25rem">// KNOW YOUR COUNTERPARTY</div>
+          <div style="display:flex; gap:2rem; font-family:var(--mono); font-size:0.75rem; margin-bottom:0.75rem">
+            <span style="color:var(--cyan)"><span style="color:var(--text-dim)">Counterparties:</span> ${cps.length}</span>
+            <span style="color:var(--cyan)"><span style="color:var(--text-dim)">Total Volume:</span> $${totalVol.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+          </div>
+          <table style="width:100%; border-collapse:collapse; font-family:var(--mono); font-size:0.7rem">
+            <thead>
+              <tr style="border-bottom:1px solid var(--cyan-dim); color:var(--text-dim); font-size:0.6rem; letter-spacing:0.1em">
+                <th style="text-align:left; padding:0.3rem 0.5rem">ADDRESS</th>
+                <th style="text-align:left; padding:0.3rem 0.5rem">LABEL</th>
+                <th style="text-align:right; padding:0.3rem 0.5rem">TXNS</th>
+                <th style="text-align:right; padding:0.3rem 0.5rem">VOLUME</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${cps.map(c => `
+                <tr style="border-bottom:1px solid rgba(0,245,255,0.08)">
+                  <td style="padding:0.3rem 0.5rem; color:var(--text-dim); font-size:0.6rem">${c.address.slice(0, 6)}...${c.address.slice(-4)}</td>
+                  <td style="padding:0.3rem 0.5rem; color:${c.label ? 'var(--cyan)' : 'var(--text-dim)'}">${c.label ?? 'Unknown'}</td>
+                  <td style="padding:0.3rem 0.5rem; text-align:right; color:var(--text)">${c.interaction_count ?? 0}</td>
+                  <td style="padding:0.3rem 0.5rem; text-align:right; color:var(--text)">$${(c.volume_usd ?? 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>
+        ${data.nansen_available ? `<div style="font-family:var(--mono); font-size:0.6rem; color:var(--cyan-dim); margin-bottom:0.75rem; opacity:0.7">// Enriched with Nansen intelligence</div>` : data.nansen_available === false ? `<div style="font-family:var(--mono); font-size:0.6rem; color:var(--text-dim); margin-bottom:0.75rem; opacity:0.6">// Nansen enrichment unavailable</div>` : ''}
+        <button class="toggle-raw" onclick="toggleRaw()">▶ VIEW RAW JSON</button>
+        <pre class="raw-json" id="raw-json">${JSON.stringify(data, null, 2)}</pre>
+      `;
+      panel.classList.add('active');
+      panel.classList.remove('elite-glow');
       return;
     }
 
