@@ -1163,7 +1163,13 @@
         ].filter(Boolean),
         eth_price_usd: 2650.00,
         analyzed_at: new Date().toISOString(),
-      }
+      },
+      token_balances: [
+        { chain: 'base', symbol: 'USDC', name: 'USD Coin', amount: 5000.0, usd_value: 5000.0 },
+        { chain: 'ethereum', symbol: 'WETH', name: 'Wrapped Ether', amount: 0.78, usd_value: 2067.0 },
+        { chain: 'base', symbol: 'PEPE', name: 'Pepe', amount: 12500000, usd_value: 50.0 },
+      ],
+      total_portfolio_usd: 7117.0,
     };
   }
 
@@ -1398,6 +1404,38 @@
           </div>`;
         }).join('') +
         `</div>`;
+    }
+
+    // Token balances
+    const balances = data.token_balances ?? [];
+    const totalPortfolio = data.total_portfolio_usd ?? 0;
+    if (balances.length > 0) {
+      html += `
+        <div style="margin-bottom:1rem">
+          <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:0.5rem">
+            <div style="font-family:var(--mono); font-size:0.6rem; letter-spacing:0.2em; color:var(--text-dim)">// TOKEN BALANCES</div>
+            <div style="font-family:var(--mono); font-size:0.85rem; color:var(--cyan); font-weight:bold">$${totalPortfolio.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
+          </div>
+          <table style="width:100%; border-collapse:collapse; font-family:var(--mono); font-size:0.7rem">
+            <thead>
+              <tr style="border-bottom:1px solid var(--cyan-dim); color:var(--text-dim); font-size:0.6rem; letter-spacing:0.1em">
+                <th style="text-align:left; padding:0.3rem 0.5rem">CHAIN</th>
+                <th style="text-align:left; padding:0.3rem 0.5rem">SYMBOL</th>
+                <th style="text-align:right; padding:0.3rem 0.5rem">AMOUNT</th>
+                <th style="text-align:right; padding:0.3rem 0.5rem">USD VALUE</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${balances.map(b => `
+                <tr style="border-bottom:1px solid rgba(0,245,255,0.08)">
+                  <td style="padding:0.3rem 0.5rem; color:var(--text-dim)">${b.chain}</td>
+                  <td style="padding:0.3rem 0.5rem; color:var(--cyan)">${b.symbol}</td>
+                  <td style="padding:0.3rem 0.5rem; text-align:right; color:var(--text)">${Number(b.amount).toLocaleString(undefined, {maximumFractionDigits: 6})}</td>
+                  <td style="padding:0.3rem 0.5rem; text-align:right; color:var(--text)">$${Number(b.usd_value).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>`;
     }
 
     // Raw JSON toggle

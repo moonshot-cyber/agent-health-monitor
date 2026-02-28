@@ -100,6 +100,7 @@ ADDRESS_RE = re.compile(r"^0x[0-9a-fA-F]{40}$")
 
 # -- Nansen x402 Client (for premium risk endpoint) -------------------------
 NANSEN_API_URL = "https://nansen.api.corbits.dev/api/beta/profiler/address/labels"
+NANSEN_BALANCES_URL = "https://nansen.api.corbits.dev/api/beta/profiler/address/balances"
 _nansen_x402_client = None
 if NANSEN_PAYER_PRIVATE_KEY:
     try:
@@ -151,11 +152,21 @@ class NansenLabel(BaseModel):
     definition: Optional[str] = None
 
 
+class TokenBalance(BaseModel):
+    chain: str
+    symbol: str
+    name: str
+    amount: float
+    usd_value: float
+
+
 class HealthResponse(BaseModel):
     status: str
     report: HealthReport
     nansen_labels: list[NansenLabel] = []
     nansen_available: bool = False
+    token_balances: list[TokenBalance] = []
+    total_portfolio_usd: float = 0.0
 
 
 class TransactionTypeOptimization(BaseModel):
@@ -317,6 +328,30 @@ async def fetch_nansen_labels(address: str) -> list[dict] | None:
         return None
     except Exception as e:
         logging.warning("Nansen API call failed: %s", e)
+        return None
+
+
+async def fetch_nansen_balances(address: str) -> list[dict] | None:
+    """Fetch token balances from Nansen via x402-paid API call."""
+    if not _nansen_x402_client:
+        return None
+    body = {
+        "parameters": {
+            "chain": "all",
+            "walletAddresses": [address],
+            "suspiciousFilter": "on",
+        },
+        "pagination": {"page": 1, "recordsPerPage": 100},
+    }
+    try:
+        async with x402HttpxClient(_nansen_x402_client, timeout=httpx_client.Timeout(30.0)) as http:
+            response = await http.post(NANSEN_BALANCES_URL, json=body)
+        if response.status_code == 200:
+            data = response.json()
+            return data if isinstance(data, list) else data.get("balances", data.get("data", []))
+        return None
+    except Exception as e:
+        logging.warning("Nansen balances API call failed: %s", e)
         return None
 
 
@@ -1469,13 +1504,14 @@ async def get_health_report(address: str):
     # Run blocking I/O from monitor.py in thread pool + Nansen in parallel
     loop = asyncio.get_running_loop()
 
-    (eth_price, transactions, is_contract), nansen_raw = await asyncio.gather(
+    (eth_price, transactions, is_contract), nansen_raw, balances_raw = await asyncio.gather(
         asyncio.gather(
             loop.run_in_executor(None, partial(get_eth_price, BASESCAN_API_KEY)),
             loop.run_in_executor(None, partial(fetch_transactions, address, BASESCAN_API_KEY)),
             loop.run_in_executor(None, partial(is_contract_address, address)),
         ),
         fetch_nansen_labels(address),
+        fetch_nansen_balances(address),
     )
 
     health = await loop.run_in_executor(
@@ -1504,11 +1540,27 @@ async def get_health_report(address: str):
                     definition=item.get("definition"),
                 ))
 
+    # Format token balances
+    token_balances = []
+    if balances_raw:
+        for item in balances_raw:
+            if isinstance(item, dict):
+                token_balances.append(TokenBalance(
+                    chain=item.get("chain", ""),
+                    symbol=item.get("symbol", ""),
+                    name=item.get("name", ""),
+                    amount=float(item.get("tokenAmount", 0)),
+                    usd_value=float(item.get("usdValue", 0)),
+                ))
+    total_portfolio_usd = sum(tb.usd_value for tb in token_balances)
+
     return HealthResponse(
         status="ok",
         report=report,
         nansen_labels=nansen_labels,
         nansen_available=nansen_available,
+        token_balances=token_balances,
+        total_portfolio_usd=total_portfolio_usd,
     )
 
 
