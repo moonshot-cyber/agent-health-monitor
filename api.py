@@ -1475,7 +1475,7 @@ async def api_info():
         "network": "Base L2",
         "endpoints": {
             "GET /risk/{address}": f"{RISK_PRICE} USDC — quick risk score for pre-flight checks",
-            "GET /risk/premium/{address}": f"{PREMIUM_RISK_PRICE} USDC — premium risk score with Nansen labels + PnL summary",
+            "GET /risk/premium/{address}": f"{PREMIUM_RISK_PRICE} USDC — premium risk score with Nansen labels + PnL profitability summary",
             "GET /counterparties/{address}": f"{COUNTERPARTY_PRICE} USDC — top counterparties enriched with Nansen labels",
             "GET /network-map/{address}": f"{NETWORK_MAP_PRICE} USDC — related wallets (funders, deployers, multisig) with Nansen labels",
             "GET /health/{address}": f"{PRICE} USDC — wallet health diagnosis",

@@ -1199,6 +1199,7 @@
 
     // Test mode — inject mock data
     if (testScore) {
+      const testMode = wallet.toUpperCase();
       terminal([
         ['t-dim', `ENDPOINT: ${selectedEndpoint.path}`],
         ['t-dim', `TARGET: ${wallet}`],
@@ -1207,31 +1208,171 @@
       let data;
       if (selectedEndpoint.name === 'risk-premium') {
         const riskScore = Math.max(0, Math.min(100, 100 - testScore));
-        data = {
-          risk_score: riskScore,
-          risk_level: riskScore >= 75 ? 'CRITICAL' : riskScore >= 50 ? 'HIGH' : riskScore >= 25 ? 'MEDIUM' : 'LOW',
-          verdict: riskScore >= 50 ? 'High — elevated failure rate with contract reverts detected' : 'Wallet operating normally',
-          nansen_labels: [
+        const pnlByMode = {
+          'TEST-ELITE': {
+            pnl_available: true,
+            pnl_summary: {
+              realized_pnl_usd: 125000, realized_pnl_percent: 34.5, win_rate: 78.0,
+              traded_token_count: 15, traded_times: 2400,
+              top_tokens: [
+                { token_symbol: 'ETH', chain: 'ethereum', realized_pnl: 85000, realized_roi: 45.0 },
+                { token_symbol: 'USDC', chain: 'base', realized_pnl: 25000, realized_roi: 12.0 },
+                { token_symbol: 'AAVE', chain: 'ethereum', realized_pnl: 15000, realized_roi: 35.0 },
+              ],
+            },
+          },
+          'TEST-HEALTHY': {
+            pnl_available: true,
+            pnl_summary: {
+              realized_pnl_usd: 8500, realized_pnl_percent: 6.2, win_rate: 55.0,
+              traded_token_count: 8, traded_times: 450,
+              top_tokens: [
+                { token_symbol: 'ETH', chain: 'ethereum', realized_pnl: 4200, realized_roi: 8.5 },
+                { token_symbol: 'UNI', chain: 'ethereum', realized_pnl: 2800, realized_roi: 12.0 },
+                { token_symbol: 'LINK', chain: 'ethereum', realized_pnl: 1500, realized_roi: 4.3 },
+              ],
+            },
+          },
+          'TEST-ATRISK': {
+            pnl_available: true,
+            pnl_summary: {
+              realized_pnl_usd: -3200, realized_pnl_percent: -4.1, win_rate: 32.0,
+              traded_token_count: 22, traded_times: 1800,
+              top_tokens: [
+                { token_symbol: 'ETH', chain: 'ethereum', realized_pnl: 2100, realized_roi: 3.2 },
+                { token_symbol: 'SHIB', chain: 'ethereum', realized_pnl: -3800, realized_roi: -62.0 },
+                { token_symbol: 'ARB', chain: 'arbitrum', realized_pnl: -1500, realized_roi: -18.5 },
+              ],
+            },
+          },
+          'TEST-CRITICAL': {
+            pnl_available: true,
+            pnl_summary: {
+              realized_pnl_usd: -45000, realized_pnl_percent: -72.3, win_rate: 15.0,
+              traded_token_count: 35, traded_times: 5200,
+              top_tokens: [
+                { token_symbol: 'LUNA', chain: 'ethereum', realized_pnl: -22000, realized_roi: -98.5 },
+                { token_symbol: 'FTT', chain: 'ethereum', realized_pnl: -15000, realized_roi: -95.0 },
+                { token_symbol: 'UST', chain: 'ethereum', realized_pnl: -8000, realized_roi: -99.2 },
+              ],
+            },
+          },
+        };
+        const nansenByMode = {
+          'TEST-ELITE': [
             { label: 'Smart Money', tag: 'defi_trader', entity: null },
             { label: 'Uniswap Power User', tag: 'dex_trader', entity: 'Uniswap' },
             { label: 'Airdrop Hunter', tag: 'airdrop', entity: null },
           ],
+          'TEST-HEALTHY': [
+            { label: 'DeFi User', tag: 'defi_user', entity: null },
+            { label: 'Aave Depositor', tag: 'lending', entity: 'Aave' },
+          ],
+          'TEST-ATRISK': [
+            { label: 'High Frequency Trader', tag: 'hft', entity: null },
+            { label: 'MEV Bot Operator', tag: 'mev', entity: null },
+          ],
+          'TEST-CRITICAL': [
+            { label: 'Flagged Address', tag: 'flagged', entity: null },
+            { label: 'Mixer User', tag: 'mixer', entity: 'Tornado Cash' },
+          ],
+        };
+        const pnl = pnlByMode[testMode] || pnlByMode['TEST-ELITE'];
+        data = {
+          risk_score: riskScore,
+          risk_level: riskScore >= 75 ? 'CRITICAL' : riskScore >= 50 ? 'HIGH' : riskScore >= 25 ? 'MEDIUM' : 'LOW',
+          verdict: riskScore >= 75 ? 'Critical — flagged interactions and heavy losses detected'
+                 : riskScore >= 50 ? 'High — elevated failure rate with contract reverts detected'
+                 : riskScore >= 25 ? 'Medium — some concerning patterns but generally stable'
+                 : 'Low — wallet operating normally with strong track record',
+          nansen_labels: nansenByMode[testMode] || nansenByMode['TEST-ELITE'],
           nansen_available: true,
+          ...pnl,
         };
       } else if (selectedEndpoint.name === 'counterparties') {
-        data = {
-          status: 'ok',
-          address: '0x' + 'test'.repeat(10).slice(0, 40),
-          counterparties: [
-            { address: '0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D', label: 'Uniswap V2: Router', interaction_count: 142, volume_usd: 385000.00, last_interaction: '2026-02-27' },
-            { address: '0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45', label: 'Uniswap V3: Router 2', interaction_count: 89, volume_usd: 220000.00, last_interaction: '2026-02-26' },
-            { address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', label: 'USDC Token', interaction_count: 67, volume_usd: 150000.00, last_interaction: '2026-02-28' },
-            { address: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2', label: 'WETH Token', interaction_count: 55, volume_usd: 98000.00, last_interaction: '2026-02-25' },
-            { address: '0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984', label: null, interaction_count: 12, volume_usd: 4500.00, last_interaction: '2026-02-20' },
-          ],
-          total_counterparties: 5,
-          nansen_available: true,
+        const cpByMode = {
+          'TEST-ELITE': {
+            counterparties: [
+              { address: '0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D', label: 'Uniswap V2: Router', interaction_count: 142, volume_usd: 385000.00 },
+              { address: '0x7d2768dE32b0b80b7a3454c06BdAc94A69DDc7A9', label: 'Aave V2: Lending Pool', interaction_count: 98, volume_usd: 520000.00 },
+              { address: '0xA090e606E30bD747d4E6245a1517EbE430F0057e', label: 'Coinbase Commerce', interaction_count: 45, volume_usd: 280000.00 },
+              { address: '0xc00e94Cb662C3520282E6f5717214004A7f26888', label: 'Compound: COMP Token', interaction_count: 38, volume_usd: 95000.00 },
+              { address: '0xae7ab96520DE3A18E5e111B5EaAb095312D7fE84', label: 'Lido: stETH', interaction_count: 27, volume_usd: 1200000.00 },
+            ],
+            total_counterparties: 5, nansen_available: true,
+          },
+          'TEST-HEALTHY': {
+            counterparties: [
+              { address: '0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45', label: 'Uniswap V3: Router 2', interaction_count: 89, volume_usd: 120000.00 },
+              { address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', label: 'USDC Token', interaction_count: 67, volume_usd: 85000.00 },
+              { address: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2', label: 'WETH Token', interaction_count: 55, volume_usd: 62000.00 },
+              { address: '0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984', label: null, interaction_count: 22, volume_usd: 8500.00 },
+              { address: '0xdAC17F958D2ee523a2206206994597C13D831ec7', label: 'Tether: USDT', interaction_count: 18, volume_usd: 45000.00 },
+            ],
+            total_counterparties: 5, nansen_available: true,
+          },
+          'TEST-ATRISK': {
+            counterparties: [
+              { address: '0x3fC91A3afd70395Cd496C647d5a6CC9D4B2b7FAD', label: 'Uniswap Universal Router', interaction_count: 1842, volume_usd: 45000.00 },
+              { address: '0x000000000000Ad05Ccc4F10045630fb830B95127', label: null, interaction_count: 956, volume_usd: 12000.00 },
+              { address: '0xDef1C0ded9bec7F1a1670819833240f027b25EfF', label: '0x: Exchange Proxy', interaction_count: 445, volume_usd: 88000.00 },
+              { address: '0x00000000009726632680AF5E0b0E2C0E5F3E1a23', label: 'High Activity Address', interaction_count: 2200, volume_usd: 3200.00 },
+              { address: '0xA69babEF1cA67A37Ffaf7a485DfFF3382056e78C', label: null, interaction_count: 678, volume_usd: 22000.00 },
+            ],
+            total_counterparties: 5, nansen_available: true,
+          },
+          'TEST-CRITICAL': {
+            counterparties: [
+              { address: '0xd90e2f925DA726b50C4Ed8D0Fb90Ad053324F31b', label: 'Tornado Cash: Router', interaction_count: 89, volume_usd: 15000.00 },
+              { address: '0x722122dF12D4e14e13Ac3b6895a86e84145b6967', label: 'Tornado Cash: Proxy', interaction_count: 67, volume_usd: 12000.00 },
+              { address: '0x00000000A991C429eE2Ec6df19d40fe0c80088B8', label: 'Flagged Entity', interaction_count: 234, volume_usd: 8500.00 },
+              { address: '0xBA12222222228d8Ba445958a75a0704d566BF2C8', label: null, interaction_count: 456, volume_usd: 2800.00 },
+              { address: '0x0000000000007F150Bd6f54c40A34d7C3d5e9f56', label: 'Sanctioned Mixer', interaction_count: 112, volume_usd: 55000.00 },
+            ],
+            total_counterparties: 5, nansen_available: true,
+          },
         };
+        const cp = cpByMode[testMode] || cpByMode['TEST-ELITE'];
+        data = { status: 'ok', address: '0x' + 'test'.repeat(10).slice(0, 40), ...cp };
+      } else if (selectedEndpoint.name === 'network-map') {
+        const nmByMode = {
+          'TEST-ELITE': {
+            related_wallets: [
+              { address: '0x28C6c06298d514Db089934071355E5743bf21d60', label: 'Smart Money Fund', relation: 'first_funder', chain: 'ethereum', transaction_hash: '0xabc123...def456' },
+              { address: '0x503828976D22510aad0201ac7EC88293211D23Da', label: 'Coinbase Custody', relation: 'deployer', chain: 'ethereum', transaction_hash: '0x789abc...012def' },
+              { address: '0xd9Db270c1B5E3Bd161E8c8503c55cEABeE709552', label: 'Gnosis Safe Multisig', relation: 'multisig_member', chain: 'ethereum', transaction_hash: '0x345678...9abcde' },
+            ],
+            total_related: 3, chain: 'ethereum', nansen_available: true,
+          },
+          'TEST-HEALTHY': {
+            related_wallets: [
+              { address: '0x47ac0Fb4F2D84898e4D9E7b4DaB3C24507a6D503', label: 'Binance Hot Wallet', relation: 'first_funder', chain: 'ethereum', transaction_hash: '0xfed321...abc789' },
+              { address: '0x0000000000000000000000000000000000000000', label: null, relation: 'deployer', chain: 'ethereum', transaction_hash: '0x111222...333444' },
+            ],
+            total_related: 2, chain: 'ethereum', nansen_available: true,
+          },
+          'TEST-ATRISK': {
+            related_wallets: [
+              { address: '0x56Eddb7aa87536c09CCc2793473599fD21A8b17F', label: 'MEV Bot Deployer', relation: 'deployer', chain: 'ethereum', transaction_hash: '0xaaa111...bbb222' },
+              { address: '0x00000000003b3cc22aF3aE1EAc0440BcEe416B40', label: null, relation: 'first_funder', chain: 'ethereum', transaction_hash: '0xccc333...ddd444' },
+              { address: '0x98C3d3183C4b8A650614ad179A1a98be0a8d6B8E', label: 'High Risk Wallet', relation: 'multisig_member', chain: 'ethereum', transaction_hash: '0xeee555...fff666' },
+              { address: '0xA160cdAB225685dA1d56aa342Ad8841c3b53f291', label: null, relation: 'first_funder', chain: 'ethereum', transaction_hash: '0x777888...999000' },
+            ],
+            total_related: 4, chain: 'ethereum', nansen_available: true,
+          },
+          'TEST-CRITICAL': {
+            related_wallets: [
+              { address: '0xd90e2f925DA726b50C4Ed8D0Fb90Ad053324F31b', label: 'Tornado Cash: Router', relation: 'first_funder', chain: 'ethereum', transaction_hash: '0xbad000...bad111' },
+              { address: '0x00000000A991C429eE2Ec6df19d40fe0c80088B8', label: 'OFAC Sanctioned', relation: 'deployer', chain: 'ethereum', transaction_hash: '0xbad222...bad333' },
+              { address: '0x0836222F2B2B24A3F36f98668Ed8F0B38D1a872f', label: 'Tornado Cash Pool', relation: 'multisig_member', chain: 'ethereum', transaction_hash: '0xbad444...bad555' },
+              { address: '0x178169B423a011fff22B9e3F3abeA13414dDD0F1', label: null, relation: 'first_funder', chain: 'ethereum', transaction_hash: '0xbad666...bad777' },
+              { address: '0xFD8610d20aA15b7B2E3Be39B396a1bC3516c7144', label: 'Flagged Mixer Proxy', relation: 'deployer', chain: 'ethereum', transaction_hash: '0xbad888...bad999' },
+            ],
+            total_related: 5, chain: 'ethereum', nansen_available: true,
+          },
+        };
+        const nm = nmByMode[testMode] || nmByMode['TEST-ELITE'];
+        data = { status: 'ok', address: '0x' + 'test'.repeat(10).slice(0, 40), ...nm };
       } else {
         data = mockResult(testScore);
       }
