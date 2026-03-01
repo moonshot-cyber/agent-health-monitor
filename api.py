@@ -534,9 +534,14 @@ async def fetch_nansen_pnl(address: str) -> dict | None:
     if not _nansen_x402_client:
         logging.debug("Nansen PnL skipped: x402 client not initialized")
         return None
+    now = datetime.now(timezone.utc)
     body = {
         "address": address,
         "chain": "all",
+        "date": {
+            "from": (now - timedelta(days=180)).strftime("%Y-%m-%d"),
+            "to": now.strftime("%Y-%m-%d"),
+        },
     }
     try:
         async with x402HttpxClient(_nansen_x402_client, timeout=httpx_client.Timeout(45.0)) as http:
