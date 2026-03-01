@@ -1,30 +1,34 @@
 # Agent Health Monitor
 
-Pay-per-use API that analyzes Base blockchain agent wallets for transaction failures, gas waste, and optimization opportunities. Powered by [x402 protocol](https://x402.org).
+9-endpoint wallet intelligence API enriched with [Nansen](https://nansen.ai) blockchain analytics. Risk scores, health checks, counterparty analysis, wallet network mapping, PnL summaries, and autonomous protection — all pay-per-call via [x402 protocol](https://x402.org) on Base.
 
 ## What it does
 
-**Diagnose** with `/health` — **monitor** with `/alerts` — **fix** with `/optimize` — **retry** with `/retry` — **protect** with `/agent/protect`.
+**Screen** with `/risk` — **profile** with `/risk/premium` — **investigate** with `/counterparties` and `/network-map` — **diagnose** with `/health` — **monitor** with `/alerts` — **fix** with `/optimize` — **retry** with `/retry` — **protect** with `/agent/protect`.
 
 | Endpoint | Price | Purpose |
 |---|---|---|
-| `GET /health/{address}` | $0.50 USDC | Diagnose wallet health — score, failure rates, gas waste |
+| `GET /risk/{address}` | $0.01 USDC | Quick risk score for agent pre-flight checks |
+| `GET /risk/premium/{address}` | $0.05 USDC | Premium risk score with Nansen labels + PnL profitability summary |
+| `GET /counterparties/{address}` | $0.10 USDC | Know Your Counterparty — top interactions enriched with Nansen |
+| `GET /network-map/{address}` | $0.10 USDC | Wallet network map — funding, deployer & multisig links via Nansen |
+| `GET /health/{address}` | $0.50 USDC | Full wallet health score with risk analysis |
 | `GET /alerts/subscribe/{address}` | $2.00 USDC/month | Automated monitoring — webhook alerts every 6 hours |
-| `GET /optimize/{address}` | $5.00 USDC | Fix the problems — per-transaction-type gas optimization |
+| `GET /optimize/{address}` | $5.00 USDC | Per-transaction-type gas optimization report |
 | `GET /retry/{address}` | $10.00 USDC | Retry failed transactions — ready-to-sign replacements |
-| `GET /retry/preview/{address}` | Free | Preview retryable failure count and estimated savings |
 | `GET /agent/protect/{address}` | $25.00 USDC | Full autonomous protection — triages risk, runs all needed services |
-| `GET /agent/protect/preview/{address}` | Free | Preview risk level and recommended services |
 
-- Analyzes agent wallet transaction history on Base L2
-- Calculates composite health score (0-100)
-- Identifies failed transactions and their causes (out-of-gas, reverted, slippage)
-- Detects nonce gaps and retry patterns
-- Estimates monthly gas waste in USD
-- Monitors wallets on a schedule and sends webhook alerts
-- Groups transactions by type and calculates optimal gas limits
-- Builds optimized retry transactions with corrected gas parameters (non-custodial)
-- Autonomous triage: scores risk and runs the right combination of services
+**Nansen integrations** (4 direct API connections):
+- Wallet labels — smart money tags, entity identification (via Corbits proxy)
+- Counterparties — top interactions with Nansen-enriched labels (direct)
+- PnL summary — realized profit/loss, win rate, top tokens (direct)
+- Related wallets — funding, deployer, and multisig connections (direct)
+
+**Core analysis:**
+- Composite health score (0-100) with failure rates, gas waste, and nonce gap detection
+- Non-custodial retry transactions with optimized gas parameters
+- Autonomous triage that scores risk and runs the right combination of services
+- Real-time webhook alerts for Slack, Discord, or generic endpoints
 
 ## Live API
 
@@ -33,7 +37,7 @@ Pay-per-use API that analyzes Base blockchain agent wallets for transaction fail
 | **Base URL** | `https://agenthealthmonitor.xyz` |
 | **Docs** | `https://agenthealthmonitor.xyz/docs` |
 | **Payment** | USDC via x402 protocol |
-| **Network** | Base Sepolia (eip155:84532) |
+| **Network** | Base Mainnet (eip155:8453) |
 
 ## Quick Start
 
@@ -392,22 +396,20 @@ Actions are ranked by potential value recovered (highest dollar amount first).
 ## The Service Funnel
 
 ```
-  Diagnose         Monitor           Fix            Retry          Protect
-   $0.50         $2.00/month        $5.00          $10.00          $25.00
+  Screen    Profile    Investigate   Diagnose    Monitor      Fix       Retry     Protect
+  $0.01     $0.05    $0.10 each     $0.50    $2.00/mo    $5.00     $10.00     $25.00
 
-GET /health    GET /alerts/sub    GET /optimize   GET /retry    GET /agent/protect
-     |         POST /configure         |               |              |
-     v                |                v               v              v
-"Score: 62"     Every 6 hours:   "22 tx types"   "12 retryable"  Runs all needed
-"74% success"   check thresholds "limit 99%      "ready-to-sign"  services based
-"$70/mo waste"  send alerts       too high"       EIP-1559 txs    on risk level
-     |                |          "$70/mo savings"      |              |
-     v                v                v               v              v
-"You have a     "You'll know      "Here's        "Sign and       "Here's your
- problem."       immediately."     the fix."       submit."        action plan."
+GET /risk  /premium  /counterparties  /health  /alerts/sub /optimize  /retry  /agent/protect
+    |          |     /network-map        |          |          |         |         |
+    v          v          v              v          v          v         v         v
+ "Score:    Nansen    Top counter-   Full health  Every 6h:  Per-type  Ready-to  Autonomous
+  8/100"    labels    parties +      score +      check &    gas       sign      triage +
+            + PnL     network map    gas waste    alert      limits    EIP-1559  all services
 ```
 
-Or skip straight to `GET /agent/protect/{address}` and let the agent figure it out.
+Or skip straight to `GET /agent/protect/{address}` ($25) and let the agent figure it out.
+
+**Listed on:** [Virtuals ACP](https://app.virtuals.io) (9 offerings) · [x402scan](https://x402scan.com) · [Bankr Skills](https://bankr.chat) · [agdp.io](https://agdp.io)
 
 ## How Payment Works
 
@@ -445,19 +447,22 @@ from x402.mechanisms.evm.exact import ExactEvmScheme
 client = x402Client()
 client.register("eip155:*", ExactEvmScheme(signer=your_wallet))
 
-# Diagnose
+# Quick risk screen ($0.01)
+risk = client.get("https://agenthealthmonitor.xyz/risk/0x1234...")
+
+# Premium risk + Nansen labels + PnL ($0.05)
+premium = client.get("https://agenthealthmonitor.xyz/risk/premium/0x1234...")
+
+# Counterparties via Nansen ($0.10)
+cps = client.get("https://agenthealthmonitor.xyz/counterparties/0x1234...")
+
+# Wallet network map via Nansen ($0.10)
+network = client.get("https://agenthealthmonitor.xyz/network-map/0x1234...?chain=ethereum")
+
+# Full health diagnosis ($0.50)
 health = client.get("https://agenthealthmonitor.xyz/health/0x1234...")
 
-# Subscribe to alerts
-sub = client.get("https://agenthealthmonitor.xyz/alerts/subscribe/0x1234...")
-
-# Optimize
-optimization = client.get("https://agenthealthmonitor.xyz/optimize/0x1234...")
-
-# Retry failed transactions
-retries = client.get("https://agenthealthmonitor.xyz/retry/0x1234...")
-
-# Full autonomous protection (recommended)
+# Full autonomous protection — recommended ($25.00)
 protection = client.get("https://agenthealthmonitor.xyz/agent/protect/0x1234...")
 ```
 
@@ -465,8 +470,9 @@ protection = client.get("https://agenthealthmonitor.xyz/agent/protect/0x1234..."
 
 - **FastAPI** - async Python web framework
 - **x402 SDK v2** - payment middleware with Bazaar discovery
+- **Nansen API** - wallet intelligence (labels, counterparties, PnL, related wallets)
 - **Blockscout API** - on-chain transaction data (free, no key required)
-- **Base L2** - Ethereum L2 network being analyzed
+- **Base Mainnet** - Ethereum L2 (payment network + chain analyzed)
 - **Railway** - cloud deployment
 
 ## Self-Hosting
@@ -487,12 +493,18 @@ uvicorn api:app --host 0.0.0.0 --port 4021
 | `PAYMENT_ADDRESS` | Yes | — | Your wallet address to receive USDC |
 | `BASESCAN_API_KEY` | No | — | Blockscout API key (increases rate limits) |
 | `FACILITATOR_URL` | No | `https://x402.org/facilitator` | x402 facilitator endpoint |
+| `RISK_PRICE_USD` | No | `$0.01` | Price per quick risk check |
+| `PREMIUM_RISK_PRICE_USD` | No | `$0.05` | Price per premium risk + Nansen + PnL |
+| `COUNTERPARTY_PRICE_USD` | No | `$0.10` | Price per counterparty analysis |
+| `NETWORK_MAP_PRICE_USD` | No | `$0.10` | Price per network map |
 | `PRICE_USD` | No | `$0.50` | Price per health check |
 | `ALERT_PRICE_USD` | No | `$2.00` | Price per alert subscription (30 days) |
 | `OPTIMIZE_PRICE_USD` | No | `$5.00` | Price per gas optimization |
 | `RETRY_PRICE_USD` | No | `$10.00` | Price per retry analysis |
 | `PROTECT_PRICE_USD` | No | `$25.00` | Price per protection agent run |
-| `NETWORK` | No | `eip155:84532` | CAIP-2 network ID |
+| `NANSEN_PAYER_PRIVATE_KEY` | No | — | Private key for Nansen x402 payments |
+| `VALID_COUPONS` | No | `TEST-ELITE,...` | Comma-separated coupon codes for free access |
+| `NETWORK` | No | `eip155:8453` | CAIP-2 network ID (Base Mainnet) |
 | `PORT` | No | `4021` | Server port |
 
 ## CLI Tools
