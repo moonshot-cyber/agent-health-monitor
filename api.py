@@ -112,6 +112,7 @@ NANSEN_DIRECT_URL = "https://api.nansen.ai/api/v1"
 NANSEN_API_URL = NANSEN_CORBITS_URL + "/profiler/address/labels"
 NANSEN_BALANCES_URL = NANSEN_CORBITS_URL + "/profiler/address/balances"
 NANSEN_COUNTERPARTIES_URL = NANSEN_DIRECT_URL + "/profiler/address/counterparties"
+NANSEN_PNL_SUMMARY_URL = NANSEN_DIRECT_URL + "/profiler/address/pnl-summary"
 _nansen_x402_client = None
 if NANSEN_PAYER_PRIVATE_KEY:
     try:
@@ -328,12 +329,28 @@ class RiskResponse(BaseModel):
     verdict: str
 
 
+class PnlTokenSummary(BaseModel):
+    token_symbol: str
+    chain: str
+    realized_pnl: float
+    realized_roi: float
+
+class PnlSummary(BaseModel):
+    realized_pnl_usd: float = 0.0
+    realized_pnl_percent: float = 0.0
+    win_rate: float = 0.0
+    traded_token_count: int = 0
+    traded_times: int = 0
+    top_tokens: list[PnlTokenSummary] = []
+
 class PremiumRiskResponse(BaseModel):
     risk_score: int
     risk_level: str
     verdict: str
     nansen_labels: list[NansenLabel]
     nansen_available: bool
+    pnl_summary: Optional[PnlSummary] = None
+    pnl_available: bool = False
 
 
 # -- Nansen Helper -----------------------------------------------------------
@@ -504,6 +521,35 @@ async def fetch_nansen_counterparties(address: str) -> list[dict] | None:
         return None
     except Exception as e:
         logging.warning("Nansen counterparties call failed: %s", e, exc_info=True)
+        return None
+
+
+async def fetch_nansen_pnl(address: str) -> dict | None:
+    """Fetch PnL summary from Nansen DIRECTLY via x402-paid API call.
+
+    Uses api.nansen.ai (not Corbits proxy) with flat request body format.
+    Must be called sequentially (not concurrent) with other Nansen x402 calls
+    to avoid payer nonce conflicts.
+    """
+    if not _nansen_x402_client:
+        logging.debug("Nansen PnL skipped: x402 client not initialized")
+        return None
+    body = {
+        "address": address,
+        "chain": "all",
+    }
+    try:
+        async with x402HttpxClient(_nansen_x402_client, timeout=httpx_client.Timeout(45.0)) as http:
+            response = await http.post(NANSEN_PNL_SUMMARY_URL, json=body)
+        logging.info("Nansen PnL response: status=%s length=%s", response.status_code, len(response.content))
+        if response.status_code == 200:
+            data = response.json()
+            logging.info("Nansen PnL raw response: %s", str(data)[:1000])
+            return data
+        logging.warning("Nansen PnL non-200: status=%s body=%s", response.status_code, response.text[:500])
+        return None
+    except Exception as e:
+        logging.warning("Nansen PnL call failed: %s", e, exc_info=True)
         return None
 
 
@@ -1349,7 +1395,7 @@ async def api_info():
         "network": "Base L2",
         "endpoints": {
             "GET /risk/{address}": f"{RISK_PRICE} USDC — quick risk score for pre-flight checks",
-            "GET /risk/premium/{address}": f"{PREMIUM_RISK_PRICE} USDC — premium risk score with Nansen wallet labels",
+            "GET /risk/premium/{address}": f"{PREMIUM_RISK_PRICE} USDC — premium risk score with Nansen labels + PnL summary",
             "GET /counterparties/{address}": f"{COUNTERPARTY_PRICE} USDC — top counterparties enriched with Nansen labels",
             "GET /health/{address}": f"{PRICE} USDC — wallet health diagnosis",
             "GET /alerts/subscribe/{address}": f"{ALERT_PRICE} USDC/month — automated monitoring & webhook alerts",
@@ -1494,12 +1540,14 @@ async def up():
 @app.get("/risk/premium/{address}", response_model=PremiumRiskResponse)
 async def get_premium_risk_score(address: str):
     """
-    Premium risk score enriched with Nansen wallet intelligence labels.
+    Premium risk score enriched with Nansen wallet intelligence and PnL data.
 
     Requires x402 payment ($0.05 USDC on Base) OR valid X-Internal-Key header.
 
     Returns a 0-100 risk score plus Nansen smart money tags,
-    entity labels, and behavioral signals for the wallet.
+    entity labels, behavioral signals, and PnL summary for the wallet.
+    PnL data adjusts the risk score: profitable wallets get up to -10,
+    unprofitable wallets get up to +10.
     """
     if not ADDRESS_RE.match(address):
         raise HTTPException(
@@ -1510,7 +1558,7 @@ async def get_premium_risk_score(address: str):
     address = address.lower()
     loop = asyncio.get_running_loop()
 
-    # Run risk analysis + Nansen fetch in parallel
+    # Run risk analysis in parallel with Nansen labels (Corbits, safe to overlap)
     risk_task = asyncio.gather(
         loop.run_in_executor(None, partial(get_eth_price, BASESCAN_API_KEY)),
         loop.run_in_executor(None, partial(fetch_transactions, address, BASESCAN_API_KEY)),
@@ -1523,9 +1571,48 @@ async def get_premium_risk_score(address: str):
         None, partial(analyze_address, address, transactions, eth_price),
     )
 
+    # Nansen PnL — sequential AFTER labels to avoid x402 nonce conflicts
+    # (labels goes through Corbits, PnL goes direct to api.nansen.ai;
+    #  different facilitators so technically safe, but keep sequential
+    #  since both use the same payer wallet/signer)
+    pnl_raw = await fetch_nansen_pnl(address)
+
     # Derive risk score (same logic as /risk)
     risk_score = max(0, min(100, 100 - int(health.health_score)))
 
+    # Adjust risk score based on PnL profitability (up to +/-10 points)
+    pnl_summary: Optional[PnlSummary] = None
+    pnl_available = pnl_raw is not None
+    if pnl_raw:
+        realized_pnl = float(pnl_raw.get("realized_pnl_usd", 0))
+        # Scale: $10k+ profit → full -10, $10k+ loss → full +10, linear between
+        pnl_magnitude = min(abs(realized_pnl) / 10_000.0, 1.0)
+        pnl_adjustment = int(pnl_magnitude * 10)
+        if realized_pnl > 0:
+            risk_score = max(0, risk_score - pnl_adjustment)
+        elif realized_pnl < 0:
+            risk_score = min(100, risk_score + pnl_adjustment)
+
+        top_tokens = []
+        for tok in pnl_raw.get("top5_tokens", []):
+            if isinstance(tok, dict):
+                top_tokens.append(PnlTokenSummary(
+                    token_symbol=_clean_label(tok.get("token_symbol", "")),
+                    chain=tok.get("chain", ""),
+                    realized_pnl=float(tok.get("realized_pnl", 0)),
+                    realized_roi=float(tok.get("realized_roi", 0)),
+                ))
+
+        pnl_summary = PnlSummary(
+            realized_pnl_usd=realized_pnl,
+            realized_pnl_percent=float(pnl_raw.get("realized_pnl_percent", 0)),
+            win_rate=float(pnl_raw.get("win_rate", 0)),
+            traded_token_count=int(pnl_raw.get("traded_token_count", 0)),
+            traded_times=int(pnl_raw.get("traded_times", 0)),
+            top_tokens=top_tokens,
+        )
+
+    # Recompute risk level after PnL adjustment
     if risk_score >= 75:
         risk_level = "CRITICAL"
     elif risk_score >= 50:
@@ -1578,6 +1665,8 @@ async def get_premium_risk_score(address: str):
         verdict=verdict,
         nansen_labels=nansen_labels,
         nansen_available=nansen_available,
+        pnl_summary=pnl_summary,
+        pnl_available=pnl_available,
     )
 
 
