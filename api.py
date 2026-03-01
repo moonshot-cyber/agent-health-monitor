@@ -99,10 +99,19 @@ if not INTERNAL_API_KEY:
 
 ADDRESS_RE = re.compile(r"^0x[0-9a-fA-F]{40}$")
 
-# -- Nansen x402 Client (for premium risk endpoint) -------------------------
-NANSEN_API_URL = "https://nansen.api.corbits.dev/api/beta/profiler/address/labels"
-NANSEN_BALANCES_URL = "https://nansen.api.corbits.dev/api/beta/profiler/address/balances"
-NANSEN_COUNTERPARTIES_URL = "https://nansen.api.corbits.dev/api/beta/profiler/address/counterparties"
+# -- Nansen API Routing ------------------------------------------------------
+# Labels & balances: only available via Corbits x402 proxy (Nansen returns 401
+# for these endpoints when called directly — no native x402 support yet).
+# Counterparties & pnl-summary: call Nansen DIRECTLY — the Corbits proxy 500s
+# on these, but api.nansen.ai serves them natively via x402.
+# NOTE: Direct Nansen rate limits are stricter (5 req/s, 60 req/min) vs
+#       Corbits (20 req/s, 300 req/min).  Keep calls sequential.
+NANSEN_CORBITS_URL = "https://nansen.api.corbits.dev/api/beta"
+NANSEN_DIRECT_URL = "https://api.nansen.ai/api/v1"
+
+NANSEN_API_URL = NANSEN_CORBITS_URL + "/profiler/address/labels"
+NANSEN_BALANCES_URL = NANSEN_CORBITS_URL + "/profiler/address/balances"
+NANSEN_COUNTERPARTIES_URL = NANSEN_DIRECT_URL + "/profiler/address/counterparties"
 _nansen_x402_client = None
 if NANSEN_PAYER_PRIVATE_KEY:
     try:
@@ -444,25 +453,45 @@ async def fetch_nansen_enrichment(address: str) -> tuple[list[dict] | None, list
     return labels_result, balances_result
 
 
+def _clean_label(text: str) -> str:
+    """Strip zero-width chars and emoji from Nansen labels.
+
+    Nansen prefixes labels with emoji (e.g. '🏦 Binance: Deposit') which
+    crash on Windows/cp1252 consoles and Railway logs.  Remove all chars
+    outside the Basic Multilingual Plane (> U+FFFF) plus known zero-width
+    codepoints, then collapse whitespace.
+    """
+    cleaned = []
+    for ch in text:
+        if ord(ch) > 0xFFFF:        # emoji / supplementary planes
+            continue
+        if ch in "\u200b\u200c\u200d\ufeff":  # zero-width chars
+            continue
+        cleaned.append(ch)
+    return " ".join("".join(cleaned).split()).strip()
+
+
 async def fetch_nansen_counterparties(address: str) -> list[dict] | None:
-    """Fetch top counterparties from Nansen via x402-paid API call."""
+    """Fetch top counterparties from Nansen DIRECTLY via x402-paid API call.
+
+    Uses api.nansen.ai (not Corbits proxy) with flat request body format.
+    The direct endpoint returns 402 → x402 client pays → 200 with data.
+    """
     if not _nansen_x402_client:
         logging.debug("Nansen counterparties skipped: x402 client not initialized")
         return None
     now = datetime.now(timezone.utc)
     body = {
-        "parameters": {
-            "chain": "all",
-            "address": address,
-            "date": {
-                "from": (now - timedelta(days=180)).strftime("%Y-%m-%dT%H:%M:%SZ"),
-                "to": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
-            },
+        "address": address,
+        "chain": "all",
+        "date": {
+            "from": (now - timedelta(days=180)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "to": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
         },
-        "pagination": {"page": 1, "recordsPerPage": 25},
+        "pagination": {"page": 1, "per_page": 25},
     }
     try:
-        async with x402HttpxClient(_nansen_x402_client, timeout=httpx_client.Timeout(30.0)) as http:
+        async with x402HttpxClient(_nansen_x402_client, timeout=httpx_client.Timeout(45.0)) as http:
             response = await http.post(NANSEN_COUNTERPARTIES_URL, json=body)
         logging.info("Nansen counterparties response: status=%s length=%s", response.status_code, len(response.content))
         if response.status_code == 200:
@@ -1538,7 +1567,7 @@ async def get_premium_risk_score(address: str):
         for item in nansen_raw:
             if isinstance(item, dict):
                 nansen_labels.append(NansenLabel(
-                    label=item.get("label", item.get("name", str(item))).replace("\u200b", "").replace("\u00e2\u20ac\u2039", "").replace("\ufeff", "").replace("\u200c", "").replace("\u200d", "").strip(),
+                    label=_clean_label(item.get("label", item.get("name", str(item)))),
                     category=item.get("category"),
                     definition=item.get("definition"),
                 ))
@@ -1587,12 +1616,11 @@ async def get_counterparties(address: str):
                 raw_labels = item.get("counterparty_address_label", item.get("labels", []))
                 if isinstance(raw_labels, list) and raw_labels:
                     label = ", ".join(
-                        str(l).replace("\u200b", "").replace("\u00e2\u20ac\u2039", "")
-                        .replace("\ufeff", "").replace("\u200c", "").replace("\u200d", "").strip()
+                        _clean_label(str(l))
                         for l in raw_labels if l
                     ) or None
                 elif isinstance(raw_labels, str) and raw_labels:
-                    label = raw_labels.replace("\u200b", "").replace("\u00e2\u20ac\u2039", "").replace("\ufeff", "").replace("\u200c", "").replace("\u200d", "").strip() or None
+                    label = _clean_label(raw_labels) or None
                 else:
                     label = item.get("label", item.get("name"))
 
@@ -1753,7 +1781,7 @@ async def get_health_report(address: str):
         for item in nansen_raw:
             if isinstance(item, dict):
                 nansen_labels.append(NansenLabel(
-                    label=item.get("label", item.get("name", str(item))).replace("\u200b", "").replace("\u00e2\u20ac\u2039", "").replace("\ufeff", "").replace("\u200c", "").replace("\u200d", "").strip(),
+                    label=_clean_label(item.get("label", item.get("name", str(item)))),
                     category=item.get("category"),
                     definition=item.get("definition"),
                 ))
