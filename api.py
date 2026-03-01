@@ -83,7 +83,8 @@ COUNTERPARTY_PRICE = os.getenv("COUNTERPARTY_PRICE_USD", "$0.10")
 NETWORK_MAP_PRICE = os.getenv("NETWORK_MAP_PRICE_USD", "$0.10")
 NANSEN_PAYER_PRIVATE_KEY = os.getenv("NANSEN_PAYER_PRIVATE_KEY", "")
 NETWORK = os.getenv("NETWORK", "eip155:8453")  # Base mainnet
-VALID_COUPONS = set(c.strip().upper() for c in os.getenv("VALID_COUPONS", "").split(",") if c.strip())
+_DEFAULT_COUPONS = "TEST-ELITE,EARLY001,EARLY002,EARLY003,REDDIT50,SUBSTACK1"
+VALID_COUPONS = set(c.strip().upper() for c in os.getenv("VALID_COUPONS", _DEFAULT_COUPONS).split(",") if c.strip())
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 PORT = int(os.getenv("PORT", "4021"))
 
@@ -1500,6 +1501,12 @@ def _require_coupon(code: str):
     """Validate a coupon code or raise 403."""
     if code.strip().upper() not in VALID_COUPONS:
         raise HTTPException(status_code=403, detail="Invalid coupon code")
+
+
+@app.get("/coupon/risk/{code}/{address}")
+async def coupon_risk(code: str, address: str):
+    _require_coupon(code)
+    return await get_risk_score(address)
 
 
 @app.get("/coupon/health/{code}/{address}")
