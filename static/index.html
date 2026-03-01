@@ -880,7 +880,7 @@
   <p class="hero-sub">// Pay-per-call blockchain analysis for agents and humans.<br>No accounts. No subscriptions. Just USDC on Base.</p>
   <div class="hero-stats">
     <div class="stat">
-      <div class="stat-val">7</div>
+      <div class="stat-val">9</div>
       <div class="stat-label">Endpoints</div>
     </div>
     <div class="stat">
@@ -905,7 +905,7 @@
   <div class="panel">
     <div class="panel-header">
       <span class="panel-title">// SELECT_ENDPOINT</span>
-      <span class="panel-tag">7 services available</span>
+      <span class="panel-tag">9 services available</span>
     </div>
     <div class="panel-body">
       <div class="endpoint-grid">
@@ -923,6 +923,11 @@
           <div class="ep-price">$0.10</div>
           <div class="ep-name">/counterparties</div>
           <div class="ep-desc">Know Your Counterparty — top interactions + Nansen</div>
+        </div>
+        <div class="endpoint-card" data-endpoint="network-map" data-price="0.10" data-path="/network-map" onclick="selectEndpoint(this)">
+          <div class="ep-price">$0.10</div>
+          <div class="ep-name">/network-map</div>
+          <div class="ep-desc">Wallet Network Map — funding, deployer & multisig links via Nansen</div>
         </div>
         <div class="endpoint-card" data-endpoint="health" data-price="0.50" data-path="/health" onclick="selectEndpoint(this)">
           <div class="ep-price">$0.50</div>
@@ -1315,6 +1320,47 @@
             </div>
           </div>` : r.nansen_available === false && r.nansen_labels !== undefined ? `
           <div style="font-family:var(--mono); font-size:0.65rem; color:var(--text-dim); margin-bottom:1rem; opacity:0.6">// Nansen enrichment unavailable</div>` : ''}
+        ${r.pnl_available && r.pnl_summary ? (() => {
+          const pnl = r.pnl_summary;
+          const pnlColor = pnl.realized_pnl_usd >= 0 ? 'var(--green, #00ff88)' : 'var(--red, #ff4444)';
+          const pnlSign = pnl.realized_pnl_usd >= 0 ? '+' : '';
+          return `
+          <div style="margin-bottom:1rem">
+            <div style="font-family:var(--mono); font-size:0.6rem; letter-spacing:0.2em; color:var(--text-dim); margin-bottom:0.5rem">// PnL SUMMARY (NANSEN)</div>
+            <div style="display:flex; gap:2rem; flex-wrap:wrap; font-family:var(--mono); font-size:0.75rem; margin-bottom:0.75rem">
+              <span style="color:${pnlColor}"><span style="color:var(--text-dim)">Realized PnL:</span> ${pnlSign}$${Math.abs(pnl.realized_pnl_usd).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+              <span style="color:${pnlColor}"><span style="color:var(--text-dim)">ROI:</span> ${pnlSign}${pnl.realized_pnl_percent.toFixed(2)}%</span>
+              <span style="color:var(--cyan)"><span style="color:var(--text-dim)">Win Rate:</span> ${pnl.win_rate.toFixed(1)}%</span>
+              <span style="color:var(--text)"><span style="color:var(--text-dim)">Tokens:</span> ${pnl.traded_token_count} <span style="color:var(--text-dim)">(${pnl.traded_times} trades)</span></span>
+            </div>
+            ${pnl.top_tokens && pnl.top_tokens.length > 0 ? `
+            <table style="width:100%; border-collapse:collapse; font-family:var(--mono); font-size:0.7rem">
+              <thead>
+                <tr style="border-bottom:1px solid var(--cyan-dim); color:var(--text-dim); font-size:0.6rem; letter-spacing:0.1em">
+                  <th style="text-align:left; padding:0.3rem 0.5rem">TOKEN</th>
+                  <th style="text-align:left; padding:0.3rem 0.5rem">CHAIN</th>
+                  <th style="text-align:right; padding:0.3rem 0.5rem">PnL</th>
+                  <th style="text-align:right; padding:0.3rem 0.5rem">ROI</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${pnl.top_tokens.slice(0, 5).map(t => {
+                  const tColor = t.realized_pnl >= 0 ? 'var(--green, #00ff88)' : 'var(--red, #ff4444)';
+                  const tSign = t.realized_pnl >= 0 ? '+' : '';
+                  return `
+                  <tr style="border-bottom:1px solid rgba(0,245,255,0.08)">
+                    <td style="padding:0.3rem 0.5rem; color:var(--cyan)">${t.token_symbol}</td>
+                    <td style="padding:0.3rem 0.5rem; color:var(--text-dim)">${t.chain}</td>
+                    <td style="padding:0.3rem 0.5rem; text-align:right; color:${tColor}">${tSign}$${Math.abs(t.realized_pnl).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                    <td style="padding:0.3rem 0.5rem; text-align:right; color:${tColor}">${tSign}${t.realized_roi.toFixed(2)}%</td>
+                  </tr>`;
+                }).join('')}
+              </tbody>
+            </table>` : ''}
+            <div style="font-family:var(--mono); font-size:0.6rem; color:var(--text-dim); margin-top:0.5rem; opacity:0.7">// PnL data used in risk score adjustment</div>
+          </div>`;
+        })() : r.pnl_available === false ? `
+          <div style="font-family:var(--mono); font-size:0.65rem; color:var(--text-dim); margin-bottom:1rem; opacity:0.6">// PnL enrichment unavailable</div>` : ''}
         <button class="toggle-raw" onclick="toggleRaw()">▶ VIEW RAW JSON</button>
         <pre class="raw-json" id="raw-json">${JSON.stringify(data, null, 2)}</pre>
       `;
@@ -1354,6 +1400,46 @@
                 </tr>`).join('')}
             </tbody>
           </table>
+        </div>
+        ${data.nansen_available ? `<div style="font-family:var(--mono); font-size:0.6rem; color:var(--cyan-dim); margin-bottom:0.75rem; opacity:0.7">// Enriched with Nansen intelligence</div>` : data.nansen_available === false ? `<div style="font-family:var(--mono); font-size:0.6rem; color:var(--text-dim); margin-bottom:0.75rem; opacity:0.6">// Nansen enrichment unavailable</div>` : ''}
+        <button class="toggle-raw" onclick="toggleRaw()">▶ VIEW RAW JSON</button>
+        <pre class="raw-json" id="raw-json">${JSON.stringify(data, null, 2)}</pre>
+      `;
+      panel.classList.add('active');
+      panel.classList.remove('elite-glow');
+      return;
+    }
+
+    // Network Map endpoint returns {related_wallets: [...]} — handle specially
+    if (data.related_wallets !== undefined && data.total_related !== undefined) {
+      const wallets = data.related_wallets ?? [];
+      body.innerHTML = `
+        <div style="margin-bottom:1rem">
+          <div style="font-family:var(--mono); font-size:0.6rem; letter-spacing:0.2em; color:var(--text-dim); margin-bottom:0.25rem">// WALLET NETWORK MAP</div>
+          <div style="display:flex; gap:2rem; font-family:var(--mono); font-size:0.75rem; margin-bottom:0.75rem">
+            <span style="color:var(--cyan)"><span style="color:var(--text-dim)">Related Wallets:</span> ${wallets.length}</span>
+            <span style="color:var(--cyan)"><span style="color:var(--text-dim)">Chain:</span> ${data.chain ?? 'ethereum'}</span>
+          </div>
+          ${wallets.length > 0 ? `
+          <table style="width:100%; border-collapse:collapse; font-family:var(--mono); font-size:0.7rem">
+            <thead>
+              <tr style="border-bottom:1px solid var(--cyan-dim); color:var(--text-dim); font-size:0.6rem; letter-spacing:0.1em">
+                <th style="text-align:left; padding:0.3rem 0.5rem">ADDRESS</th>
+                <th style="text-align:left; padding:0.3rem 0.5rem">LABEL</th>
+                <th style="text-align:left; padding:0.3rem 0.5rem">RELATION</th>
+                <th style="text-align:left; padding:0.3rem 0.5rem">CHAIN</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${wallets.map(w => `
+                <tr style="border-bottom:1px solid rgba(0,245,255,0.08)">
+                  <td style="padding:0.3rem 0.5rem; color:var(--text-dim); font-size:0.6rem">${w.address.slice(0, 6)}...${w.address.slice(-4)}</td>
+                  <td style="padding:0.3rem 0.5rem; color:${w.label ? 'var(--cyan)' : 'var(--text-dim)'}">${w.label ?? 'Unknown'}</td>
+                  <td style="padding:0.3rem 0.5rem; color:var(--amber, #ffaa00)">${w.relation}</td>
+                  <td style="padding:0.3rem 0.5rem; color:var(--text-dim)">${w.chain}</td>
+                </tr>`).join('')}
+            </tbody>
+          </table>` : `<div style="font-family:var(--mono); font-size:0.75rem; color:var(--text-dim); padding:1rem 0">No related wallets found on this chain.</div>`}
         </div>
         ${data.nansen_available ? `<div style="font-family:var(--mono); font-size:0.6rem; color:var(--cyan-dim); margin-bottom:0.75rem; opacity:0.7">// Enriched with Nansen intelligence</div>` : data.nansen_available === false ? `<div style="font-family:var(--mono); font-size:0.6rem; color:var(--text-dim); margin-bottom:0.75rem; opacity:0.6">// Nansen enrichment unavailable</div>` : ''}
         <button class="toggle-raw" onclick="toggleRaw()">▶ VIEW RAW JSON</button>
