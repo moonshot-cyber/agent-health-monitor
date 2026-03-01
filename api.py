@@ -80,6 +80,7 @@ PROTECT_PRICE = os.getenv("PROTECT_PRICE_USD", "$25.00")
 RISK_PRICE = os.getenv("RISK_PRICE_USD", "$0.001")
 PREMIUM_RISK_PRICE = os.getenv("PREMIUM_RISK_PRICE_USD", "$0.05")
 COUNTERPARTY_PRICE = os.getenv("COUNTERPARTY_PRICE_USD", "$0.10")
+NETWORK_MAP_PRICE = os.getenv("NETWORK_MAP_PRICE_USD", "$0.10")
 NANSEN_PAYER_PRIVATE_KEY = os.getenv("NANSEN_PAYER_PRIVATE_KEY", "")
 NETWORK = os.getenv("NETWORK", "eip155:8453")  # Base mainnet
 VALID_COUPONS = set(c.strip().upper() for c in os.getenv("VALID_COUPONS", "").split(",") if c.strip())
@@ -113,6 +114,7 @@ NANSEN_API_URL = NANSEN_CORBITS_URL + "/profiler/address/labels"
 NANSEN_BALANCES_URL = NANSEN_CORBITS_URL + "/profiler/address/balances"
 NANSEN_COUNTERPARTIES_URL = NANSEN_DIRECT_URL + "/profiler/address/counterparties"
 NANSEN_PNL_SUMMARY_URL = NANSEN_DIRECT_URL + "/profiler/address/pnl-summary"
+NANSEN_RELATED_WALLETS_URL = NANSEN_DIRECT_URL + "/profiler/address/related-wallets"
 _nansen_x402_client = None
 if NANSEN_PAYER_PRIVATE_KEY:
     try:
@@ -185,6 +187,24 @@ class CounterpartyResponse(BaseModel):
     address: str
     counterparties: list[Counterparty] = []
     total_counterparties: int = 0
+    nansen_available: bool = False
+
+
+class RelatedWallet(BaseModel):
+    address: str
+    label: Optional[str] = None
+    relation: str
+    chain: str
+    transaction_hash: Optional[str] = None
+    block_timestamp: Optional[str] = None
+
+
+class RelatedWalletsResponse(BaseModel):
+    status: str
+    address: str
+    chain: str
+    related_wallets: list[RelatedWallet] = []
+    total_related: int = 0
     nansen_available: bool = False
 
 
@@ -555,6 +575,45 @@ async def fetch_nansen_pnl(address: str) -> dict | None:
         return None
     except Exception as e:
         logging.warning("Nansen PnL call failed: %s", e, exc_info=True)
+        return None
+
+
+VALID_NANSEN_CHAINS = frozenset({
+    "arbitrum", "avalanche", "base", "bitcoin", "bnb", "ethereum",
+    "iotaevm", "linea", "mantle", "monad", "near", "optimism",
+    "plasma", "polygon", "ronin", "scroll", "sei", "solana",
+    "sonic", "starknet", "sui", "ton", "tron",
+})
+
+
+async def fetch_nansen_related_wallets(address: str, chain: str = "ethereum") -> list[dict] | None:
+    """Fetch related wallets from Nansen DIRECTLY via x402-paid API call.
+
+    Uses api.nansen.ai (not Corbits proxy) with flat request body format.
+    NOTE: This endpoint does NOT support chain="all" — a specific chain
+    is required.  Defaults to "ethereum".
+    """
+    if not _nansen_x402_client:
+        logging.debug("Nansen related-wallets skipped: x402 client not initialized")
+        return None
+    body = {
+        "address": address,
+        "chain": chain,
+    }
+    try:
+        async with x402HttpxClient(_nansen_x402_client, timeout=httpx_client.Timeout(45.0)) as http:
+            response = await http.post(NANSEN_RELATED_WALLETS_URL, json=body)
+        logging.info("Nansen related-wallets response: status=%s length=%s", response.status_code, len(response.content))
+        if response.status_code == 200:
+            data = response.json()
+            logging.info("Nansen related-wallets raw response: %s", str(data)[:1000])
+            result = data if isinstance(data, list) else data.get("data", [])
+            logging.info("Nansen related-wallets parsed: %d items", len(result) if isinstance(result, list) else 0)
+            return result
+        logging.warning("Nansen related-wallets non-200: status=%s body=%s", response.status_code, response.text[:500])
+        return None
+    except Exception as e:
+        logging.warning("Nansen related-wallets call failed: %s", e, exc_info=True)
         return None
 
 
@@ -1240,6 +1299,21 @@ x402_routes = {
             "the address interacts with most, enriched with Nansen labels."
         ),
     ),
+    "GET /network-map/*": RouteConfig(
+        accepts=[
+            PaymentOption(
+                scheme="exact",
+                pay_to=PAYMENT_ADDRESS,
+                price=NETWORK_MAP_PRICE,
+                network=NETWORK,
+            ),
+        ],
+        mime_type="application/json",
+        description=(
+            "Wallet Network Map showing related wallets (first funders, deployers, "
+            "multisig co-signers) enriched with Nansen labels."
+        ),
+    ),
     "GET /risk/*": RouteConfig(
         accepts=[
             PaymentOption(
@@ -1402,6 +1476,7 @@ async def api_info():
             "GET /risk/{address}": f"{RISK_PRICE} USDC — quick risk score for pre-flight checks",
             "GET /risk/premium/{address}": f"{PREMIUM_RISK_PRICE} USDC — premium risk score with Nansen labels + PnL summary",
             "GET /counterparties/{address}": f"{COUNTERPARTY_PRICE} USDC — top counterparties enriched with Nansen labels",
+            "GET /network-map/{address}": f"{NETWORK_MAP_PRICE} USDC — related wallets (funders, deployers, multisig) with Nansen labels",
             "GET /health/{address}": f"{PRICE} USDC — wallet health diagnosis",
             "GET /alerts/subscribe/{address}": f"{ALERT_PRICE} USDC/month — automated monitoring & webhook alerts",
             "GET /optimize/{address}": f"{OPTIMIZE_PRICE} USDC — gas optimization report",
@@ -1467,6 +1542,12 @@ async def coupon_premium_risk(code: str, address: str):
 async def coupon_counterparties(code: str, address: str):
     _require_coupon(code)
     return await get_counterparties(address)
+
+
+@app.get("/coupon/network-map/{code}/{address}")
+async def coupon_network_map(code: str, address: str, chain: str = "ethereum"):
+    _require_coupon(code)
+    return await get_network_map(address, chain=chain)
 
 
 class ChatRequest(BaseModel):
@@ -1736,6 +1817,75 @@ async def get_counterparties(address: str):
         address=address,
         counterparties=counterparties,
         total_counterparties=len(counterparties),
+        nansen_available=nansen_available,
+    )
+
+
+@app.get("/network-map/{address}", response_model=RelatedWalletsResponse)
+async def get_network_map(address: str, chain: str = "ethereum"):
+    """
+    Wallet Network Map — related wallets linked by funding, deployment, or multisig.
+
+    Requires x402 payment ($0.10 USDC on Base) OR valid X-Internal-Key header.
+
+    Returns wallets connected to this address via first-funder relationships,
+    contract deployments, and multisig co-signer links, enriched with Nansen labels.
+
+    Query params:
+        chain: blockchain to query (default: ethereum). Does NOT support "all".
+               Valid: arbitrum, avalanche, base, bnb, ethereum, polygon, solana, etc.
+    """
+    if not ADDRESS_RE.match(address):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid Ethereum address format: {address}",
+        )
+
+    chain = chain.lower().strip()
+    if chain not in VALID_NANSEN_CHAINS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid chain '{chain}'. Valid options: {', '.join(sorted(VALID_NANSEN_CHAINS))}",
+        )
+
+    address = address.lower()
+
+    raw = await fetch_nansen_related_wallets(address, chain=chain)
+
+    logging.info(
+        "/network-map [%s] chain=%s raw=%s",
+        address, chain,
+        type(raw).__name__ if not isinstance(raw, list) else f"list[{len(raw)}]",
+    )
+
+    related_wallets = []
+    nansen_available = raw is not None
+    if raw:
+        for item in raw:
+            if isinstance(item, dict):
+                label_raw = item.get("address_label", item.get("label"))
+                label = _clean_label(str(label_raw)) if label_raw else None
+
+                related_wallets.append(RelatedWallet(
+                    address=item.get("address", ""),
+                    label=label,
+                    relation=item.get("relation", "unknown"),
+                    chain=item.get("chain", chain),
+                    transaction_hash=item.get("transaction_hash"),
+                    block_timestamp=item.get("block_timestamp"),
+                ))
+
+    logging.info(
+        "/network-map [%s] result: nansen_available=%s count=%d",
+        address, nansen_available, len(related_wallets),
+    )
+
+    return RelatedWalletsResponse(
+        status="ok",
+        address=address,
+        chain=chain,
+        related_wallets=related_wallets,
+        total_related=len(related_wallets),
         nansen_available=nansen_available,
     )
 
