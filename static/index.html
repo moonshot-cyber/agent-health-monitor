@@ -144,59 +144,47 @@
     50% { opacity: 0.3; }
   }
 
-  /* ─── HERO ─── */
+  /* ─── HERO (compact) ─── */
   .hero {
     position: relative;
     z-index: 10;
-    min-height: 70vh;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
     text-align: center;
-    padding: 6rem 2rem 4rem;
+    padding: 2.5rem 2rem 1.5rem;
     overflow: hidden;
-  }
-
-  .hero-glow {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    width: 600px;
-    height: 600px;
-    background: radial-gradient(ellipse, rgba(0,245,255,0.06) 0%, transparent 70%);
-    pointer-events: none;
   }
 
   .hero-tag {
     font-family: var(--mono);
-    font-size: 0.7rem;
+    font-size: 0.6rem;
     color: var(--cyan-dim);
     letter-spacing: 0.3em;
     text-transform: uppercase;
-    margin-bottom: 1.5rem;
+    margin-bottom: 0.75rem;
     display: flex;
     align-items: center;
-    gap: 1rem;
+    gap: 0.75rem;
   }
 
   .hero-tag::before, .hero-tag::after {
     content: '';
-    width: 40px;
+    width: 30px;
     height: 1px;
     background: var(--cyan-dim);
   }
 
   h1 {
     font-family: var(--display);
-    font-size: clamp(2rem, 6vw, 4.5rem);
+    font-size: clamp(1.6rem, 4vw, 2.8rem);
     font-weight: 900;
-    line-height: 1.05;
+    line-height: 1.1;
     letter-spacing: 0.05em;
     color: var(--text-bright);
     text-shadow: 0 0 40px rgba(0,245,255,0.3);
-    margin-bottom: 0.5rem;
+    margin-bottom: 0.4rem;
   }
 
   h1 span {
@@ -206,37 +194,81 @@
 
   .hero-sub {
     font-family: var(--mono);
-    font-size: 0.85rem;
+    font-size: 0.75rem;
     color: var(--text-dim);
-    margin: 1.5rem 0 3rem;
+    margin: 0.5rem 0 0;
     max-width: 500px;
-    line-height: 1.8;
+    line-height: 1.6;
   }
 
-  .hero-stats {
+  /* ─── CHAT-FIRST: GUIDED MENU ─── */
+  .guided-menu {
     display: flex;
-    gap: 3rem;
-    margin-bottom: 3rem;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-bottom: 1.25rem;
   }
 
-  .stat {
-    text-align: center;
-  }
-
-  .stat-val {
-    font-family: var(--display);
-    font-size: 1.5rem;
-    font-weight: 700;
-    color: var(--cyan);
-    text-shadow: 0 0 15px var(--cyan);
-  }
-
-  .stat-label {
+  .guided-btn {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    color: var(--text);
     font-family: var(--mono);
+    font-size: 0.65rem;
+    padding: 0.4rem 0.75rem;
+    cursor: pointer;
+    transition: all 0.15s;
+    letter-spacing: 0.05em;
+    white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+
+  .guided-btn:hover {
+    border-color: var(--cyan-dim);
+    background: rgba(0,245,255,0.04);
+    color: var(--cyan);
+  }
+
+  .guided-btn.active {
+    border-color: var(--cyan);
+    background: rgba(0,245,255,0.08);
+    color: var(--cyan);
+    box-shadow: 0 0 10px rgba(0,245,255,0.1);
+  }
+
+  .guided-price {
+    color: var(--green);
     font-size: 0.6rem;
-    color: var(--text-dim);
-    letter-spacing: 0.2em;
-    margin-top: 0.25rem;
+    opacity: 0.8;
+  }
+
+  .guided-btn.active .guided-price {
+    opacity: 1;
+  }
+
+  .intent-row {
+    display: flex;
+    gap: 0.5rem;
+  }
+
+  .intent-row input {
+    flex: 1;
+  }
+
+  .intent-row .chat-send {
+    flex-shrink: 0;
+  }
+
+  /* ─── BROWSE ENDPOINTS (collapsible) ─── */
+  .browse-toggle-header {
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .browse-toggle-header:hover .panel-title {
+    text-shadow: 0 0 8px var(--cyan);
   }
 
   /* ─── MAIN APP ─── */
@@ -860,10 +892,12 @@
 
   /* responsive */
   @media (max-width: 600px) {
-    .hero-stats { gap: 1.5rem; }
+    .guided-menu { gap: 0.35rem; }
+    .guided-btn { font-size: 0.58rem; padding: 0.3rem 0.5rem; }
     .endpoint-grid { grid-template-columns: 1fr 1fr; }
     .result-grid { grid-template-columns: 1fr; }
-    h1 { font-size: 1.8rem; }
+    h1 { font-size: 1.4rem; }
+    .intent-row { flex-direction: column; }
   }
 </style>
 </head>
@@ -881,88 +915,37 @@
   </div>
 </header>
 
-<!-- HERO -->
+<!-- HERO (compact) -->
 <section class="hero">
-  <div class="hero-glow"></div>
   <div class="hero-tag">Blockchain Intelligence Protocol</div>
-  <h1>WALLET <span>HEALTH</span><br>ANALYTICS</h1>
-  <p class="hero-sub">// Pay-per-call blockchain analysis for agents and humans.<br>No accounts. No subscriptions. Just USDC on Base.</p>
-  <div class="hero-stats">
-    <div class="stat">
-      <div class="stat-val">9</div>
-      <div class="stat-label">Endpoints</div>
-    </div>
-    <div class="stat">
-      <div class="stat-val">$0.01</div>
-      <div class="stat-label">From</div>
-    </div>
-    <div class="stat">
-      <div class="stat-val">x402</div>
-      <div class="stat-label">Protocol</div>
-    </div>
-    <div class="stat">
-      <div class="stat-val">&lt;2s</div>
-      <div class="stat-label">Response</div>
-    </div>
-  </div>
+  <h1>WALLET <span>HEALTH</span> ANALYTICS</h1>
+  <p class="hero-sub">// 9 endpoints from $0.01 &middot; x402 &middot; USDC on Base &middot; No accounts required</p>
 </section>
 
 <!-- MAIN APP -->
 <div class="app-container">
 
-  <!-- ENDPOINT SELECT -->
+  <!-- CHAT-FIRST INTERACTION -->
   <div class="panel">
     <div class="panel-header">
-      <span class="panel-title">// SELECT_ENDPOINT</span>
-      <span class="panel-tag">9 services available</span>
+      <span class="panel-title">// WHAT_DO_YOU_NEED?</span>
+      <span class="panel-tag">Select a service or describe your query</span>
     </div>
     <div class="panel-body">
-      <div class="endpoint-grid">
-        <div class="endpoint-card selected" data-endpoint="risk" data-price="0.01" data-path="/risk" onclick="selectEndpoint(this)">
-          <div class="ep-price">$0.01</div>
-          <div class="ep-name">/risk</div>
-          <div class="ep-desc">Quick risk score for pre-flight checks</div>
-        </div>
-        <div class="endpoint-card" data-endpoint="risk-premium" data-price="0.05" data-path="/risk/premium" onclick="selectEndpoint(this)">
-          <div class="ep-price">$0.05</div>
-          <div class="ep-name">/risk/premium</div>
-          <div class="ep-desc">Risk score + Nansen smart money labels</div>
-        </div>
-        <div class="endpoint-card" data-endpoint="counterparties" data-price="0.10" data-path="/counterparties" onclick="selectEndpoint(this)">
-          <div class="ep-price">$0.10</div>
-          <div class="ep-name">/counterparties</div>
-          <div class="ep-desc">Know Your Counterparty — top interactions + Nansen</div>
-        </div>
-        <div class="endpoint-card" data-endpoint="network-map" data-price="0.10" data-path="/network-map" onclick="selectEndpoint(this)">
-          <div class="ep-price">$0.10</div>
-          <div class="ep-name">/network-map</div>
-          <div class="ep-desc">Wallet Network Map — funding, deployer & multisig links via Nansen</div>
-        </div>
-        <div class="endpoint-card" data-endpoint="health" data-price="0.50" data-path="/health" onclick="selectEndpoint(this)">
-          <div class="ep-price">$0.50</div>
-          <div class="ep-name">/health</div>
-          <div class="ep-desc">Full wallet health score with risk analysis</div>
-        </div>
-        <div class="endpoint-card" data-endpoint="alerts" data-price="2.00" data-path="/alerts/subscribe" onclick="selectEndpoint(this)">
-          <div class="ep-price">$2.00</div>
-          <div class="ep-name">/alerts</div>
-          <div class="ep-desc">Subscribe to real-time wallet alerts</div>
-        </div>
-        <div class="endpoint-card" data-endpoint="optimize" data-price="5.00" data-path="/optimize" onclick="selectEndpoint(this)">
-          <div class="ep-price">$5.00</div>
-          <div class="ep-name">/optimize</div>
-          <div class="ep-desc">Gas & strategy optimisation report</div>
-        </div>
-        <div class="endpoint-card" data-endpoint="retry" data-price="10.00" data-path="/retry" onclick="selectEndpoint(this)">
-          <div class="ep-price">$10.00</div>
-          <div class="ep-name">/retry</div>
-          <div class="ep-desc">Analyse and retry failed transactions</div>
-        </div>
-        <div class="endpoint-card" data-endpoint="protect" data-price="25.00" data-path="/agent/protect" onclick="selectEndpoint(this)">
-          <div class="ep-price">$25.00</div>
-          <div class="ep-name">/protect</div>
-          <div class="ep-desc">Full agent protection suite</div>
-        </div>
+      <div class="guided-menu">
+        <button class="guided-btn active" data-endpoint="risk" onclick="selectService('risk')">Risk Score <span class="guided-price">$0.01</span></button>
+        <button class="guided-btn" data-endpoint="risk-premium" onclick="selectService('risk-premium')">Premium Risk <span class="guided-price">$0.05</span></button>
+        <button class="guided-btn" data-endpoint="counterparties" onclick="selectService('counterparties')">Counterparties <span class="guided-price">$0.10</span></button>
+        <button class="guided-btn" data-endpoint="network-map" onclick="selectService('network-map')">Network Map <span class="guided-price">$0.10</span></button>
+        <button class="guided-btn" data-endpoint="health" onclick="selectService('health')">Full Health <span class="guided-price">$0.50</span></button>
+        <button class="guided-btn" data-endpoint="alerts" onclick="selectService('alerts')">Alerts <span class="guided-price">$2.00</span></button>
+        <button class="guided-btn" data-endpoint="optimize" onclick="selectService('optimize')">Optimize <span class="guided-price">$5.00</span></button>
+        <button class="guided-btn" data-endpoint="retry" onclick="selectService('retry')">Retry Txns <span class="guided-price">$10.00</span></button>
+        <button class="guided-btn" data-endpoint="protect" onclick="selectService('protect')">Full Protect <span class="guided-price">$25.00</span></button>
+      </div>
+      <div class="intent-row">
+        <input type="text" id="intent-input" placeholder="Or describe what you need... e.g. 'is this wallet safe?'" onkeydown="if(event.key==='Enter') handleIntent()" />
+        <button class="chat-send" onclick="handleIntent()">GO ▶</button>
       </div>
     </div>
   </div>
@@ -1029,6 +1012,63 @@
     </div>
   </div>
 
+  <!-- BROWSE ENDPOINTS (below fold, collapsible) -->
+  <div class="panel" id="browse-section">
+    <div class="panel-header browse-toggle-header" onclick="toggleBrowse()">
+      <span class="panel-title">// BROWSE_ENDPOINTS</span>
+      <span class="panel-tag" id="browse-toggle-label">▶ Show all 9 services</span>
+    </div>
+    <div class="panel-body" id="browse-body" style="display:none">
+      <div class="endpoint-grid">
+        <div class="endpoint-card selected" data-endpoint="risk" data-price="0.01" data-path="/risk" onclick="selectEndpoint(this)">
+          <div class="ep-price">$0.01</div>
+          <div class="ep-name">/risk</div>
+          <div class="ep-desc">Quick risk score for pre-flight checks</div>
+        </div>
+        <div class="endpoint-card" data-endpoint="risk-premium" data-price="0.05" data-path="/risk/premium" onclick="selectEndpoint(this)">
+          <div class="ep-price">$0.05</div>
+          <div class="ep-name">/risk/premium</div>
+          <div class="ep-desc">Risk score + Nansen smart money labels</div>
+        </div>
+        <div class="endpoint-card" data-endpoint="counterparties" data-price="0.10" data-path="/counterparties" onclick="selectEndpoint(this)">
+          <div class="ep-price">$0.10</div>
+          <div class="ep-name">/counterparties</div>
+          <div class="ep-desc">Know Your Counterparty — top interactions + Nansen</div>
+        </div>
+        <div class="endpoint-card" data-endpoint="network-map" data-price="0.10" data-path="/network-map" onclick="selectEndpoint(this)">
+          <div class="ep-price">$0.10</div>
+          <div class="ep-name">/network-map</div>
+          <div class="ep-desc">Wallet Network Map — funding, deployer & multisig links via Nansen</div>
+        </div>
+        <div class="endpoint-card" data-endpoint="health" data-price="0.50" data-path="/health" onclick="selectEndpoint(this)">
+          <div class="ep-price">$0.50</div>
+          <div class="ep-name">/health</div>
+          <div class="ep-desc">Full wallet health score with risk analysis</div>
+        </div>
+        <div class="endpoint-card" data-endpoint="alerts" data-price="2.00" data-path="/alerts/subscribe" onclick="selectEndpoint(this)">
+          <div class="ep-price">$2.00</div>
+          <div class="ep-name">/alerts</div>
+          <div class="ep-desc">Subscribe to real-time wallet alerts</div>
+        </div>
+        <div class="endpoint-card" data-endpoint="optimize" data-price="5.00" data-path="/optimize" onclick="selectEndpoint(this)">
+          <div class="ep-price">$5.00</div>
+          <div class="ep-name">/optimize</div>
+          <div class="ep-desc">Gas & strategy optimisation report</div>
+        </div>
+        <div class="endpoint-card" data-endpoint="retry" data-price="10.00" data-path="/retry" onclick="selectEndpoint(this)">
+          <div class="ep-price">$10.00</div>
+          <div class="ep-name">/retry</div>
+          <div class="ep-desc">Analyse and retry failed transactions</div>
+        </div>
+        <div class="endpoint-card" data-endpoint="protect" data-price="25.00" data-path="/agent/protect" onclick="selectEndpoint(this)">
+          <div class="ep-price">$25.00</div>
+          <div class="ep-name">/protect</div>
+          <div class="ep-desc">Full agent protection suite</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
 </div>
 
 <!-- FOOTER -->
@@ -1052,6 +1092,63 @@
   let lastResults = null;
   let couponValid = false;
 
+  // ─── CHAT-FIRST: INTENT DETECTION ───
+  function detectIntent(text) {
+    const t = text.toLowerCase();
+    if (/risk\s*premium|premium\s*risk|nansen|label|pnl|smart\s*money/.test(t)) return 'risk-premium';
+    if (/risk|safe|scam|fraud|rug|suspicious|legit/.test(t)) return 'risk';
+    if (/counterpart|who.*interact|top.*address|know.*your/.test(t)) return 'counterparties';
+    if (/network|map|fund|deploy|multisig|related|link/.test(t)) return 'network-map';
+    if (/health|full.*report|score|overview|diagnos/.test(t)) return 'health';
+    if (/alert|monitor|watch|notif|subscribe/.test(t)) return 'alerts';
+    if (/optimi[sz]|gas|efficien|save|cheaper/.test(t)) return 'optimize';
+    if (/retry|fail|revert|stuck|rescue/.test(t)) return 'retry';
+    if (/protect|guard|shield|full.*suite|everything/.test(t)) return 'protect';
+    return null;
+  }
+
+  function selectService(name) {
+    const card = document.querySelector(`.endpoint-card[data-endpoint="${name}"]`);
+    if (card) selectEndpoint(card);
+    // Update guided buttons active state
+    document.querySelectorAll('.guided-btn').forEach(b => b.classList.remove('active'));
+    const activeBtn = document.querySelector(`.guided-btn[data-endpoint="${name}"]`);
+    if (activeBtn) activeBtn.classList.add('active');
+    // Focus wallet input
+    document.getElementById('wallet-input').focus();
+  }
+
+  function handleIntent() {
+    const input = document.getElementById('intent-input');
+    const text = input.value.trim();
+    if (!text) return;
+
+    // Check if it looks like a wallet address or test mode
+    if (/^0x[0-9a-fA-F]{40}$/.test(text) || TEST_MODES[text.toUpperCase()]) {
+      document.getElementById('wallet-input').value = text;
+      input.value = '';
+      execute();
+      return;
+    }
+
+    const intent = detectIntent(text);
+    if (intent) {
+      selectService(intent);
+      showToast('Selected: /' + intent);
+      input.value = '';
+    } else {
+      showToast('Try: "check risk", "optimize gas", "monitor wallet"');
+    }
+  }
+
+  function toggleBrowse() {
+    const body = document.getElementById('browse-body');
+    const label = document.getElementById('browse-toggle-label');
+    const visible = body.style.display !== 'none';
+    body.style.display = visible ? 'none' : 'block';
+    label.textContent = visible ? '\u25B6 Show all 9 services' : '\u25BC Hide services';
+  }
+
   // ─── ENDPOINT SELECT ───
   function selectEndpoint(el) {
     document.querySelectorAll('.endpoint-card').forEach(c => c.classList.remove('selected'));
@@ -1065,6 +1162,10 @@
     document.getElementById('price-tag').textContent =
       couponValid ? 'COST: FREE (COUPON APPLIED)' : `COST: $${el.dataset.price} USDC`;
     updateBtn();
+    // Sync guided buttons
+    document.querySelectorAll('.guided-btn').forEach(b => b.classList.remove('active'));
+    const activeBtn = document.querySelector(`.guided-btn[data-endpoint="${el.dataset.endpoint}"]`);
+    if (activeBtn) activeBtn.classList.add('active');
   }
 
   // ─── COUPON ───
