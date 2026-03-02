@@ -4,14 +4,14 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="base:app_id" content="699881c46768b2f53f686a78" />
-<title>Agent Health Monitor // Blockchain Wallet Intelligence</title>
-<meta property="og:title" content="Agent Health Monitor — Wallet Intelligence for the Agent Economy">
+<title>Agent Health Monitor // Diagnostics for the Agent Economy</title>
+<meta property="og:title" content="Agent Health Monitor — Diagnostics for the Agent Economy">
 <meta property="og:description" content="Pay-per-call blockchain analysis for agents and humans. 9 endpoints from $0.01. No accounts. No subscriptions. Just USDC on Base.">
 <meta property="og:image" content="https://raw.githubusercontent.com/moonshot-cyber/agent-health-monitor/master/ahm-banner.png">
 <meta property="og:url" content="https://agenthealthmonitor.xyz">
 <meta property="og:type" content="website">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="Agent Health Monitor — Wallet Intelligence for the Agent Economy">
+<meta name="twitter:title" content="Agent Health Monitor — Diagnostics for the Agent Economy">
 <meta name="twitter:description" content="Pay-per-call blockchain analysis for agents and humans. 9 endpoints from $0.01. No accounts. No subscriptions. Just USDC on Base.">
 <meta name="twitter:image" content="https://raw.githubusercontent.com/moonshot-cyber/agent-health-monitor/master/ahm-banner.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -918,8 +918,8 @@
 <!-- HERO (compact) -->
 <section class="hero">
   <div class="hero-tag">Blockchain Intelligence Protocol</div>
-  <h1>WALLET <span>HEALTH</span> ANALYTICS</h1>
-  <p class="hero-sub">// 9 endpoints from $0.01 &middot; x402 &middot; USDC on Base &middot; No accounts required</p>
+  <h1>AGENT <span>HEALTH</span> MONITOR</h1>
+  <p class="hero-sub">// Diagnostics for the agent economy &middot; 9 endpoints from $0.01 &middot; USDC on Base</p>
 </section>
 
 <!-- MAIN APP -->
@@ -933,18 +933,18 @@
     </div>
     <div class="panel-body">
       <div class="guided-menu">
-        <button class="guided-btn active" data-endpoint="risk" onclick="selectService('risk')">Risk Score <span class="guided-price">$0.01</span></button>
-        <button class="guided-btn" data-endpoint="risk-premium" onclick="selectService('risk-premium')">Premium Risk <span class="guided-price">$0.05</span></button>
+        <button class="guided-btn active" data-endpoint="risk" onclick="selectService('risk')">Quick Risk Check <span class="guided-price">$0.01</span></button>
+        <button class="guided-btn" data-endpoint="risk-premium" onclick="selectService('risk-premium')">Premium Risk Scan <span class="guided-price">$0.05</span></button>
         <button class="guided-btn" data-endpoint="counterparties" onclick="selectService('counterparties')">Counterparties <span class="guided-price">$0.10</span></button>
         <button class="guided-btn" data-endpoint="network-map" onclick="selectService('network-map')">Network Map <span class="guided-price">$0.10</span></button>
-        <button class="guided-btn" data-endpoint="health" onclick="selectService('health')">Full Health <span class="guided-price">$0.50</span></button>
-        <button class="guided-btn" data-endpoint="alerts" onclick="selectService('alerts')">Alerts <span class="guided-price">$2.00</span></button>
+        <button class="guided-btn" data-endpoint="health" onclick="selectService('health')">Full Health Check <span class="guided-price">$0.50</span></button>
+        <button class="guided-btn" data-endpoint="alerts" onclick="selectService('alerts')">Live Alerts <span class="guided-price">$2.00</span></button>
         <button class="guided-btn" data-endpoint="optimize" onclick="selectService('optimize')">Optimize <span class="guided-price">$5.00</span></button>
-        <button class="guided-btn" data-endpoint="retry" onclick="selectService('retry')">Retry Txns <span class="guided-price">$10.00</span></button>
-        <button class="guided-btn" data-endpoint="protect" onclick="selectService('protect')">Full Protect <span class="guided-price">$25.00</span></button>
+        <button class="guided-btn" data-endpoint="retry" onclick="selectService('retry')">Retry Failed Txns <span class="guided-price">$10.00</span></button>
+        <button class="guided-btn" data-endpoint="protect" onclick="selectService('protect')">Agent Protect <span class="guided-price">$25.00</span></button>
       </div>
       <div class="intent-row">
-        <input type="text" id="intent-input" placeholder="Or describe what you need... e.g. 'is this wallet safe?'" onkeydown="if(event.key==='Enter') handleIntent()" />
+        <input type="text" id="intent-input" placeholder="Diagnose an agent, check a wallet, or describe what you need..." onkeydown="if(event.key==='Enter') handleIntent()" />
         <button class="chat-send" onclick="handleIntent()">GO ▶</button>
       </div>
     </div>
@@ -1002,7 +1002,7 @@
     <div class="chat-messages" id="chat-messages">
       <div class="msg assistant">
         <div class="msg-avatar">AI</div>
-        <div class="msg-content">Analysis complete. Ask me anything about your wallet health report — I can explain scores, suggest improvements, or dig into specific issues.</div>
+        <div class="msg-content">Analysis complete. Ask me anything about this health report — I can explain scores, suggest improvements, or dig into specific issues.</div>
       </div>
     </div>
     <div id="chat-suggestions" style="padding:0.5rem 1rem 0; display:flex; flex-wrap:wrap; gap:0.5rem"></div>
@@ -1038,17 +1038,17 @@
         <div class="endpoint-card" data-endpoint="network-map" data-price="0.10" data-path="/network-map" onclick="selectEndpoint(this)">
           <div class="ep-price">$0.10</div>
           <div class="ep-name">/network-map</div>
-          <div class="ep-desc">Wallet Network Map — funding, deployer & multisig links via Nansen</div>
+          <div class="ep-desc">Network Map — funding, deployer & multisig links via Nansen</div>
         </div>
         <div class="endpoint-card" data-endpoint="health" data-price="0.50" data-path="/health" onclick="selectEndpoint(this)">
           <div class="ep-price">$0.50</div>
           <div class="ep-name">/health</div>
-          <div class="ep-desc">Full wallet health score with risk analysis</div>
+          <div class="ep-desc">Full health score with risk analysis</div>
         </div>
         <div class="endpoint-card" data-endpoint="alerts" data-price="2.00" data-path="/alerts/subscribe" onclick="selectEndpoint(this)">
           <div class="ep-price">$2.00</div>
           <div class="ep-name">/alerts</div>
-          <div class="ep-desc">Subscribe to real-time wallet alerts</div>
+          <div class="ep-desc">Subscribe to real-time alerts</div>
         </div>
         <div class="endpoint-card" data-endpoint="optimize" data-price="5.00" data-path="/optimize" onclick="selectEndpoint(this)">
           <div class="ep-price">$5.00</div>
@@ -1063,7 +1063,7 @@
         <div class="endpoint-card" data-endpoint="protect" data-price="25.00" data-path="/agent/protect" onclick="selectEndpoint(this)">
           <div class="ep-price">$25.00</div>
           <div class="ep-name">/protect</div>
-          <div class="ep-desc">Full agent protection suite</div>
+          <div class="ep-desc">Full protection suite for autonomous agents</div>
         </div>
       </div>
     </div>
@@ -1137,7 +1137,7 @@
       showToast('Selected: /' + intent);
       input.value = '';
     } else {
-      showToast('Try: "check risk", "optimize gas", "monitor wallet"');
+      showToast('Try: "check risk", "optimize gas", "monitor agent"');
     }
   }
 
@@ -1467,7 +1467,7 @@
           verdict: adjustedRisk >= 75 ? 'Critical — flagged interactions and heavy losses detected'
                  : adjustedRisk >= 50 ? 'High — elevated failure rate with contract reverts detected'
                  : adjustedRisk >= 25 ? 'Medium — some concerning patterns but generally stable'
-                 : 'Low — wallet operating normally with strong track record',
+                 : 'Low — operating normally with strong track record',
           nansen_labels: nansenByMode[testMode] || nansenByMode['TEST-ELITE'],
           nansen_available: true,
           ...pnl,
@@ -1585,7 +1585,7 @@
 
       if (res.status === 402) {
         termAppend('t-info', 'STATUS: 402 — Payment required, initiating x402 flow...');
-        termAppend('t-dim', 'NOTE: Full payment flow requires x402-compatible wallet client');
+        termAppend('t-dim', 'NOTE: Full payment flow requires x402-compatible client');
         termAppend('t-dim', 'For agents: use x402 Python/TS SDK to auto-pay');
         termAppend('t-dim', 'Payment details: ' + (res.headers.get('payment-required') || 'see response body'));
         btn.disabled = false;
@@ -1760,7 +1760,7 @@
       const wallets = data.related_wallets ?? [];
       body.innerHTML = `
         <div style="margin-bottom:1rem">
-          <div style="font-family:var(--mono); font-size:0.6rem; letter-spacing:0.2em; color:var(--text-dim); margin-bottom:0.25rem">// WALLET NETWORK MAP</div>
+          <div style="font-family:var(--mono); font-size:0.6rem; letter-spacing:0.2em; color:var(--text-dim); margin-bottom:0.25rem">// NETWORK MAP</div>
           <div style="display:flex; gap:2rem; font-family:var(--mono); font-size:0.75rem; margin-bottom:0.75rem">
             <span style="color:var(--cyan)"><span style="color:var(--text-dim)">Related Wallets:</span> ${wallets.length}</span>
             <span style="color:var(--cyan)"><span style="color:var(--text-dim)">Chain:</span> ${data.chain ?? 'ethereum'}</span>
@@ -1836,7 +1836,7 @@
     // Milestone toasts
     if (isFirstEver) showToast('FIRST SCAN COMPLETE');
     if ((tier === 'HEALTHY' || tier === 'ELITE') && !prevBestTier) {
-      setTimeout(() => showToast('WALLET STATUS: HEALTHY ACHIEVED', true), isFirstEver ? 3200 : 0);
+      setTimeout(() => showToast('STATUS: HEALTHY ACHIEVED', true), isFirstEver ? 3200 : 0);
     }
 
     let html = '';
@@ -1944,8 +1944,8 @@
     const chatMsg = document.querySelector('#chat-messages .msg.assistant .msg-content');
     if (chatMsg) {
       chatMsg.textContent = isElite
-        ? 'Outstanding wallet health! Your score puts you in the top tier. Run /alerts ($2 USDC) to maintain this status with automated monitoring.'
-        : 'Analysis complete. Ask me anything about your wallet health report \u2014 I can explain scores, suggest improvements, or dig into specific issues.';
+        ? 'Outstanding health score! Top tier performance. Run /alerts ($2 USDC) to maintain this status with automated monitoring.'
+        : 'Analysis complete. Ask me anything about this health report \u2014 I can explain scores, suggest improvements, or dig into specific issues.';
     }
 
     renderSuggestions();
