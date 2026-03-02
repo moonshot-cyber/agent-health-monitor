@@ -364,6 +364,17 @@ class PnlSummary(BaseModel):
     traded_times: int = 0
     top_tokens: list[PnlTokenSummary] = []
 
+class OperationalHealth(BaseModel):
+    tx_failure_rate_1hr: float = 0.0
+    tx_failure_rate_24hr: float = 0.0
+    total_txs_1hr: int = 0
+    total_txs_24hr: int = 0
+    nonce_gaps_detected: bool = False
+    volume_anomaly: bool = False
+    health_status: str = "unknown"  # healthy, degraded, critical, unknown
+    health_detail: str = ""
+
+
 class PremiumRiskResponse(BaseModel):
     risk_score: int
     risk_level: str
@@ -372,6 +383,7 @@ class PremiumRiskResponse(BaseModel):
     nansen_available: bool
     pnl_summary: Optional[PnlSummary] = None
     pnl_available: bool = False
+    operational_health: Optional[OperationalHealth] = None
 
 
 # -- Nansen Helper -----------------------------------------------------------
@@ -616,6 +628,145 @@ async def fetch_nansen_related_wallets(address: str, chain: str = "ethereum") ->
     except Exception as e:
         logging.warning("Nansen related-wallets call failed: %s", e, exc_info=True)
         return None
+
+
+# -- Transaction Failure Metrics (Operational Health) -------------------------
+
+def get_tx_failure_metrics(address: str, transactions: list[dict]) -> OperationalHealth:
+    """Calculate transaction failure metrics from Basescan transaction list.
+
+    Analyses recent transactions to determine operational health based on
+    revert rates, nonce gaps, and volume anomalies.
+    """
+    if not transactions:
+        return OperationalHealth(
+            health_status="unknown",
+            health_detail="Insufficient transaction history",
+        )
+
+    now_ts = datetime.now(timezone.utc).timestamp()
+    one_hour_ago = now_ts - 3600
+    twenty_four_hours_ago = now_ts - 86400
+
+    # Filter to outgoing transactions from this address
+    outgoing = [
+        tx for tx in transactions
+        if tx.get("from", "").lower() == address.lower()
+    ]
+
+    if not outgoing:
+        return OperationalHealth(
+            health_status="unknown",
+            health_detail="No outgoing transactions found",
+        )
+
+    # Split into time windows
+    txs_1hr = []
+    txs_24hr = []
+    for tx in outgoing:
+        try:
+            tx_ts = int(tx.get("timeStamp", 0))
+        except (ValueError, TypeError):
+            continue
+        if tx_ts >= one_hour_ago:
+            txs_1hr.append(tx)
+        if tx_ts >= twenty_four_hours_ago:
+            txs_24hr.append(tx)
+
+    # Count failures: isError == "1" or txreceipt_status == "0"
+    def is_failed(tx: dict) -> bool:
+        return tx.get("isError") == "1" or tx.get("txreceipt_status") == "0"
+
+    failed_1hr = sum(1 for tx in txs_1hr if is_failed(tx))
+    failed_24hr = sum(1 for tx in txs_24hr if is_failed(tx))
+
+    total_1hr = len(txs_1hr)
+    total_24hr = len(txs_24hr)
+
+    rate_1hr = (failed_1hr / total_1hr) if total_1hr > 0 else 0.0
+    rate_24hr = (failed_24hr / total_24hr) if total_24hr > 0 else 0.0
+
+    # Nonce gap detection: check for gaps in the nonce sequence
+    nonce_gaps = False
+    if len(outgoing) >= 2:
+        nonces = []
+        for tx in outgoing:
+            try:
+                nonces.append(int(tx.get("nonce", 0)))
+            except (ValueError, TypeError):
+                continue
+        if nonces:
+            nonces_sorted = sorted(set(nonces))
+            if len(nonces_sorted) >= 2:
+                expected_count = nonces_sorted[-1] - nonces_sorted[0] + 1
+                if expected_count > len(nonces_sorted):
+                    nonce_gaps = True
+
+    # Volume anomaly: compare last-hour tx rate to historical average
+    volume_anomaly = False
+    if len(outgoing) >= 10:
+        try:
+            first_ts = int(outgoing[0].get("timeStamp", 0))
+            last_ts = int(outgoing[-1].get("timeStamp", 0))
+            history_span_hrs = max((last_ts - first_ts) / 3600, 1.0)
+            avg_txs_per_hr = len(outgoing) / history_span_hrs
+            if avg_txs_per_hr > 0:
+                # Spike: >3x average, or drop: <0.1x average (with at least
+                # 1hr of history and non-trivial average)
+                if total_1hr > avg_txs_per_hr * 3:
+                    volume_anomaly = True
+                elif avg_txs_per_hr >= 1.0 and total_1hr < avg_txs_per_hr * 0.1:
+                    volume_anomaly = True
+        except (ValueError, TypeError):
+            pass
+
+    # Determine health status
+    details = []
+    if total_1hr == 0 and total_24hr == 0:
+        health_status = "unknown"
+        health_detail = "No recent transactions to evaluate"
+    else:
+        if rate_1hr > 0.20 or rate_24hr > 0.20:
+            health_status = "critical"
+            if rate_1hr > 0.20:
+                details.append(f"{rate_1hr:.0%} revert rate in last hour")
+            if rate_24hr > 0.20:
+                details.append(f"{rate_24hr:.0%} revert rate in last 24 hours")
+        elif rate_1hr > 0.05 or rate_24hr > 0.05 or nonce_gaps:
+            health_status = "degraded"
+            if rate_1hr > 0.05:
+                details.append(f"{rate_1hr:.0%} revert rate in last hour")
+            if rate_24hr > 0.05:
+                details.append(f"{rate_24hr:.0%} revert rate in last 24 hours")
+            if nonce_gaps:
+                details.append("nonce gaps detected")
+        else:
+            health_status = "healthy"
+
+        # Upgrade to critical if volume anomaly + high reverts
+        if volume_anomaly and (rate_1hr > 0.05 or rate_24hr > 0.05):
+            health_status = "critical"
+            details.append("transaction volume anomaly with elevated reverts")
+        elif volume_anomaly:
+            if health_status == "healthy":
+                health_status = "degraded"
+            details.append("transaction volume anomaly detected")
+
+        if health_status == "healthy":
+            health_detail = "Operations normal — low revert rate across all windows"
+        else:
+            health_detail = "; ".join(details) if details else f"{health_status} operational health"
+
+    return OperationalHealth(
+        tx_failure_rate_1hr=round(rate_1hr, 4),
+        tx_failure_rate_24hr=round(rate_24hr, 4),
+        total_txs_1hr=total_1hr,
+        total_txs_24hr=total_24hr,
+        nonce_gaps_detected=nonce_gaps,
+        volume_anomaly=volume_anomaly,
+        health_status=health_status,
+        health_detail=health_detail,
+    )
 
 
 # -- Alert Models & Store ----------------------------------------------------
@@ -1281,8 +1432,9 @@ x402_routes = {
         ],
         mime_type="application/json",
         description=(
-            "Premium risk score enriched with Nansen wallet intelligence labels. "
-            "Includes smart money tags, entity identification, and behavioral signals."
+            "Premium risk score enriched with Nansen wallet intelligence labels, "
+            "PnL profitability summary, and operational health metrics "
+            "(transaction failure rates, nonce gaps, volume anomalies)."
         ),
     ),
     "GET /counterparties/*": RouteConfig(
@@ -1475,7 +1627,7 @@ async def api_info():
         "network": "Base L2",
         "endpoints": {
             "GET /risk/{address}": f"{RISK_PRICE} USDC — quick risk score for pre-flight checks",
-            "GET /risk/premium/{address}": f"{PREMIUM_RISK_PRICE} USDC — premium risk score with Nansen labels + PnL profitability summary",
+            "GET /risk/premium/{address}": f"{PREMIUM_RISK_PRICE} USDC — premium risk score with Nansen labels, PnL summary + operational health (tx failure rate)",
             "GET /counterparties/{address}": f"{COUNTERPARTY_PRICE} USDC — top counterparties enriched with Nansen labels",
             "GET /network-map/{address}": f"{NETWORK_MAP_PRICE} USDC — related wallets (funders, deployers, multisig) with Nansen labels",
             "GET /health/{address}": f"{PRICE} USDC — wallet health diagnosis",
@@ -1633,14 +1785,17 @@ async def up():
 @app.get("/risk/premium/{address}", response_model=PremiumRiskResponse)
 async def get_premium_risk_score(address: str):
     """
-    Premium risk score enriched with Nansen wallet intelligence and PnL data.
+    Premium risk score enriched with Nansen wallet intelligence, PnL data,
+    and operational health metrics (transaction failure rate analysis).
 
     Requires x402 payment ($0.05 USDC on Base) OR valid X-Internal-Key header.
 
     Returns a 0-100 risk score plus Nansen smart money tags,
-    entity labels, behavioral signals, and PnL summary for the wallet.
+    entity labels, behavioral signals, PnL summary, and operational
+    health (1hr/24hr revert rates, nonce gaps, volume anomalies).
     PnL data adjusts the risk score: profitable wallets get up to -10,
-    unprofitable wallets get up to +10.
+    unprofitable wallets get up to +10. Operational health adjusts:
+    degraded +5, critical +10.
     """
     if not ADDRESS_RE.match(address):
         raise HTTPException(
@@ -1705,7 +1860,16 @@ async def get_premium_risk_score(address: str):
             top_tokens=top_tokens,
         )
 
-    # Recompute risk level after PnL adjustment
+    # Operational health from transaction failure metrics
+    op_health = get_tx_failure_metrics(address, transactions)
+
+    # Adjust risk score based on operational health
+    if op_health.health_status == "critical":
+        risk_score = min(100, risk_score + 10)
+    elif op_health.health_status == "degraded":
+        risk_score = min(100, risk_score + 5)
+
+    # Recompute risk level after PnL + operational health adjustments
     if risk_score >= 75:
         risk_level = "CRITICAL"
     elif risk_score >= 50:
@@ -1732,6 +1896,8 @@ async def get_premium_risk_score(address: str):
         signals.append("contract reverts")
     if health.estimated_monthly_waste_usd > 50:
         signals.append("significant gas waste")
+    if op_health.health_status in ("degraded", "critical"):
+        signals.append(f"operational health {op_health.health_status}")
 
     if health.total_transactions == 0:
         verdict = "No transaction history found"
@@ -1760,6 +1926,7 @@ async def get_premium_risk_score(address: str):
         nansen_available=nansen_available,
         pnl_summary=pnl_summary,
         pnl_available=pnl_available,
+        operational_health=op_health,
     )
 
 

@@ -1147,7 +1147,8 @@
   // ─── EXECUTE ───
   // ─── TEST MODE ───
   const TEST_MODES = {
-    'TEST-ELITE': 92, 'TEST-HEALTHY': 76, 'TEST-ATRISK': 58, 'TEST-CRITICAL': 35
+    'TEST-ELITE': 92, 'TEST-HEALTHY': 76, 'TEST-ATRISK': 58, 'TEST-CRITICAL': 35,
+    'TEST-MODERATE': 65, 'TEST-NEW': 85
   };
 
   function mockResult(score) {
@@ -1266,6 +1267,28 @@
               ],
             },
           },
+          'TEST-MODERATE': {
+            pnl_available: true,
+            pnl_summary: {
+              realized_pnl_usd: 2100, realized_pnl_percent: 3.8, win_rate: 48.0,
+              traded_token_count: 12, traded_times: 680,
+              top_tokens: [
+                { token_symbol: 'ETH', chain: 'ethereum', realized_pnl: 1500, realized_roi: 5.2 },
+                { token_symbol: 'OP', chain: 'optimism', realized_pnl: 800, realized_roi: 8.1 },
+                { token_symbol: 'DOGE', chain: 'ethereum', realized_pnl: -200, realized_roi: -12.0 },
+              ],
+            },
+          },
+          'TEST-NEW': {
+            pnl_available: true,
+            pnl_summary: {
+              realized_pnl_usd: 50, realized_pnl_percent: 0.5, win_rate: 66.7,
+              traded_token_count: 2, traded_times: 3,
+              top_tokens: [
+                { token_symbol: 'ETH', chain: 'base', realized_pnl: 50, realized_roi: 0.5 },
+              ],
+            },
+          },
         };
         const nansenByMode = {
           'TEST-ELITE': [
@@ -1285,18 +1308,69 @@
             { label: 'Flagged Address', tag: 'flagged', entity: null },
             { label: 'Mixer User', tag: 'mixer', entity: 'Tornado Cash' },
           ],
+          'TEST-MODERATE': [
+            { label: 'Active Trader', tag: 'trader', entity: null },
+            { label: 'Bridge User', tag: 'bridge', entity: null },
+          ],
+          'TEST-NEW': [
+            { label: 'New Wallet', tag: 'new', entity: null },
+          ],
+        };
+        const opHealthByMode = {
+          'TEST-ELITE': {
+            tx_failure_rate_1hr: 0.02, tx_failure_rate_24hr: 0.01,
+            total_txs_1hr: 45, total_txs_24hr: 380,
+            nonce_gaps_detected: false, volume_anomaly: false,
+            health_status: 'healthy', health_detail: 'Operations normal — low revert rate across all windows',
+          },
+          'TEST-HEALTHY': {
+            tx_failure_rate_1hr: 0.03, tx_failure_rate_24hr: 0.02,
+            total_txs_1hr: 12, total_txs_24hr: 95,
+            nonce_gaps_detected: false, volume_anomaly: false,
+            health_status: 'healthy', health_detail: 'Operations normal — low revert rate across all windows',
+          },
+          'TEST-ATRISK': {
+            tx_failure_rate_1hr: 0.08, tx_failure_rate_24hr: 0.06,
+            total_txs_1hr: 30, total_txs_24hr: 200,
+            nonce_gaps_detected: false, volume_anomaly: false,
+            health_status: 'degraded', health_detail: '8% revert rate in last hour',
+          },
+          'TEST-CRITICAL': {
+            tx_failure_rate_1hr: 0.35, tx_failure_rate_24hr: 0.22,
+            total_txs_1hr: 50, total_txs_24hr: 420,
+            nonce_gaps_detected: true, volume_anomaly: true,
+            health_status: 'critical', health_detail: '35% revert rate in last hour; nonce gaps detected; transaction volume anomaly with elevated reverts',
+          },
+          'TEST-MODERATE': {
+            tx_failure_rate_1hr: 0.12, tx_failure_rate_24hr: 0.07,
+            total_txs_1hr: 25, total_txs_24hr: 180,
+            nonce_gaps_detected: false, volume_anomaly: false,
+            health_status: 'degraded', health_detail: '12% revert rate in last hour; 7% revert rate in last 24 hours',
+          },
+          'TEST-NEW': {
+            tx_failure_rate_1hr: 0.0, tx_failure_rate_24hr: 0.0,
+            total_txs_1hr: 1, total_txs_24hr: 3,
+            nonce_gaps_detected: false, volume_anomaly: false,
+            health_status: 'healthy', health_detail: 'Operations normal — low revert rate across all windows',
+          },
         };
         const pnl = pnlByMode[testMode] || pnlByMode['TEST-ELITE'];
+        const opHealth = opHealthByMode[testMode] || opHealthByMode['TEST-ELITE'];
+        // Apply operational health risk adjustment (same logic as backend)
+        let adjustedRisk = riskScore;
+        if (opHealth.health_status === 'critical') adjustedRisk = Math.min(100, adjustedRisk + 10);
+        else if (opHealth.health_status === 'degraded') adjustedRisk = Math.min(100, adjustedRisk + 5);
         data = {
-          risk_score: riskScore,
-          risk_level: riskScore >= 75 ? 'CRITICAL' : riskScore >= 50 ? 'HIGH' : riskScore >= 25 ? 'MEDIUM' : 'LOW',
-          verdict: riskScore >= 75 ? 'Critical — flagged interactions and heavy losses detected'
-                 : riskScore >= 50 ? 'High — elevated failure rate with contract reverts detected'
-                 : riskScore >= 25 ? 'Medium — some concerning patterns but generally stable'
+          risk_score: adjustedRisk,
+          risk_level: adjustedRisk >= 75 ? 'CRITICAL' : adjustedRisk >= 50 ? 'HIGH' : adjustedRisk >= 25 ? 'MEDIUM' : 'LOW',
+          verdict: adjustedRisk >= 75 ? 'Critical — flagged interactions and heavy losses detected'
+                 : adjustedRisk >= 50 ? 'High — elevated failure rate with contract reverts detected'
+                 : adjustedRisk >= 25 ? 'Medium — some concerning patterns but generally stable'
                  : 'Low — wallet operating normally with strong track record',
           nansen_labels: nansenByMode[testMode] || nansenByMode['TEST-ELITE'],
           nansen_available: true,
           ...pnl,
+          operational_health: opHealth,
         };
       } else if (selectedEndpoint.name === 'counterparties') {
         const cpByMode = {
@@ -1511,6 +1585,26 @@
           </div>`;
         })() : r.pnl_available === false ? `
           <div style="font-family:var(--mono); font-size:0.65rem; color:var(--text-dim); margin-bottom:1rem; opacity:0.6">// PnL enrichment unavailable</div>` : ''}
+        ${r.operational_health ? (() => {
+          const oh = r.operational_health;
+          const ohColor = oh.health_status === 'healthy' ? 'var(--green, #00ff88)' : oh.health_status === 'degraded' ? 'var(--amber, #ffaa00)' : oh.health_status === 'critical' ? 'var(--red, #ff3355)' : 'var(--text-dim)';
+          const ohBorder = oh.health_status === 'healthy' ? 'var(--green-dim, #004d2a)' : oh.health_status === 'degraded' ? 'rgba(255,170,0,0.3)' : oh.health_status === 'critical' ? 'rgba(255,51,85,0.3)' : 'var(--border)';
+          return `
+          <div style="margin-bottom:1rem; border:1px solid ${ohBorder}; padding:0.75rem; background:rgba(0,0,0,0.2)">
+            <div style="font-family:var(--mono); font-size:0.6rem; letter-spacing:0.2em; color:var(--text-dim); margin-bottom:0.5rem">// OPERATIONAL HEALTH</div>
+            <div style="display:flex; align-items:center; gap:0.75rem; margin-bottom:0.5rem">
+              <span style="font-family:var(--mono); font-size:0.85rem; font-weight:bold; color:${ohColor}; text-transform:uppercase; letter-spacing:0.1em">${oh.health_status}</span>
+              <span style="width:8px; height:8px; border-radius:50%; background:${ohColor}; box-shadow:0 0 6px ${ohColor}; display:inline-block"></span>
+            </div>
+            <div style="font-family:var(--mono); font-size:0.7rem; color:var(--text); margin-bottom:0.75rem; border-left:2px solid ${ohColor}; padding-left:0.5rem">${oh.health_detail}</div>
+            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(140px, 1fr)); gap:0.5rem; font-family:var(--mono); font-size:0.7rem">
+              <div><span style="color:var(--text-dim)">Revert 1hr:</span> <span style="color:${oh.tx_failure_rate_1hr > 0.2 ? 'var(--red)' : oh.tx_failure_rate_1hr > 0.05 ? 'var(--amber)' : 'var(--green)'}">${(oh.tx_failure_rate_1hr * 100).toFixed(1)}%</span> <span style="color:var(--text-dim)">(${oh.total_txs_1hr} txs)</span></div>
+              <div><span style="color:var(--text-dim)">Revert 24hr:</span> <span style="color:${oh.tx_failure_rate_24hr > 0.2 ? 'var(--red)' : oh.tx_failure_rate_24hr > 0.05 ? 'var(--amber)' : 'var(--green)'}">${(oh.tx_failure_rate_24hr * 100).toFixed(1)}%</span> <span style="color:var(--text-dim)">(${oh.total_txs_24hr} txs)</span></div>
+              <div><span style="color:var(--text-dim)">Nonce Gaps:</span> <span style="color:${oh.nonce_gaps_detected ? 'var(--amber)' : 'var(--green)'}">${oh.nonce_gaps_detected ? 'YES' : 'No'}</span></div>
+              <div><span style="color:var(--text-dim)">Vol Anomaly:</span> <span style="color:${oh.volume_anomaly ? 'var(--red)' : 'var(--green)'}">${oh.volume_anomaly ? 'YES' : 'No'}</span></div>
+            </div>
+          </div>`;
+        })() : ''}
         <button class="toggle-raw" onclick="toggleRaw()">▶ VIEW RAW JSON</button>
         <pre class="raw-json" id="raw-json">${JSON.stringify(data, null, 2)}</pre>
       `;
