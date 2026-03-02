@@ -14,6 +14,7 @@
 <meta name="twitter:title" content="Agent Health Monitor — Diagnostics for the Agent Economy">
 <meta name="twitter:description" content="Pay-per-call blockchain analysis for agents and humans. 9 endpoints from $0.01. No accounts. No subscriptions. Just USDC on Base.">
 <meta name="twitter:image" content="https://raw.githubusercontent.com/moonshot-cyber/agent-health-monitor/master/ahm-banner.png">
+<link rel="icon" type="image/png" href="/static/ahm-logo.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@300;400;500;600;700&family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
 <style>
@@ -109,10 +110,8 @@
   .logo-icon {
     width: 32px;
     height: 32px;
-    border: 1px solid var(--cyan);
-    display: grid;
-    place-items: center;
-    font-size: 0.7rem;
+    border-radius: 50%;
+    object-fit: cover;
     animation: pulse-border 3s ease-in-out infinite;
   }
 
@@ -906,7 +905,7 @@
 <!-- HEADER -->
 <header>
   <div class="logo">
-    <div class="logo-icon">AHM</div>
+    <img class="logo-icon" src="/static/ahm-logo.png" alt="AHM" />
     AGENT HEALTH MONITOR
   </div>
   <div class="status-bar">
