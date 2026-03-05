@@ -1488,6 +1488,56 @@ x402_routes = {
             "PnL profitability summary, and operational health metrics "
             "(transaction failure rates, nonce gaps, volume anomalies)."
         ),
+        extensions={
+            "bazaar": {
+                "info": {
+                    "input": {
+                        "type": "http",
+                        "method": "GET",
+                        "discoverable": True,
+                        "queryParams": {
+                            "address": "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
+                        },
+                    },
+                    "output": {
+                        "type": "json",
+                        "example": {
+                            "risk_score": 35,
+                            "risk_level": "MEDIUM",
+                            "verdict": "Medium - elevated failure rate with contract reverts detected",
+                            "nansen_labels": [
+                                {"label": "Smart Money", "category": "smart_money"},
+                            ],
+                            "nansen_available": True,
+                            "pnl_summary": {
+                                "realized_pnl_usd": 12500.0,
+                                "win_rate": 0.65,
+                                "traded_token_count": 18,
+                            },
+                            "pnl_available": True,
+                            "operational_health": {
+                                "tx_failure_rate_1hr": 0.02,
+                                "tx_failure_rate_24hr": 0.05,
+                                "health_status": "healthy",
+                            },
+                        },
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "risk_score": {"type": "integer", "description": "Risk score 0-100"},
+                                "risk_level": {"type": "string", "description": "CRITICAL, HIGH, MEDIUM, or LOW"},
+                                "verdict": {"type": "string", "description": "One-line risk assessment"},
+                                "nansen_labels": {"type": "array", "description": "Nansen wallet intelligence labels"},
+                                "nansen_available": {"type": "boolean"},
+                                "pnl_summary": {"type": "object", "description": "Profit/loss summary from Nansen"},
+                                "pnl_available": {"type": "boolean"},
+                                "operational_health": {"type": "object", "description": "Tx failure rates and health status"},
+                            },
+                        },
+                    },
+                },
+            },
+        },
     ),
     "GET /counterparties/*": RouteConfig(
         accepts=[
@@ -1503,6 +1553,61 @@ x402_routes = {
             "Know Your Counterparty report showing top wallets and contracts "
             "the address interacts with most, enriched with Nansen labels."
         ),
+        extensions={
+            "bazaar": {
+                "info": {
+                    "input": {
+                        "type": "http",
+                        "method": "GET",
+                        "discoverable": True,
+                        "queryParams": {
+                            "address": "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
+                        },
+                    },
+                    "output": {
+                        "type": "json",
+                        "example": {
+                            "status": "ok",
+                            "address": "0xd8da6bf26964af9d7eed9e03e53415d37aa96045",
+                            "counterparties": [
+                                {
+                                    "address": "0x3fc91a3afd70395cd496c647d5a6cc9d4b2b7fad",
+                                    "label": "Uniswap: Universal Router",
+                                    "interaction_count": 85,
+                                    "volume_usd": 125000.0,
+                                    "last_interaction": "2026-02-20",
+                                },
+                            ],
+                            "total_counterparties": 25,
+                            "nansen_available": True,
+                        },
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "status": {"type": "string"},
+                                "address": {"type": "string", "description": "Queried wallet address"},
+                                "counterparties": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "object",
+                                        "properties": {
+                                            "address": {"type": "string"},
+                                            "label": {"type": "string"},
+                                            "interaction_count": {"type": "integer"},
+                                            "volume_usd": {"type": "number"},
+                                            "last_interaction": {"type": "string"},
+                                        },
+                                    },
+                                    "description": "Top counterparties ranked by interaction count",
+                                },
+                                "total_counterparties": {"type": "integer"},
+                                "nansen_available": {"type": "boolean"},
+                            },
+                        },
+                    },
+                },
+            },
+        },
     ),
     "GET /network-map/*": RouteConfig(
         accepts=[
@@ -1518,6 +1623,62 @@ x402_routes = {
             "Wallet Network Map showing related wallets (first funders, deployers, "
             "multisig co-signers) enriched with Nansen labels."
         ),
+        extensions={
+            "bazaar": {
+                "info": {
+                    "input": {
+                        "type": "http",
+                        "method": "GET",
+                        "discoverable": True,
+                        "queryParams": {
+                            "address": "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
+                            "chain": "ethereum",
+                        },
+                    },
+                    "output": {
+                        "type": "json",
+                        "example": {
+                            "status": "ok",
+                            "address": "0xd8da6bf26964af9d7eed9e03e53415d37aa96045",
+                            "chain": "ethereum",
+                            "related_wallets": [
+                                {
+                                    "address": "0x1234567890abcdef1234567890abcdef12345678",
+                                    "label": "First Funder",
+                                    "relation": "first_funder",
+                                    "chain": "ethereum",
+                                },
+                            ],
+                            "total_related": 5,
+                            "nansen_available": True,
+                        },
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "status": {"type": "string"},
+                                "address": {"type": "string", "description": "Queried wallet address"},
+                                "chain": {"type": "string", "description": "Blockchain queried"},
+                                "related_wallets": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "object",
+                                        "properties": {
+                                            "address": {"type": "string"},
+                                            "label": {"type": "string"},
+                                            "relation": {"type": "string"},
+                                            "chain": {"type": "string"},
+                                        },
+                                    },
+                                    "description": "Related wallets via funding, deployment, or multisig links",
+                                },
+                                "total_related": {"type": "integer"},
+                                "nansen_available": {"type": "boolean"},
+                            },
+                        },
+                    },
+                },
+            },
+        },
     ),
     "GET /risk/*": RouteConfig(
         accepts=[
@@ -1534,6 +1695,36 @@ x402_routes = {
             "Returns a 0-100 risk score and one-line verdict. "
             "Designed for high-volume, low-latency use."
         ),
+        extensions={
+            "bazaar": {
+                "info": {
+                    "input": {
+                        "type": "http",
+                        "method": "GET",
+                        "discoverable": True,
+                        "queryParams": {
+                            "address": "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
+                        },
+                    },
+                    "output": {
+                        "type": "json",
+                        "example": {
+                            "risk_score": 22,
+                            "risk_level": "LOW",
+                            "verdict": "Wallet operating normally with no significant issues detected",
+                        },
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "risk_score": {"type": "integer", "description": "Risk score 0-100 (0=safe, 100=critical)"},
+                                "risk_level": {"type": "string", "description": "CRITICAL, HIGH, MEDIUM, or LOW"},
+                                "verdict": {"type": "string", "description": "One-line human-readable risk assessment"},
+                            },
+                        },
+                    },
+                },
+            },
+        },
     ),
     "GET /retry/[address]": RouteConfig(
         accepts=[
