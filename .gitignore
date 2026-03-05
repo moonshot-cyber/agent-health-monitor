@@ -1,7 +1,12 @@
 __pycache__/
 *.pyc
 .env
+.env.*
+!.env.example
 venv/
 .venv/
 *.csv
 addresses.txt
+*.pem
+*.key
+secrets/

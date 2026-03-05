@@ -21,6 +21,7 @@ Environment variables:
 """
 
 import asyncio
+import hmac
 import logging
 import os
 import re
@@ -29,13 +30,16 @@ from contextlib import asynccontextmanager
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta, timezone
 from functools import partial
+from ipaddress import ip_address
 from pathlib import Path
 from typing import Optional
+from urllib.parse import urlparse
 
 import httpx as httpx_client
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
 from x402.http import FacilitatorConfig, HTTPFacilitatorClient, PaymentOption
@@ -83,8 +87,7 @@ COUNTERPARTY_PRICE = os.getenv("COUNTERPARTY_PRICE_USD", "$0.10")
 NETWORK_MAP_PRICE = os.getenv("NETWORK_MAP_PRICE_USD", "$0.10")
 NANSEN_PAYER_PRIVATE_KEY = os.getenv("NANSEN_PAYER_PRIVATE_KEY", "")
 NETWORK = os.getenv("NETWORK", "eip155:8453")  # Base mainnet
-_DEFAULT_COUPONS = "TEST-ELITE,EARLY001,EARLY002,EARLY003,REDDIT50,SUBSTACK1"
-VALID_COUPONS = set(c.strip().upper() for c in os.getenv("VALID_COUPONS", _DEFAULT_COUPONS).split(",") if c.strip())
+VALID_COUPONS = set(c.strip().upper() for c in os.getenv("VALID_COUPONS", "").split(",") if c.strip())
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 PORT = int(os.getenv("PORT", "4021"))
 
@@ -94,9 +97,8 @@ INTERNAL_API_KEY = os.getenv("INTERNAL_API_KEY")
 if not INTERNAL_API_KEY:
     INTERNAL_API_KEY = secrets.token_urlsafe(32)
     logging.warning(
-        "INTERNAL_API_KEY not set. Generated random key: %s. "
-        "Set INTERNAL_API_KEY in .env to persist across restarts.",
-        INTERNAL_API_KEY
+        "INTERNAL_API_KEY not set. Generated random key (not shown in logs). "
+        "Set INTERNAL_API_KEY in .env to persist across restarts."
     )
 
 ADDRESS_RE = re.compile(r"^0x[0-9a-fA-F]{40}$")
@@ -838,6 +840,32 @@ def _sub_to_status(sub: Subscription) -> SubscriptionStatus:
     )
 
 
+def _is_safe_webhook_url(url: str) -> bool:
+    """Reject URLs targeting private/internal networks (SSRF prevention)."""
+    try:
+        parsed = urlparse(url)
+        if parsed.scheme not in ("http", "https"):
+            return False
+        hostname = parsed.hostname
+        if not hostname:
+            return False
+        # Block cloud metadata, loopback, and private ranges
+        try:
+            addr = ip_address(hostname)
+            if addr.is_private or addr.is_loopback or addr.is_link_local or addr.is_reserved:
+                return False
+        except ValueError:
+            # hostname is a domain name, not an IP — block obvious patterns
+            lower = hostname.lower()
+            if lower in ("localhost", "metadata.google.internal"):
+                return False
+            if lower.endswith(".internal") or lower.endswith(".local"):
+                return False
+        return True
+    except Exception:
+        return False
+
+
 async def send_webhook(sub: Subscription, alerts: list[dict]):
     """Send alert via webhook. Fire-and-forget."""
     if not sub.webhook_url:
@@ -1096,6 +1124,30 @@ app = FastAPI(
 )
 
 
+# -- CORS -------------------------------------------------------------------
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Public API — allow any origin
+    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
+    allow_headers=["*"],
+    expose_headers=["X-Request-Id"],
+)
+
+
+# -- Security Headers Middleware --------------------------------------------
+
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    if "railway.app" in request.headers.get("host", ""):
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    return response
+
+
 # -- Custom Middleware to Bypass x402 on Internal Calls ----------------------
 
 class InternalKeyBypassMiddleware:
@@ -1120,7 +1172,7 @@ class InternalKeyBypassMiddleware:
         headers = dict(scope.get("headers", []))
         internal_key = headers.get(b"x-internal-key", b"").decode()
 
-        if internal_key and internal_key == INTERNAL_API_KEY:
+        if internal_key and hmac.compare_digest(internal_key, INTERNAL_API_KEY):
             # Valid key — skip x402 by jumping past PaymentMiddlewareASGI
             # to the inner app it wraps (self.app.app)
             inner_app = getattr(self.app, "app", self.app)
@@ -1560,8 +1612,11 @@ STATIC_DIR = Path(__file__).parent / "static"
 
 @app.get("/")
 async def root():
-    """Serve the landing page."""
-    return FileResponse(STATIC_DIR / "index.html")
+    """Serve the landing page or redirect to docs."""
+    index = STATIC_DIR / "index.html"
+    if index.is_file():
+        return FileResponse(index)
+    return JSONResponse({"service": "Agent Health Monitor", "docs": "/docs", "info": "/api/info"})
 
 
 @app.get("/.well-known/x402")
@@ -1643,9 +1698,32 @@ async def api_info():
     }
 
 
+# Coupon validation rate limiting: 5 attempts per IP per minute
+_coupon_rate: dict[str, list[float]] = {}
+COUPON_RATE_LIMIT = 5
+COUPON_RATE_WINDOW = 60  # seconds
+
+
+def _check_coupon_rate(ip: str):
+    import time
+    now = time.time()
+    timestamps = _coupon_rate.get(ip, [])
+    timestamps = [t for t in timestamps if now - t < COUPON_RATE_WINDOW]
+    if len(timestamps) >= COUPON_RATE_LIMIT:
+        raise HTTPException(status_code=429, detail="Too many coupon validation attempts")
+    timestamps.append(now)
+    _coupon_rate[ip] = timestamps
+    # Periodic cleanup
+    if len(_coupon_rate) > 1000:
+        stale = [k for k, v in _coupon_rate.items() if not v or now - v[-1] > COUPON_RATE_WINDOW]
+        for k in stale:
+            del _coupon_rate[k]
+
+
 @app.get("/coupon/validate/{code}")
-async def validate_coupon(code: str):
+async def validate_coupon(code: str, request: Request):
     """Check if a coupon code is valid."""
+    _check_coupon_rate(request.client.host)
     return {"valid": code.strip().upper() in VALID_COUPONS}
 
 
@@ -1720,7 +1798,10 @@ CHAT_RATE_LIMIT = 10
 CHAT_RATE_WINDOW = 3600  # seconds
 
 
+_chat_rate_cleanup_counter = 0
+
 def _check_chat_rate(ip: str):
+    global _chat_rate_cleanup_counter
     import time
     now = time.time()
     timestamps = _chat_rate.get(ip, [])
@@ -1729,6 +1810,13 @@ def _check_chat_rate(ip: str):
         raise HTTPException(status_code=429, detail="Rate limit exceeded")
     timestamps.append(now)
     _chat_rate[ip] = timestamps
+    # Periodic eviction: every 100 calls, purge stale IPs
+    _chat_rate_cleanup_counter += 1
+    if _chat_rate_cleanup_counter >= 100:
+        _chat_rate_cleanup_counter = 0
+        stale = [k for k, v in _chat_rate.items() if not v or now - v[-1] > CHAT_RATE_WINDOW]
+        for k in stale:
+            del _chat_rate[k]
 
 
 @app.post("/chat")
@@ -2647,6 +2735,9 @@ async def configure_alerts(req: ConfigureRequest):
 
     if req.webhook_type not in ("generic", "slack", "discord"):
         raise HTTPException(status_code=400, detail="webhook_type must be 'generic', 'slack', or 'discord'.")
+
+    if not _is_safe_webhook_url(req.webhook_url):
+        raise HTTPException(status_code=400, detail="Invalid webhook URL. Must be a public https/http URL (no private IPs or internal hosts).")
 
     sub.webhook_url = req.webhook_url
     sub.webhook_type = req.webhook_type
