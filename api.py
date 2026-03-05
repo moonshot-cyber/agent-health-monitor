@@ -1630,12 +1630,21 @@ async def x402_discovery(request: Request):
     # Railway terminates TLS at the proxy — ensure discovery URLs use https
     if base_url.startswith("http://") and "railway.app" in base_url:
         base_url = "https://" + base_url[7:]
+    # Also force https for custom domain behind Railway proxy
+    if base_url.startswith("http://") and request.headers.get("x-forwarded-proto") == "https":
+        base_url = "https://" + base_url[7:]
+
     endpoints = []
+    # x402scan-compatible resources array (flat list of endpoint URLs)
+    resources = []
 
     for route_pattern, config in x402_routes.items():
         parts = route_pattern.split(" ", 1)
         method = parts[0] if len(parts) == 2 else "GET"
         path = parts[1] if len(parts) == 2 else parts[0]
+
+        resource_url = f"{base_url}{path}"
+        resources.append(resource_url)
 
         accepts = config.accepts if isinstance(config.accepts, list) else [config.accepts]
         payment_options = []
@@ -1648,7 +1657,7 @@ async def x402_discovery(request: Request):
             })
 
         endpoint_entry = {
-            "url": f"{base_url}{path}",
+            "url": resource_url,
             "method": method,
             "description": config.description,
             "mime_type": config.mime_type,
@@ -1662,13 +1671,16 @@ async def x402_discovery(request: Request):
 
     return {
         "x402": True,
-        "version": "1.0",
+        "version": 1,
         "service": "Agent Health Monitor",
         "description": (
             "Pay-per-use API that analyzes Base blockchain agent wallets "
             "for transaction failures, gas waste, and optimization opportunities."
         ),
         "facilitator": FACILITATOR_URL,
+        # x402scan v2 discovery: flat resources array for fan-out probing
+        "resources": resources,
+        # Extended endpoint metadata (Bazaar-compatible)
         "endpoints": endpoints,
     }
 
