@@ -13,6 +13,7 @@ Usage:
 import argparse
 import csv
 import math
+import re
 import sys
 import time
 from collections import Counter
@@ -1096,6 +1097,488 @@ Without a key, requests are rate-limited to 1 every 5 seconds.
     if targets:
         print(f"\n[*] {len(targets)} outreach targets identified in {args.output}")
         print(f"[*] Filter CSV by optimization_priority = CRITICAL or HIGH")
+
+
+# -- Agent Wash Analysis Engine -------------------------------------------
+
+BLOCKSCOUT_V2_URL = "https://base.blockscout.com/api/v2"
+
+
+def fetch_tokens_v2(address: str, max_pages: int = 10) -> list[dict]:
+    """Fetch ERC-20 token holdings via Blockscout V2 API with pagination.
+
+    Returns list of token items, each containing 'token' (metadata) and 'value' (balance).
+    The V2 API returns 50 items per page sorted by fiat value descending.
+    """
+    tokens: list[dict] = []
+    url = f"{BLOCKSCOUT_V2_URL}/addresses/{address}/tokens"
+    params = {"type": "ERC-20"}
+
+    for _ in range(max_pages):
+        try:
+            resp = requests.get(url, params=params, timeout=30)
+            resp.raise_for_status()
+            data = resp.json()
+        except (requests.RequestException, ValueError):
+            break
+
+        items = data.get("items", [])
+        tokens.extend(items)
+
+        # Blockscout V2 pagination uses next_page_params
+        next_page = data.get("next_page_params")
+        if not next_page:
+            break
+        params = {"type": "ERC-20", **next_page}
+
+    return tokens
+
+
+_URL_PATTERN = re.compile(r"(https?://|\.com|\.io|\.us|\.xyz|t\.ly|claim|visit)", re.IGNORECASE)
+
+
+def is_spam_token(token: dict) -> tuple[bool, str | None]:
+    """Determine if a token is spam using composite heuristics.
+
+    Args:
+        token: A token dict from Blockscout V2 API (the 'token' sub-object).
+
+    Returns:
+        (is_spam, reason) — True + reason string if spam, False + None otherwise.
+    """
+    name = (token.get("name") or "").lower()
+    symbol = (token.get("symbol") or "").lower()
+
+    # Strong signals — any one is enough
+    if _URL_PATTERN.search(name) or _URL_PATTERN.search(symbol):
+        return True, "URL in token name"
+
+    if len(token.get("name") or "") > 50:
+        return True, "Suspiciously long token name"
+
+    # Medium signals — need 2+ to flag
+    spam_signals = 0
+    reasons: list[str] = []
+
+    holders = token.get("holders_count") or 0
+    if isinstance(holders, str):
+        holders = int(holders) if holders.isdigit() else 0
+    if holders < 100:
+        spam_signals += 1
+        reasons.append(f"Low holder count ({holders})")
+
+    volume = float(token.get("volume_24h") or 0)
+    if volume == 0:
+        spam_signals += 1
+        reasons.append("Zero 24h volume")
+
+    exchange_rate = token.get("exchange_rate")
+    if exchange_rate is None:
+        spam_signals += 1
+        reasons.append("No exchange rate (unlisted)")
+
+    market_cap = float(token.get("circulating_market_cap") or 0)
+    if market_cap == 0:
+        spam_signals += 1
+        reasons.append("Zero market cap")
+
+    if spam_signals >= 2:
+        return True, "; ".join(reasons)
+
+    return False, None
+
+
+@dataclass
+class WashResult:
+    """Full wash scan result for a wallet."""
+    address: str
+    cleanliness_score: int = 100
+    cleanliness_grade: str = "Spotless"
+    total_issues: int = 0
+    issues_by_severity: dict = field(default_factory=lambda: {"high": 0, "medium": 0, "low": 0})
+    dust_tokens: int = 0
+    dust_total_usd: float = 0.0
+    spam_tokens: int = 0
+    spam_token_list: list = field(default_factory=list)
+    gas_efficiency_pct: float = 0.0
+    gas_efficiency_grade: str = "N/A"
+    wasted_gas_usd: float = 0.0
+    failed_tx_count_24hr: int = 0
+    failed_tx_patterns: list = field(default_factory=list)
+    nonce_gaps: int = 0
+    issues: list = field(default_factory=list)
+    recommendations: list = field(default_factory=list)
+    scan_timestamp: str = ""
+    next_wash_recommended: str = "30 days"
+
+
+def _cleanliness_grade(score: int) -> str:
+    """Map cleanliness score to human-readable grade."""
+    if score >= 90:
+        return "Spotless"
+    if score >= 70:
+        return "Clean"
+    if score >= 50:
+        return "Needs Attention"
+    if score >= 30:
+        return "Dirty"
+    return "Critical"
+
+
+def _gas_efficiency_grade(pct: float) -> str:
+    """Map gas efficiency percentage to grade."""
+    if pct > 80:
+        return "Excellent"
+    if pct > 60:
+        return "Good"
+    if pct > 40:
+        return "Fair"
+    return "Poor"
+
+
+def analyze_wash(
+    address: str,
+    tokens: list[dict],
+    transactions: list[dict],
+    eth_price: float,
+) -> WashResult:
+    """Run full wash hygiene analysis on a wallet.
+
+    Args:
+        address: Wallet address (lowercase).
+        tokens: Token list from fetch_tokens_v2().
+        transactions: Transaction list from fetch_transactions().
+        eth_price: Current ETH/USD price.
+
+    Returns:
+        WashResult with cleanliness score, issues, and recommendations.
+    """
+    result = WashResult(
+        address=address,
+        scan_timestamp=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    )
+
+    issues: list[dict] = []
+
+    # ── A) Dust Detection ─────────────────────────────────────────────────
+    dust_count = 0
+    dust_total_usd = 0.0
+    dust_names: list[str] = []
+
+    for item in tokens:
+        tok = item.get("token", {})
+        raw_value = item.get("value", "0")
+        decimals = int(tok.get("decimals") or 18)
+        exchange_rate_str = tok.get("exchange_rate")
+
+        if exchange_rate_str is None:
+            continue  # no price data — skip for dust (handled in spam)
+
+        try:
+            exchange_rate = float(exchange_rate_str)
+        except (ValueError, TypeError):
+            continue
+
+        try:
+            balance = int(raw_value) / (10 ** decimals)
+        except (ValueError, TypeError, OverflowError):
+            continue
+
+        usd_value = balance * exchange_rate
+        if usd_value < 0.01 and usd_value >= 0:
+            dust_count += 1
+            dust_total_usd += usd_value
+            dust_names.append(tok.get("name") or tok.get("symbol") or "Unknown")
+
+    result.dust_tokens = dust_count
+    result.dust_total_usd = round(dust_total_usd, 4)
+
+    if dust_count > 0:
+        severity = "high" if dust_count > 15 else "medium" if dust_count > 5 else "low"
+        issues.append({
+            "category": "dust",
+            "severity": severity,
+            "description": f"{dust_count} dust tokens worth ${dust_total_usd:.4f} total cluttering wallet",
+            "action": f"Clear {dust_count} dust tokens to declutter wallet",
+            "estimated_savings": f"${dust_total_usd:.4f} recoverable" if dust_total_usd > 0.001 else None,
+        })
+
+    # ── B) Spam Token Detection ───────────────────────────────────────────
+    spam_count = 0
+    spam_list: list[dict] = []
+
+    for item in tokens:
+        tok = item.get("token", {})
+        is_spam, reason = is_spam_token(tok)
+        if is_spam:
+            spam_count += 1
+            spam_list.append({
+                "name": tok.get("name") or "Unknown",
+                "symbol": tok.get("symbol") or "???",
+                "reason": reason,
+            })
+
+    result.spam_tokens = spam_count
+    result.spam_token_list = spam_list
+
+    if spam_count > 0:
+        severity = "high" if spam_count > 10 else "medium" if spam_count > 3 else "low"
+        issues.append({
+            "category": "spam",
+            "severity": severity,
+            "description": f"{spam_count} spam tokens detected in wallet",
+            "action": f"{spam_count} spam tokens detected — consider blocking future airdrops",
+            "estimated_savings": None,
+        })
+
+    # ── C) Gas Efficiency Analysis ────────────────────────────────────────
+    outgoing = [
+        tx for tx in transactions
+        if tx.get("from", "").lower() == address.lower()
+    ]
+
+    gas_efficiencies: list[float] = []
+    wasted_gas_wei = 0
+    over_limit_count = 0
+
+    for tx in outgoing:
+        gas_used = int(tx.get("gasUsed") or 0)
+        gas_limit = int(tx.get("gas") or 0)
+        gas_price = int(tx.get("gasPrice") or 0)
+        is_error = tx.get("isError") == "1" or tx.get("txreceipt_status") == "0"
+
+        if gas_limit > 0:
+            eff = gas_used / gas_limit * 100
+            gas_efficiencies.append(eff)
+
+            if gas_limit > 2 * gas_used and gas_used > 0:
+                over_limit_count += 1
+
+        if is_error:
+            wasted_gas_wei += (gas_limit - gas_used) * gas_price
+
+    avg_efficiency = sum(gas_efficiencies) / len(gas_efficiencies) if gas_efficiencies else 0.0
+    result.gas_efficiency_pct = round(avg_efficiency, 1)
+    result.gas_efficiency_grade = _gas_efficiency_grade(avg_efficiency)
+    result.wasted_gas_usd = round(wasted_gas_wei / 1e18 * eth_price, 2)
+
+    if avg_efficiency > 0 and avg_efficiency < 60:
+        severity = "high" if avg_efficiency < 40 else "medium"
+        issues.append({
+            "category": "gas",
+            "severity": severity,
+            "description": f"Gas efficiency at {avg_efficiency:.1f}% — gas limits set too high",
+            "action": f"Reduce gas limits by ~{int(100 - avg_efficiency)}% to save on transaction costs",
+            "estimated_savings": f"~{int(100 - avg_efficiency)}% gas savings" if avg_efficiency < 60 else None,
+        })
+
+    if over_limit_count > 3:
+        issues.append({
+            "category": "gas",
+            "severity": "medium",
+            "description": f"{over_limit_count} transactions used gas limits >2x actual usage",
+            "action": "Use eth_estimateGas with a 15% buffer instead of hardcoded limits",
+            "estimated_savings": None,
+        })
+
+    if result.wasted_gas_usd > 0.01:
+        issues.append({
+            "category": "gas",
+            "severity": "high" if result.wasted_gas_usd > 1.0 else "medium",
+            "description": f"${result.wasted_gas_usd:.2f} wasted on failed transactions",
+            "action": "Add pre-flight simulation (eth_call) to avoid paying for failures",
+            "estimated_savings": f"${result.wasted_gas_usd:.2f} recoverable",
+        })
+
+    # ── D) Failed Transaction Patterns ────────────────────────────────────
+    now_ts = datetime.now(timezone.utc).timestamp()
+    twenty_four_hours_ago = now_ts - 86400
+
+    failed_24hr: list[dict] = []
+    for tx in outgoing:
+        is_error = tx.get("isError") == "1" or tx.get("txreceipt_status") == "0"
+        if not is_error:
+            continue
+        try:
+            tx_ts = int(tx.get("timeStamp", 0))
+        except (ValueError, TypeError):
+            continue
+        if tx_ts >= twenty_four_hours_ago:
+            failed_24hr.append(tx)
+
+    result.failed_tx_count_24hr = len(failed_24hr)
+
+    # Group failed txs by target contract
+    contract_failures: dict[str, int] = {}
+    for tx in failed_24hr:
+        to_addr = (tx.get("to") or "").lower()
+        if to_addr:
+            contract_failures[to_addr] = contract_failures.get(to_addr, 0) + 1
+
+    patterns: list[dict] = []
+    for contract, count in contract_failures.items():
+        if count >= 3:
+            patterns.append({
+                "contract": contract,
+                "failure_count": count,
+                "pattern": "Repeated failures",
+            })
+
+    # Method-specific failure rates
+    method_stats: dict[str, dict] = {}  # method_id -> {total, failed}
+    for tx in outgoing:
+        inp = tx.get("input", "0x")
+        method_id = inp[:10] if len(inp) >= 10 else "0x"
+        if method_id not in method_stats:
+            method_stats[method_id] = {"total": 0, "failed": 0}
+        method_stats[method_id]["total"] += 1
+        is_error = tx.get("isError") == "1" or tx.get("txreceipt_status") == "0"
+        if is_error:
+            method_stats[method_id]["failed"] += 1
+
+    for method_id, stats in method_stats.items():
+        if stats["total"] >= 5:
+            fail_rate = stats["failed"] / stats["total"] * 100
+            if fail_rate > 20:
+                label = KNOWN_SELECTORS.get(method_id, method_id)
+                patterns.append({
+                    "contract": f"method:{method_id}",
+                    "failure_count": stats["failed"],
+                    "pattern": f"Method {label} has {fail_rate:.0f}% failure rate",
+                })
+
+    # Retry storm detection: same to + input within 5 minute window
+    retry_storms = 0
+    for i, tx in enumerate(outgoing):
+        if tx.get("isError") != "1" and tx.get("txreceipt_status") != "0":
+            continue
+        to_addr = (tx.get("to") or "").lower()
+        inp = tx.get("input", "0x")
+        try:
+            tx_ts = int(tx.get("timeStamp", 0))
+        except (ValueError, TypeError):
+            continue
+        for j in range(i + 1, min(i + 20, len(outgoing))):
+            other = outgoing[j]
+            try:
+                other_ts = int(other.get("timeStamp", 0))
+            except (ValueError, TypeError):
+                continue
+            if other_ts - tx_ts > 300:  # 5 minutes
+                break
+            if (other.get("to") or "").lower() == to_addr and other.get("input", "0x") == inp:
+                retry_storms += 1
+                break
+
+    if retry_storms > 0:
+        patterns.append({
+            "contract": "multiple",
+            "failure_count": retry_storms,
+            "pattern": f"Retry storm: {retry_storms} duplicate submissions within 5 minutes",
+        })
+
+    result.failed_tx_patterns = patterns
+
+    if len(failed_24hr) > 0:
+        severity = "high" if len(failed_24hr) > 5 else "medium" if len(failed_24hr) > 2 else "low"
+        issues.append({
+            "category": "failed_tx",
+            "severity": severity,
+            "description": f"{len(failed_24hr)} failed transactions in the last 24 hours",
+            "action": "Review failure reasons and add pre-flight checks",
+            "estimated_savings": None,
+        })
+
+    for p in patterns:
+        if p["pattern"] == "Repeated failures":
+            issues.append({
+                "category": "failed_tx",
+                "severity": "high",
+                "description": f"{p['failure_count']} repeated failures to contract {p['contract'][:10]}...{p['contract'][-4:]}",
+                "action": f"Check integration status with contract {p['contract'][:10]}...{p['contract'][-4:]}",
+                "estimated_savings": None,
+            })
+
+    # ── E) Nonce Gap Detection ────────────────────────────────────────────
+    nonce_gaps, _ = detect_nonce_issues(outgoing)
+    result.nonce_gaps = nonce_gaps
+
+    if nonce_gaps > 0:
+        severity = "high" if nonce_gaps > 3 else "medium"
+        issues.append({
+            "category": "nonce",
+            "severity": severity,
+            "description": f"{nonce_gaps} nonce gaps detected in transaction sequence",
+            "action": "Implement proper nonce tracking with pending transaction awareness",
+            "estimated_savings": None,
+        })
+
+    # ── Calculate Cleanliness Score ───────────────────────────────────────
+    failed_tx_pct = (
+        len([tx for tx in outgoing if tx.get("isError") == "1" or tx.get("txreceipt_status") == "0"])
+        / len(outgoing) * 100
+    ) if outgoing else 0
+
+    score = 100
+    score -= min(30, dust_count * 2)
+    score -= min(20, spam_count * 3)
+    score -= min(25, (100 - avg_efficiency) * 0.5) if avg_efficiency > 0 else 0
+    score -= min(15, failed_tx_pct * 0.5)
+    score -= min(10, nonce_gaps * 5)
+    score = max(0, int(score))
+
+    result.cleanliness_score = score
+    result.cleanliness_grade = _cleanliness_grade(score)
+
+    # ── Sort Issues by Severity ──────────────────────────────────────────
+    severity_order = {"high": 0, "medium": 1, "low": 2}
+    issues.sort(key=lambda x: severity_order.get(x["severity"], 3))
+
+    result.issues = issues
+    result.total_issues = len(issues)
+    result.issues_by_severity = {
+        "high": sum(1 for i in issues if i["severity"] == "high"),
+        "medium": sum(1 for i in issues if i["severity"] == "medium"),
+        "low": sum(1 for i in issues if i["severity"] == "low"),
+    }
+
+    # ── Generate Recommendations ─────────────────────────────────────────
+    recs: list[str] = []
+
+    # High severity issues first
+    high_issues = [i for i in issues if i["severity"] == "high"]
+    for hi in high_issues[:2]:
+        recs.append(hi["action"])
+
+    # Fill remaining slots from medium issues
+    if len(recs) < 3:
+        medium_issues = [i for i in issues if i["severity"] == "medium"]
+        for mi in medium_issues[:3 - len(recs)]:
+            recs.append(mi["action"])
+
+    # Fill remaining from low
+    if len(recs) < 3:
+        low_issues = [i for i in issues if i["severity"] == "low"]
+        for li in low_issues[:3 - len(recs)]:
+            recs.append(li["action"])
+
+    if not recs:
+        if not outgoing:
+            recs.append("New wallet — insufficient history for full assessment")
+        else:
+            recs.append("Looking good — schedule your next wash in 30 days")
+
+    result.recommendations = recs[:3]
+
+    # ── Next Wash Recommendation ─────────────────────────────────────────
+    if score >= 70:
+        result.next_wash_recommended = "30 days"
+    elif score >= 50:
+        result.next_wash_recommended = "14 days"
+    else:
+        result.next_wash_recommended = "7 days"
+
+    return result
 
 
 if __name__ == "__main__":

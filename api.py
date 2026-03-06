@@ -56,6 +56,8 @@ from eth_account import Account as EthAccount
 from monitor import (
     analyze_address,
     analyze_retryable_transactions,
+    analyze_wash,
+    fetch_tokens_v2,
     fetch_transactions,
     get_eth_price,
     is_contract_address,
@@ -85,6 +87,7 @@ RISK_PRICE = os.getenv("RISK_PRICE_USD", "$0.001")
 PREMIUM_RISK_PRICE = os.getenv("PREMIUM_RISK_PRICE_USD", "$0.05")
 COUNTERPARTY_PRICE = os.getenv("COUNTERPARTY_PRICE_USD", "$0.10")
 NETWORK_MAP_PRICE = os.getenv("NETWORK_MAP_PRICE_USD", "$0.10")
+WASH_PRICE = os.getenv("WASH_PRICE_USD", "$0.50")
 NANSEN_PAYER_PRIVATE_KEY = os.getenv("NANSEN_PAYER_PRIVATE_KEY", "")
 NETWORK = os.getenv("NETWORK", "eip155:8453")  # Base mainnet
 VALID_COUPONS = set(c.strip().upper() for c in os.getenv("VALID_COUPONS", "").split(",") if c.strip())
@@ -386,6 +389,43 @@ class PremiumRiskResponse(BaseModel):
     pnl_summary: Optional[PnlSummary] = None
     pnl_available: bool = False
     operational_health: Optional[OperationalHealth] = None
+
+
+# -- Wash Models ------------------------------------------------------------
+
+class WashIssue(BaseModel):
+    category: str           # "dust", "spam", "gas", "failed_tx", "nonce"
+    severity: str           # "low", "medium", "high"
+    description: str        # Human-readable description
+    action: str             # Recommended cleanup action
+    estimated_savings: Optional[str] = None
+
+
+class WashReport(BaseModel):
+    address: str
+    cleanliness_score: int
+    cleanliness_grade: str
+    total_issues: int
+    issues_by_severity: dict
+    dust_tokens: int
+    dust_total_usd: float
+    spam_tokens: int
+    spam_token_list: list
+    gas_efficiency_pct: float
+    gas_efficiency_grade: str
+    wasted_gas_usd: float
+    failed_tx_count_24hr: int
+    failed_tx_patterns: list
+    nonce_gaps: int
+    issues: list[WashIssue]
+    recommendations: list[str]
+    scan_timestamp: str
+    next_wash_recommended: str
+
+
+class WashResponse(BaseModel):
+    status: str
+    report: WashReport
 
 
 # -- Nansen Helper -----------------------------------------------------------
@@ -1787,6 +1827,79 @@ x402_routes = {
             },
         },
     ),
+    "POST /wash/*": RouteConfig(
+        accepts=[
+            PaymentOption(
+                scheme="exact",
+                pay_to=PAYMENT_ADDRESS,
+                price=WASH_PRICE,
+                network=NETWORK,
+            ),
+        ],
+        mime_type="application/json",
+        description=(
+            "Agent Wash: Recurring hygiene scan for blockchain agent wallets. "
+            "Detects dust tokens, spam tokens, gas inefficiency, failed transaction "
+            "patterns, and nonce gaps. Returns a cleanliness score and prioritised "
+            "cleanup recommendations."
+        ),
+        extensions={
+            "bazaar": {
+                "info": {
+                    "input": {
+                        "type": "http",
+                        "method": "POST",
+                        "discoverable": True,
+                        "queryParams": {
+                            "address": "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
+                        },
+                    },
+                    "output": {
+                        "type": "json",
+                        "example": {
+                            "status": "ok",
+                            "report": {
+                                "address": "0xd8da6bf26964af9d7eed9e03e53415d37aa96045",
+                                "cleanliness_score": 72,
+                                "cleanliness_grade": "Clean",
+                                "total_issues": 8,
+                                "dust_tokens": 5,
+                                "spam_tokens": 2,
+                                "gas_efficiency_pct": 68.5,
+                                "gas_efficiency_grade": "Good",
+                                "failed_tx_count_24hr": 1,
+                                "nonce_gaps": 0,
+                                "recommendations": [
+                                    "Clear 5 dust tokens to declutter wallet",
+                                    "2 spam tokens detected — consider blocking future airdrops",
+                                    "Looking good — schedule your next wash in 30 days",
+                                ],
+                                "next_wash_recommended": "30 days",
+                            },
+                        },
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "status": {"type": "string"},
+                                "report": {
+                                    "type": "object",
+                                    "properties": {
+                                        "cleanliness_score": {"type": "integer", "description": "0-100 cleanliness score"},
+                                        "cleanliness_grade": {"type": "string", "description": "Spotless/Clean/Needs Attention/Dirty/Critical"},
+                                        "dust_tokens": {"type": "integer"},
+                                        "spam_tokens": {"type": "integer"},
+                                        "gas_efficiency_pct": {"type": "number"},
+                                        "recommendations": {"type": "array", "items": {"type": "string"}},
+                                        "next_wash_recommended": {"type": "string"},
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+        },
+    ),
 }
 
 app.add_middleware(PaymentMiddlewareASGI, routes=x402_routes, server=server)
@@ -1881,7 +1994,7 @@ async def api_info():
     """Service info and pricing."""
     return {
         "service": "Agent Health Monitor",
-        "version": "1.7.0",
+        "version": "1.8.0",
         "network": "Base L2",
         "endpoints": {
             "GET /risk/{address}": f"{RISK_PRICE} USDC — quick risk score for pre-flight checks",
@@ -1889,6 +2002,7 @@ async def api_info():
             "GET /counterparties/{address}": f"{COUNTERPARTY_PRICE} USDC — top counterparties enriched with Nansen labels",
             "GET /network-map/{address}": f"{NETWORK_MAP_PRICE} USDC — related wallets (funders, deployers, multisig) with Nansen labels",
             "GET /health/{address}": f"{PRICE} USDC — wallet health diagnosis",
+            "POST /wash/{address}": f"{WASH_PRICE} USDC — agent hygiene scan (dust, spam, gas efficiency, failure patterns)",
             "GET /alerts/subscribe/{address}": f"{ALERT_PRICE} USDC/month — automated monitoring & webhook alerts",
             "GET /optimize/{address}": f"{OPTIMIZE_PRICE} USDC — gas optimization report",
             "GET /retry/{address}": f"{RETRY_PRICE} USDC — optimized retry transactions for recent failures",
@@ -1988,6 +2102,12 @@ async def coupon_counterparties(code: str, address: str):
 async def coupon_network_map(code: str, address: str, chain: str = "ethereum"):
     _require_coupon(code)
     return await get_network_map(address, chain=chain)
+
+
+@app.get("/coupon/wash/{code}/{address}")
+async def coupon_wash(code: str, address: str):
+    _require_coupon(code)
+    return await get_wash_report(address)
 
 
 class ChatRequest(BaseModel):
@@ -2522,6 +2642,67 @@ async def get_health_report(address: str):
         token_balances=token_balances,
         total_portfolio_usd=total_portfolio_usd,
     )
+
+
+@app.post("/wash/{address}", response_model=WashResponse)
+async def get_wash_report(address: str):
+    """
+    Agent Wash: Hygiene scan for Base wallet addresses.
+
+    Requires x402 payment ($0.50 USDC on Base) OR valid X-Internal-Key header.
+
+    Scans for:
+    - Dust tokens (< $0.01 value)
+    - Spam tokens (URL names, low holders, zero volume)
+    - Gas efficiency (gasUsed/gas ratio analysis)
+    - Failed transaction patterns (repeated failures, retry storms)
+    - Nonce gaps
+
+    Returns a cleanliness score (0-100) with prioritised cleanup recommendations.
+    """
+    if not ADDRESS_RE.match(address):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid Ethereum address format: {address}",
+        )
+
+    address = address.lower()
+    loop = asyncio.get_running_loop()
+
+    # Parallel fetch: tokens (V2 API), transactions (etherscan-compat), ETH price
+    eth_price, transactions, tokens = await asyncio.gather(
+        loop.run_in_executor(None, partial(get_eth_price, BASESCAN_API_KEY)),
+        loop.run_in_executor(None, partial(fetch_transactions, address, BASESCAN_API_KEY)),
+        loop.run_in_executor(None, partial(fetch_tokens_v2, address)),
+    )
+
+    wash = await loop.run_in_executor(
+        None, partial(analyze_wash, address, tokens, transactions, eth_price),
+    )
+
+    report = WashReport(
+        address=wash.address,
+        cleanliness_score=wash.cleanliness_score,
+        cleanliness_grade=wash.cleanliness_grade,
+        total_issues=wash.total_issues,
+        issues_by_severity=wash.issues_by_severity,
+        dust_tokens=wash.dust_tokens,
+        dust_total_usd=wash.dust_total_usd,
+        spam_tokens=wash.spam_tokens,
+        spam_token_list=wash.spam_token_list,
+        gas_efficiency_pct=wash.gas_efficiency_pct,
+        gas_efficiency_grade=wash.gas_efficiency_grade,
+        wasted_gas_usd=wash.wasted_gas_usd,
+        failed_tx_count_24hr=wash.failed_tx_count_24hr,
+        failed_tx_patterns=wash.failed_tx_patterns,
+        nonce_gaps=wash.nonce_gaps,
+        issues=[WashIssue(**i) for i in wash.issues],
+        recommendations=wash.recommendations,
+        scan_timestamp=wash.scan_timestamp,
+        next_wash_recommended=wash.next_wash_recommended,
+    )
+
+    return WashResponse(status="ok", report=report)
 
 
 @app.get("/optimize/{address}", response_model=OptimizeResponse)

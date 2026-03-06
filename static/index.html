@@ -6,13 +6,13 @@
 <meta name="base:app_id" content="699881c46768b2f53f686a78" />
 <title>Agent Health Monitor // Diagnostics for the Agent Economy</title>
 <meta property="og:title" content="Agent Health Monitor — Diagnostics for the Agent Economy">
-<meta property="og:description" content="Pay-per-call blockchain analysis for agents and humans. 9 endpoints from $0.01. No accounts. No subscriptions. Just USDC on Base.">
+<meta property="og:description" content="Pay-per-call blockchain analysis for agents and humans. 10 endpoints from $0.01. No accounts. No subscriptions. Just USDC on Base.">
 <meta property="og:image" content="https://raw.githubusercontent.com/moonshot-cyber/agent-health-monitor/master/ahm-banner.png">
 <meta property="og:url" content="https://agenthealthmonitor.xyz">
 <meta property="og:type" content="website">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Agent Health Monitor — Diagnostics for the Agent Economy">
-<meta name="twitter:description" content="Pay-per-call blockchain analysis for agents and humans. 9 endpoints from $0.01. No accounts. No subscriptions. Just USDC on Base.">
+<meta name="twitter:description" content="Pay-per-call blockchain analysis for agents and humans. 10 endpoints from $0.01. No accounts. No subscriptions. Just USDC on Base.">
 <meta name="twitter:image" content="https://raw.githubusercontent.com/moonshot-cyber/agent-health-monitor/master/ahm-banner.png">
 <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
 <link rel="icon" type="image/png" sizes="32x32" href="/static/ahm-favicon-32.png">
@@ -917,7 +917,7 @@
 <section class="hero">
   <div class="hero-tag">Blockchain Intelligence Protocol</div>
   <h1>AGENT <span>HEALTH</span> MONITOR</h1>
-  <p class="hero-sub">// Diagnostics for the agent economy &middot; 9 endpoints from $0.01 &middot; USDC on Base</p>
+  <p class="hero-sub">// Diagnostics for the agent economy &middot; 10 endpoints from $0.01 &middot; USDC on Base</p>
 </section>
 
 <!-- MAIN APP -->
@@ -936,6 +936,7 @@
         <button class="guided-btn" data-endpoint="counterparties" onclick="selectService('counterparties')">Counterparties <span class="guided-price">$0.10</span></button>
         <button class="guided-btn" data-endpoint="network-map" onclick="selectService('network-map')">Network Map <span class="guided-price">$0.10</span></button>
         <button class="guided-btn" data-endpoint="health" onclick="selectService('health')">Full Health Check <span class="guided-price">$0.50</span></button>
+        <button class="guided-btn" data-endpoint="wash" onclick="selectService('wash')">Agent Wash <span class="guided-price">$0.50</span></button>
         <button class="guided-btn" data-endpoint="alerts" onclick="selectService('alerts')">Live Alerts <span class="guided-price">$2.00</span></button>
         <button class="guided-btn" data-endpoint="optimize" onclick="selectService('optimize')">Optimize <span class="guided-price">$5.00</span></button>
         <button class="guided-btn" data-endpoint="retry" onclick="selectService('retry')">Retry Failed Txns <span class="guided-price">$10.00</span></button>
@@ -1014,7 +1015,7 @@
   <div class="panel" id="browse-section">
     <div class="panel-header browse-toggle-header" onclick="toggleBrowse()">
       <span class="panel-title">// BROWSE_ENDPOINTS</span>
-      <span class="panel-tag" id="browse-toggle-label">▶ Show all 9 services</span>
+      <span class="panel-tag" id="browse-toggle-label">▶ Show all 10 services</span>
     </div>
     <div class="panel-body" id="browse-body" style="display:none">
       <div class="endpoint-grid">
@@ -1042,6 +1043,11 @@
           <div class="ep-price">$0.50</div>
           <div class="ep-name">/health</div>
           <div class="ep-desc">Full health score with risk analysis</div>
+        </div>
+        <div class="endpoint-card" data-endpoint="wash" data-price="0.50" data-path="/wash" data-method="POST" onclick="selectEndpoint(this)">
+          <div class="ep-price">$0.50</div>
+          <div class="ep-name">/wash</div>
+          <div class="ep-desc">Agent hygiene scan — dust, spam, gas efficiency, failure patterns</div>
         </div>
         <div class="endpoint-card" data-endpoint="alerts" data-price="2.00" data-path="/alerts/subscribe" onclick="selectEndpoint(this)">
           <div class="ep-price">$2.00</div>
@@ -1086,7 +1092,7 @@
   // For now we check locally as a demo; real validation happens server-side
   const DEMO_COUPONS = ['TEST-ELITE','EARLY001','EARLY002','EARLY003','REDDIT50','SUBSTACK1'];
 
-  let selectedEndpoint = { path: '/risk', price: 0.01, name: 'risk', couponPath: '/coupon/risk' };
+  let selectedEndpoint = { path: '/risk', price: 0.01, name: 'risk', method: 'GET', couponPath: '/coupon/risk' };
   let lastResults = null;
   let couponValid = false;
 
@@ -1099,6 +1105,7 @@
     if (/network|map|fund|deploy|multisig|related|link/.test(t)) return 'network-map';
     if (/health|full.*report|score|overview|diagnos/.test(t)) return 'health';
     if (/alert|monitor|watch|notif|subscribe/.test(t)) return 'alerts';
+    if (/wash|clean|hygiene|dust|spam|clutter|sweep/.test(t)) return 'wash';
     if (/optimi[sz]|gas|efficien|save|cheaper/.test(t)) return 'optimize';
     if (/retry|fail|revert|stuck|rescue/.test(t)) return 'retry';
     if (/protect|guard|shield|full.*suite|everything/.test(t)) return 'protect';
@@ -1144,7 +1151,7 @@
     const label = document.getElementById('browse-toggle-label');
     const visible = body.style.display !== 'none';
     body.style.display = visible ? 'none' : 'block';
-    label.textContent = visible ? '\u25B6 Show all 9 services' : '\u25BC Hide services';
+    label.textContent = visible ? '\u25B6 Show all 10 services' : '\u25BC Hide services';
   }
 
   // ─── ENDPOINT SELECT ───
@@ -1155,6 +1162,7 @@
       path: el.dataset.path,
       price: parseFloat(el.dataset.price),
       name: el.dataset.endpoint,
+      method: el.dataset.method || 'GET',
       couponPath: '/coupon/' + el.dataset.endpoint
     };
     document.getElementById('price-tag').textContent =
@@ -1555,6 +1563,102 @@
         };
         const nm = nmByMode[testMode] || nmByMode['TEST-ELITE'];
         data = { status: 'ok', address: '0x' + 'test'.repeat(10).slice(0, 40), ...nm };
+      } else if (selectedEndpoint.name === 'wash') {
+        const washByMode = {
+          'TEST-ELITE': {
+            cleanliness_score: 92, cleanliness_grade: 'Spotless',
+            total_issues: 1, issues_by_severity: { high: 0, medium: 0, low: 1 },
+            dust_tokens: 1, dust_total_usd: 0.003, spam_tokens: 0, spam_token_list: [],
+            gas_efficiency_pct: 85.0, gas_efficiency_grade: 'Excellent', wasted_gas_usd: 0.0,
+            failed_tx_count_24hr: 0, failed_tx_patterns: [], nonce_gaps: 0,
+            issues: [
+              { category: 'dust', severity: 'low', description: '1 dust token worth $0.003 total', action: 'Clear 1 dust token to declutter wallet', estimated_savings: '$0.003 recoverable' },
+            ],
+            recommendations: ['Looking good — schedule your next wash in 30 days'],
+            next_wash_recommended: '30 days',
+          },
+          'TEST-CRITICAL': {
+            cleanliness_score: 18, cleanliness_grade: 'Critical',
+            total_issues: 9, issues_by_severity: { high: 4, medium: 3, low: 2 },
+            dust_tokens: 25, dust_total_usd: 0.082, spam_tokens: 15,
+            spam_token_list: [
+              { name: 'Visit https://freeclaim.xyz', symbol: 'CLAIM', reason: 'URL in token name' },
+              { name: 'Airdrop Voucher Token', symbol: 'AVT', reason: 'Low holder count (12); Zero 24h volume' },
+              { name: 'DeFi Reward Token', symbol: 'DRWD', reason: 'Zero market cap; No exchange rate (unlisted)' },
+            ],
+            gas_efficiency_pct: 32.0, gas_efficiency_grade: 'Poor', wasted_gas_usd: 4.85,
+            failed_tx_count_24hr: 12,
+            failed_tx_patterns: [
+              { contract: '0x3fc91a3a...b7fad', failure_count: 8, pattern: 'Repeated failures' },
+              { contract: 'method:0x3593564c', failure_count: 6, pattern: 'Method execute (Universal Router) has 35% failure rate' },
+            ],
+            nonce_gaps: 3,
+            issues: [
+              { category: 'gas', severity: 'high', description: 'Gas efficiency at 32.0% — gas limits set too high', action: 'Reduce gas limits by ~68% to save on transaction costs', estimated_savings: '~68% gas savings' },
+              { category: 'gas', severity: 'high', description: '$4.85 wasted on failed transactions', action: 'Add pre-flight simulation (eth_call) to avoid paying for failures', estimated_savings: '$4.85 recoverable' },
+              { category: 'failed_tx', severity: 'high', description: '8 repeated failures to contract 0x3fc91a3a...b7fad', action: 'Check integration status with contract 0x3fc91a3a...b7fad', estimated_savings: null },
+              { category: 'nonce', severity: 'high', description: '3 nonce gaps detected in transaction sequence', action: 'Implement proper nonce tracking with pending transaction awareness', estimated_savings: null },
+              { category: 'spam', severity: 'medium', description: '15 spam tokens detected in wallet', action: '15 spam tokens detected — consider blocking future airdrops', estimated_savings: null },
+              { category: 'dust', severity: 'medium', description: '25 dust tokens worth $0.082 total cluttering wallet', action: 'Clear 25 dust tokens to declutter wallet', estimated_savings: '$0.082 recoverable' },
+              { category: 'failed_tx', severity: 'medium', description: '12 failed transactions in the last 24 hours', action: 'Review failure reasons and add pre-flight checks', estimated_savings: null },
+              { category: 'gas', severity: 'low', description: '18 transactions used gas limits >2x actual usage', action: 'Use eth_estimateGas with a 15% buffer instead of hardcoded limits', estimated_savings: null },
+              { category: 'gas', severity: 'low', description: 'Overall efficiency below optimal range', action: 'Review gas estimation strategy', estimated_savings: null },
+            ],
+            recommendations: [
+              'Reduce gas limits by ~68% to save on transaction costs',
+              'Add pre-flight simulation (eth_call) to avoid paying for failures',
+              'Check integration status with contract 0x3fc91a3a...b7fad',
+            ],
+            next_wash_recommended: '7 days',
+          },
+          'TEST-MODERATE': {
+            cleanliness_score: 55, cleanliness_grade: 'Needs Attention',
+            total_issues: 5, issues_by_severity: { high: 1, medium: 3, low: 1 },
+            dust_tokens: 8, dust_total_usd: 0.024, spam_tokens: 4,
+            spam_token_list: [
+              { name: 'Reward Token v2', symbol: 'RWD2', reason: 'Low holder count (45); Zero 24h volume' },
+              { name: 'Claim at t.ly/bonus', symbol: 'BONUS', reason: 'URL in token name' },
+            ],
+            gas_efficiency_pct: 58.0, gas_efficiency_grade: 'Fair', wasted_gas_usd: 0.92,
+            failed_tx_count_24hr: 3,
+            failed_tx_patterns: [
+              { contract: '0xdef1c0de...e78c', failure_count: 3, pattern: 'Repeated failures' },
+            ],
+            nonce_gaps: 1,
+            issues: [
+              { category: 'gas', severity: 'high', description: '$0.92 wasted on failed transactions', action: 'Add pre-flight simulation to avoid paying for failures', estimated_savings: '$0.92 recoverable' },
+              { category: 'spam', severity: 'medium', description: '4 spam tokens detected in wallet', action: '4 spam tokens detected — consider blocking future airdrops', estimated_savings: null },
+              { category: 'gas', severity: 'medium', description: 'Gas efficiency at 58.0% — gas limits set too high', action: 'Reduce gas limits by ~42% to save on transaction costs', estimated_savings: '~42% gas savings' },
+              { category: 'dust', severity: 'medium', description: '8 dust tokens worth $0.024 total cluttering wallet', action: 'Clear 8 dust tokens to declutter wallet', estimated_savings: '$0.024 recoverable' },
+              { category: 'nonce', severity: 'low', description: '1 nonce gap detected in transaction sequence', action: 'Implement proper nonce tracking', estimated_savings: null },
+            ],
+            recommendations: [
+              'Add pre-flight simulation to avoid paying for failures',
+              '4 spam tokens detected — consider blocking future airdrops',
+              'Reduce gas limits by ~42% to save on transaction costs',
+            ],
+            next_wash_recommended: '14 days',
+          },
+          'TEST-NEW': {
+            cleanliness_score: 95, cleanliness_grade: 'Spotless',
+            total_issues: 0, issues_by_severity: { high: 0, medium: 0, low: 0 },
+            dust_tokens: 0, dust_total_usd: 0.0, spam_tokens: 0, spam_token_list: [],
+            gas_efficiency_pct: 90.0, gas_efficiency_grade: 'Excellent', wasted_gas_usd: 0.0,
+            failed_tx_count_24hr: 0, failed_tx_patterns: [], nonce_gaps: 0,
+            issues: [],
+            recommendations: ['New wallet — insufficient history for full assessment'],
+            next_wash_recommended: '30 days',
+          },
+        };
+        const washData = washByMode[testMode] || washByMode['TEST-MODERATE'];
+        data = {
+          status: 'ok',
+          report: {
+            address: '0x' + 'test'.repeat(10).slice(0, 40),
+            scan_timestamp: new Date().toISOString(),
+            ...washData,
+          },
+        };
       } else {
         data = mockResult(testScore);
       }
@@ -1579,7 +1683,8 @@
     ]);
 
     try {
-      const res = await fetch(url);
+      const fetchOpts = selectedEndpoint.method === 'POST' ? { method: 'POST' } : {};
+      const res = await fetch(url, fetchOpts);
 
       if (res.status === 402) {
         termAppend('t-info', 'STATUS: 402 — Payment required, initiating x402 flow...');
@@ -1790,6 +1895,106 @@
       `;
       panel.classList.add('active');
       panel.classList.remove('elite-glow');
+      return;
+    }
+
+    // Wash endpoint returns {cleanliness_score, cleanliness_grade} — handle specially
+    if (r.cleanliness_score !== undefined && r.cleanliness_grade !== undefined) {
+      const ws = r.cleanliness_score;
+      const wsColor = ws >= 90 ? 'var(--green, #00ff88)' : ws >= 70 ? 'var(--cyan, #00f5ff)' : ws >= 50 ? 'var(--amber, #ffaa00)' : ws >= 30 ? '#ff8800' : 'var(--red, #ff3355)';
+      const wsClass = ws >= 70 ? 'high' : ws >= 40 ? 'medium' : 'low';
+      const gradeClass = ws >= 90 ? 'tier-elite' : ws >= 70 ? 'tier-healthy' : ws >= 50 ? 'tier-atrisk' : 'tier-critical';
+      const ibs = r.issues_by_severity ?? {};
+      body.innerHTML = `
+        <div class="health-score">
+          <div class="score-label">// CLEANLINESS SCORE</div>
+          <div class="score-number ${wsClass}" style="color:${wsColor}">${ws}<span style="font-size:2rem;opacity:0.4">/100</span></div>
+          <div class="score-tier ${gradeClass}">${r.cleanliness_grade}</div>
+          <div class="score-bar-container">
+            <div class="score-bar-fill ${wsClass}" style="width:${ws}%; background:${wsColor}"></div>
+          </div>
+        </div>
+
+        <div style="display:flex; gap:0.5rem; flex-wrap:wrap; margin-bottom:1rem; font-family:var(--mono); font-size:0.7rem">
+          ${(ibs.high ?? 0) > 0 ? `<span style="color:var(--red); border:1px solid rgba(255,51,85,0.3); padding:0.2rem 0.5rem">${ibs.high} HIGH</span>` : ''}
+          ${(ibs.medium ?? 0) > 0 ? `<span style="color:var(--amber); border:1px solid rgba(255,170,0,0.3); padding:0.2rem 0.5rem">${ibs.medium} MEDIUM</span>` : ''}
+          ${(ibs.low ?? 0) > 0 ? `<span style="color:var(--text-dim); border:1px solid var(--border); padding:0.2rem 0.5rem">${ibs.low} LOW</span>` : ''}
+          ${r.total_issues === 0 ? `<span style="color:var(--green); border:1px solid rgba(0,255,136,0.3); padding:0.2rem 0.5rem">NO ISSUES</span>` : ''}
+        </div>
+
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:0.5rem; margin-bottom:1rem">
+          <div style="border:1px solid var(--border); padding:0.5rem; background:rgba(0,0,0,0.2)">
+            <div style="font-family:var(--mono); font-size:0.55rem; color:var(--text-dim); letter-spacing:0.15em; margin-bottom:0.3rem">DUST TOKENS</div>
+            <div style="font-family:var(--display); font-size:1.2rem; color:${r.dust_tokens > 5 ? 'var(--amber)' : 'var(--text)'}">${r.dust_tokens}</div>
+            <div style="font-family:var(--mono); font-size:0.6rem; color:var(--text-dim)">$${(r.dust_total_usd ?? 0).toFixed(4)} total</div>
+          </div>
+          <div style="border:1px solid var(--border); padding:0.5rem; background:rgba(0,0,0,0.2)">
+            <div style="font-family:var(--mono); font-size:0.55rem; color:var(--text-dim); letter-spacing:0.15em; margin-bottom:0.3rem">SPAM TOKENS</div>
+            <div style="font-family:var(--display); font-size:1.2rem; color:${r.spam_tokens > 3 ? 'var(--red)' : 'var(--text)'}">${r.spam_tokens}</div>
+          </div>
+          <div style="border:1px solid var(--border); padding:0.5rem; background:rgba(0,0,0,0.2)">
+            <div style="font-family:var(--mono); font-size:0.55rem; color:var(--text-dim); letter-spacing:0.15em; margin-bottom:0.3rem">GAS EFFICIENCY</div>
+            <div style="font-family:var(--display); font-size:1.2rem; color:${r.gas_efficiency_pct > 60 ? 'var(--green)' : r.gas_efficiency_pct > 40 ? 'var(--amber)' : 'var(--red)'}">${r.gas_efficiency_pct.toFixed(1)}%</div>
+            <div style="font-family:var(--mono); font-size:0.6rem; color:var(--text-dim)">${r.gas_efficiency_grade}</div>
+          </div>
+          <div style="border:1px solid var(--border); padding:0.5rem; background:rgba(0,0,0,0.2)">
+            <div style="font-family:var(--mono); font-size:0.55rem; color:var(--text-dim); letter-spacing:0.15em; margin-bottom:0.3rem">FAILED TXS (24HR)</div>
+            <div style="font-family:var(--display); font-size:1.2rem; color:${r.failed_tx_count_24hr > 3 ? 'var(--red)' : r.failed_tx_count_24hr > 0 ? 'var(--amber)' : 'var(--green)'}">${r.failed_tx_count_24hr}</div>
+            ${r.nonce_gaps > 0 ? `<div style="font-family:var(--mono); font-size:0.6rem; color:var(--amber)">${r.nonce_gaps} nonce gaps</div>` : ''}
+          </div>
+        </div>
+
+        ${r.issues && r.issues.length > 0 ? `
+        <div style="margin-bottom:1rem">
+          <div style="font-family:var(--mono); font-size:0.6rem; letter-spacing:0.2em; color:var(--text-dim); margin-bottom:0.5rem">// ISSUES (${r.issues.length})</div>
+          ${r.issues.map(i => {
+            const sevColor = i.severity === 'high' ? 'var(--red)' : i.severity === 'medium' ? 'var(--amber)' : 'var(--text-dim)';
+            const sevBorder = i.severity === 'high' ? 'rgba(255,51,85,0.3)' : i.severity === 'medium' ? 'rgba(255,170,0,0.3)' : 'var(--border)';
+            return `<div style="border-left:3px solid ${sevColor}; padding:0.4rem 0.6rem; margin-bottom:0.4rem; background:rgba(0,0,0,0.2); font-family:var(--mono); font-size:0.7rem">
+              <div style="display:flex; gap:0.5rem; align-items:center; margin-bottom:0.2rem">
+                <span style="color:${sevColor}; text-transform:uppercase; font-size:0.6rem; letter-spacing:0.1em">${i.severity}</span>
+                <span style="color:var(--cyan-dim); font-size:0.6rem">[${i.category}]</span>
+              </div>
+              <div style="color:var(--text); margin-bottom:0.15rem">${i.description}</div>
+              <div style="color:var(--cyan); font-size:0.65rem">${i.action}${i.estimated_savings ? ' <span style="color:var(--green)">(' + i.estimated_savings + ')</span>' : ''}</div>
+            </div>`;
+          }).join('')}
+        </div>` : ''}
+
+        ${r.recommendations && r.recommendations.length > 0 ? `
+        <div style="margin-bottom:1rem">
+          <div style="font-family:var(--mono); font-size:0.6rem; letter-spacing:0.2em; color:var(--text-dim); margin-bottom:0.5rem">// TOP RECOMMENDATIONS</div>
+          ${r.recommendations.map((rec, i) => `
+            <div style="border:1px solid var(--cyan-dim); padding:0.5rem 0.75rem; margin-bottom:0.4rem; background:rgba(0,245,255,0.03); font-family:var(--mono); font-size:0.75rem">
+              <span style="color:var(--cyan); margin-right:0.5rem">#${i + 1}</span>
+              <span style="color:var(--text)">${rec}</span>
+            </div>
+          `).join('')}
+        </div>` : ''}
+
+        <div style="font-family:var(--mono); font-size:0.7rem; color:var(--cyan); border:1px solid var(--cyan-dim); padding:0.5rem 0.75rem; margin-bottom:1rem; background:rgba(0,245,255,0.03)">
+          Next wash recommended: <strong>${r.next_wash_recommended}</strong>
+        </div>
+
+        ${r.spam_token_list && r.spam_token_list.length > 0 ? `
+        <details style="margin-bottom:1rem">
+          <summary style="font-family:var(--mono); font-size:0.65rem; color:var(--text-dim); cursor:pointer; letter-spacing:0.1em">SPAM TOKENS (${r.spam_token_list.length})</summary>
+          <div style="margin-top:0.5rem">
+            ${r.spam_token_list.map(s => `
+              <div style="font-family:var(--mono); font-size:0.65rem; padding:0.25rem 0; border-bottom:1px solid rgba(255,255,255,0.05)">
+                <span style="color:var(--red)">${s.name}</span> <span style="color:var(--text-dim)">(${s.symbol})</span>
+                <span style="color:var(--text-dim); font-size:0.6rem"> — ${s.reason}</span>
+              </div>
+            `).join('')}
+          </div>
+        </details>` : ''}
+
+        <button class="toggle-raw" onclick="toggleRaw()">▶ VIEW RAW JSON</button>
+        <pre class="raw-json" id="raw-json">${JSON.stringify(data, null, 2)}</pre>
+      `;
+      panel.classList.add('active');
+      panel.classList.toggle('elite-glow', ws >= 90);
+      document.getElementById('chat-panel').style.display = 'block';
       return;
     }
 

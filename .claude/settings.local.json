@@ -1,0 +1,36 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:pypi.org)",
+      "WebFetch(domain:docs.cdp.coinbase.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(curl:*)",
+      "Bash(pip install:*)",
+      "Bash(python:*)",
+      "Bash(PAYMENT_ADDRESS=0x0000000000000000000000000000000000000001 timeout 5 python:*)",
+      "Bash(PAYMENT_ADDRESS=0x0000000000000000000000000000000000000001 python:*)",
+      "Bash(taskkill:*)",
+      "Bash(railway:*)",
+      "Bash(npm install:*)",
+      "Bash(git init:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git config:*)",
+      "Bash(gh auth status:*)",
+      "Bash(winget install:*)",
+      "Bash(export PATH=\"$PATH:/c/Program Files/GitHub CLI\")",
+      "Bash(\"/c/Program Files/GitHub CLI/gh.exe\" auth status)",
+      "Bash(\"/c/Program Files/GitHub CLI/gh.exe\" repo create agent-health-monitor --public --source=. --remote=origin --push --description \"x402-powered API for Base blockchain agent wallet health analysis\")",
+      "Bash(git push:*)",
+      "WebFetch(domain:medium.com)",
+      "Bash(pip show:*)",
+      "Bash(PAYMENT_ADDRESS=0x0000000000000000000000000000000000000001 timeout 6 python:*)",
+      "WebFetch(domain:www.x402.org)",
+      "Bash(git sparse-checkout:*)",
+      "Bash(git checkout:*)",
+      "Bash(\"/c/Program Files/GitHub:*)"
+    ]
+  }
+}
