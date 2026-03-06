@@ -1,10 +1,10 @@
 # Agent Health Monitor
 
-9-endpoint wallet intelligence API enriched with [Nansen](https://nansen.ai) blockchain analytics. Risk scores, health checks, counterparty analysis, wallet network mapping, PnL summaries, and autonomous protection — all pay-per-call via [x402 protocol](https://x402.org) on Base.
+10-endpoint wallet intelligence API enriched with [Nansen](https://nansen.ai) blockchain analytics. Risk scores, health checks, counterparty analysis, wallet network mapping, PnL summaries, wallet hygiene scans, and autonomous protection — all pay-per-call via [x402 protocol](https://x402.org) on Base.
 
 ## What it does
 
-**Screen** with `/risk` — **profile** with `/risk/premium` — **investigate** with `/counterparties` and `/network-map` — **diagnose** with `/health` — **monitor** with `/alerts` — **fix** with `/optimize` — **retry** with `/retry` — **protect** with `/agent/protect`.
+**Screen** with `/risk` — **profile** with `/risk/premium` — **investigate** with `/counterparties` and `/network-map` — **diagnose** with `/health` — **clean** with `/wash` — **monitor** with `/alerts` — **fix** with `/optimize` — **retry** with `/retry` — **protect** with `/agent/protect`.
 
 | Endpoint | Price | Purpose |
 |---|---|---|
@@ -13,6 +13,7 @@
 | `GET /counterparties/{address}` | $0.10 USDC | Know Your Counterparty — top interactions enriched with Nansen |
 | `GET /network-map/{address}` | $0.10 USDC | Wallet network map — funding, deployer & multisig links via Nansen |
 | `GET /health/{address}` | $0.50 USDC | Full wallet health score with risk analysis |
+| `POST /wash/{address}` | $0.50 USDC | Wallet hygiene scan — dust, spam, gas waste, failed tx patterns |
 | `GET /alerts/subscribe/{address}` | $2.00 USDC/month | Automated monitoring — webhook alerts every 6 hours |
 | `GET /optimize/{address}` | $5.00 USDC | Per-transaction-type gas optimization report |
 | `GET /retry/{address}` | $10.00 USDC | Retry failed transactions — ready-to-sign replacements |
@@ -96,7 +97,59 @@ Without an x402 payment header, you'll get a `402 Payment Required` response wit
 }
 ```
 
-### 2. Alert Monitoring ($2.00/month) — Stay on top of it
+### 2. Agent Wash ($0.50) — Clean the wallet
+
+```
+POST /wash/{wallet_address}
+```
+
+```bash
+curl -X POST https://agenthealthmonitor.xyz/wash/0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045
+```
+
+Scans for dust tokens, spam airdrops, gas inefficiency, failed transaction patterns, and nonce gaps. Returns a cleanliness score (0-100) with prioritized cleanup actions.
+
+#### Example Response
+
+```json
+{
+  "status": "ok",
+  "report": {
+    "address": "0xd8dA...96045",
+    "cleanliness_score": 28,
+    "cleanliness_grade": "Critical",
+    "total_issues": 2,
+    "issues_by_severity": {"high": 2, "medium": 0, "low": 0},
+    "dust_tokens": 131,
+    "dust_total_usd": 0.16,
+    "spam_tokens": 255,
+    "spam_token_list": ["FoolCoin", "SpaceX", "GOAT", "..."],
+    "gas_efficiency_pct": 66.1,
+    "gas_efficiency_grade": "Good",
+    "wasted_gas_usd": 0.0,
+    "failed_tx_count_24hr": 0,
+    "failed_tx_patterns": [],
+    "nonce_gaps": 0,
+    "issues": [
+      {
+        "category": "dust",
+        "severity": "high",
+        "description": "131 dust tokens worth $0.16 total cluttering wallet",
+        "action": "Clear 131 dust tokens to declutter wallet",
+        "estimated_savings": "$0.16 recoverable"
+      }
+    ],
+    "recommendations": [
+      "Clear 131 dust tokens to declutter wallet",
+      "255 spam tokens detected — consider blocking future airdrops"
+    ],
+    "scan_timestamp": "2026-03-06T11:30:25Z",
+    "next_wash_recommended": "7 days"
+  }
+}
+```
+
+### 3. Alert Monitoring ($2.00/month) — Stay on top of it
 
 A two-step flow: pay to subscribe, then configure your webhook.
 
@@ -152,7 +205,7 @@ DELETE /alerts/unsubscribe/{wallet_address}
 }
 ```
 
-### 3. Gas Optimization ($5.00) — Fix the problem
+### 4. Gas Optimization ($5.00) — Fix the problem
 
 ```
 GET /optimize/{wallet_address}
@@ -218,7 +271,7 @@ curl https://agenthealthmonitor.xyz/optimize/0xd8dA6BF26964aF9D7eEd9e03E53415D37
 }
 ```
 
-### 4. RetryBot ($10.00) — Retry failed transactions
+### 5. RetryBot ($10.00) — Retry failed transactions
 
 Non-custodial: returns ready-to-sign EIP-1559 transactions. Your agent signs and submits.
 
@@ -286,7 +339,7 @@ GET /retry/preview/{wallet_address}
 - `medium` — slippage reverts on DEX trades (market conditions may have changed)
 - `low` — other reverts that used significant gas (root cause unclear)
 
-### 5. Protection Agent ($25.00) — Autonomous full protection
+### 6. Protection Agent ($25.00) — Autonomous full protection
 
 One endpoint that triages risk and runs the right combination of all services automatically.
 
@@ -396,20 +449,20 @@ Actions are ranked by potential value recovered (highest dollar amount first).
 ## The Service Funnel
 
 ```
-  Screen    Profile    Investigate   Diagnose    Monitor      Fix       Retry     Protect
-  $0.01     $0.05    $0.10 each     $0.50    $2.00/mo    $5.00     $10.00     $25.00
+  Screen    Profile    Investigate   Diagnose     Clean      Monitor      Fix       Retry     Protect
+  $0.01     $0.05    $0.10 each     $0.50      $0.50     $2.00/mo    $5.00     $10.00     $25.00
 
-GET /risk  /premium  /counterparties  /health  /alerts/sub /optimize  /retry  /agent/protect
-    |          |     /network-map        |          |          |         |         |
-    v          v          v              v          v          v         v         v
- "Score:    Nansen    Top counter-   Full health  Every 6h:  Per-type  Ready-to  Autonomous
-  8/100"    labels    parties +      score +      check &    gas       sign      triage +
-            + PnL     network map    gas waste    alert      limits    EIP-1559  all services
+GET /risk  /premium  /counterparties  /health  POST /wash  /alerts/sub /optimize  /retry  /agent/protect
+    |          |     /network-map        |          |          |          |         |         |
+    v          v          v              v          v          v          v         v         v
+ "Score:    Nansen    Top counter-   Full health  Dust +    Every 6h:  Per-type  Ready-to  Autonomous
+  8/100"    labels    parties +      score +      spam +    check &    gas       sign      triage +
+            + PnL     network map    gas waste    hygiene   alert      limits    EIP-1559  all services
 ```
 
 Or skip straight to `GET /agent/protect/{address}` ($25) and let the agent figure it out.
 
-**Listed on:** [Virtuals ACP](https://app.virtuals.io) (9 offerings) · [x402scan](https://x402scan.com) · [Bankr Skills](https://bankr.chat) · [agdp.io](https://agdp.io)
+**Listed on:** [Virtuals ACP](https://app.virtuals.io) (10 offerings) · [x402scan](https://x402scan.com) · [Bankr Skills](https://bankr.chat) · [agdp.io](https://agdp.io)
 
 ## How Payment Works
 
@@ -462,6 +515,9 @@ network = client.get("https://agenthealthmonitor.xyz/network-map/0x1234...?chain
 # Full health diagnosis ($0.50)
 health = client.get("https://agenthealthmonitor.xyz/health/0x1234...")
 
+# Wallet hygiene scan ($0.50)
+wash = client.post("https://agenthealthmonitor.xyz/wash/0x1234...")
+
 # Full autonomous protection — recommended ($25.00)
 protection = client.get("https://agenthealthmonitor.xyz/agent/protect/0x1234...")
 ```
@@ -498,6 +554,7 @@ uvicorn api:app --host 0.0.0.0 --port 4021
 | `COUNTERPARTY_PRICE_USD` | No | `$0.10` | Price per counterparty analysis |
 | `NETWORK_MAP_PRICE_USD` | No | `$0.10` | Price per network map |
 | `PRICE_USD` | No | `$0.50` | Price per health check |
+| `WASH_PRICE_USD` | No | `$0.50` | Price per wash hygiene scan |
 | `ALERT_PRICE_USD` | No | `$2.00` | Price per alert subscription (30 days) |
 | `OPTIMIZE_PRICE_USD` | No | `$5.00` | Price per gas optimization |
 | `RETRY_PRICE_USD` | No | `$10.00` | Price per retry analysis |
