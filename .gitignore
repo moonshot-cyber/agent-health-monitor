@@ -10,3 +10,4 @@ addresses.txt
 *.pem
 *.key
 secrets/
+ahs_scoring_design.md

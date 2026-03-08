@@ -179,9 +179,9 @@ curl "https://agenthealthmonitor.xyz/ahs/0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96
     "grade": "Critical",
     "mode": "3d",
     "dimensions": {
-      "wallet_hygiene": { "score": 28, "weight": 0.35 },
-      "behavioural": { "score": 55, "weight": 0.35 },
-      "infrastructure": { "score": 38, "weight": 0.30 }
+      "wallet_hygiene": { "score": 28 },
+      "behavioural": { "score": 55 },
+      "infrastructure": { "score": 38 }
     },
     "patterns_detected": [
       {
