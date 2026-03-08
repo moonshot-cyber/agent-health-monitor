@@ -36,6 +36,7 @@ from typing import Optional
 from urllib.parse import urlparse
 
 import httpx as httpx_client
+import jwt
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -57,6 +58,7 @@ from monitor import (
     analyze_address,
     analyze_retryable_transactions,
     analyze_wash,
+    calculate_ahs,
     fetch_tokens_v2,
     fetch_transactions,
     get_eth_price,
@@ -88,6 +90,8 @@ PREMIUM_RISK_PRICE = os.getenv("PREMIUM_RISK_PRICE_USD", "$0.05")
 COUNTERPARTY_PRICE = os.getenv("COUNTERPARTY_PRICE_USD", "$0.10")
 NETWORK_MAP_PRICE = os.getenv("NETWORK_MAP_PRICE_USD", "$0.10")
 WASH_PRICE = os.getenv("WASH_PRICE_USD", "$0.50")
+AHS_PRICE = os.getenv("AHS_PRICE_USD", "$1.00")
+AHS_JWT_SECRET = os.getenv("AHS_JWT_SECRET", secrets.token_urlsafe(32))
 NANSEN_PAYER_PRIVATE_KEY = os.getenv("NANSEN_PAYER_PRIVATE_KEY", "")
 NETWORK = os.getenv("NETWORK", "eip155:8453")  # Base mainnet
 VALID_COUPONS = set(c.strip().upper() for c in os.getenv("VALID_COUPONS", "").split(",") if c.strip())
@@ -426,6 +430,40 @@ class WashReport(BaseModel):
 class WashResponse(BaseModel):
     status: str
     report: WashReport
+
+
+# -- AHS Models --------------------------------------------------------------
+
+class AHSDimensionScore(BaseModel):
+    dimension: str
+    score: int
+    weight: float
+    contributing_factors: list
+
+class AHSCrossDimensionalPattern(BaseModel):
+    name: str
+    detected: bool
+    severity: str
+    description: str
+
+class AHSReport(BaseModel):
+    address: str
+    agent_health_score: int
+    grade: str
+    confidence: str
+    mode: str
+    dimensions: list[AHSDimensionScore]
+    patterns_detected: list[AHSCrossDimensionalPattern]
+    trend: Optional[str] = None
+    recommendations: list[str]
+    ahs_token: str
+    model_version: str
+    scan_timestamp: str
+    next_scan_recommended: str
+
+class AHSResponse(BaseModel):
+    status: str
+    report: AHSReport
 
 
 # -- Nansen Helper -----------------------------------------------------------
@@ -1827,6 +1865,58 @@ x402_routes = {
             },
         },
     ),
+    "GET /ahs/*": RouteConfig(
+        accepts=[
+            PaymentOption(
+                scheme="exact",
+                pay_to=PAYMENT_ADDRESS,
+                price=AHS_PRICE,
+                network=NETWORK,
+            ),
+        ],
+        mime_type="application/json",
+        description=(
+            "Agent Health Score: Proprietary composite 0-100 diagnostic across wallet "
+            "hygiene, behavioural patterns, and infrastructure health. Premium agent analysis."
+        ),
+        extensions={
+            "bazaar": {
+                "info": {
+                    "input": {
+                        "type": "http",
+                        "method": "GET",
+                        "discoverable": True,
+                        "queryParams": {
+                            "address": "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
+                        },
+                    },
+                    "output": {
+                        "type": "json",
+                        "example": {
+                            "status": "ok",
+                            "report": {
+                                "address": "0xd8da6bf26964af9d7eed9e03e53415d37aa96045",
+                                "agent_health_score": 72,
+                                "grade": "Needs Attention",
+                                "confidence": "HIGH",
+                                "mode": "2D",
+                                "dimensions": [
+                                    {"dimension": "wallet_hygiene", "score": 85, "weight": 0.30, "contributing_factors": ["Wallet hygiene is healthy"]},
+                                    {"dimension": "behavioural_patterns", "score": 63, "weight": 0.70, "contributing_factors": ["Repeated failures: 6 consecutive"]},
+                                ],
+                                "patterns_detected": [
+                                    {"name": "Stale Strategy", "detected": True, "severity": "warning", "description": "Agent is repeatedly failing on the same contract interaction without adapting."},
+                                ],
+                                "recommendations": ["Investigate repeated failures", "Enable dynamic gas pricing"],
+                                "model_version": "AHS-v1",
+                                "next_scan_recommended": "7 days",
+                            },
+                        },
+                    },
+                },
+            },
+        },
+    ),
     "POST /wash/*": RouteConfig(
         accepts=[
             PaymentOption(
@@ -2003,6 +2093,7 @@ async def api_info():
             "GET /network-map/{address}": f"{NETWORK_MAP_PRICE} USDC — related wallets (funders, deployers, multisig) with Nansen labels",
             "GET /health/{address}": f"{PRICE} USDC — wallet health diagnosis",
             "POST /wash/{address}": f"{WASH_PRICE} USDC — agent hygiene scan (dust, spam, gas efficiency, failure patterns)",
+            "GET /ahs/{address}": f"{AHS_PRICE} USDC — Agent Health Score (composite 0-100 index across wallet hygiene, behavioural patterns, and infrastructure health)",
             "GET /alerts/subscribe/{address}": f"{ALERT_PRICE} USDC/month — automated monitoring & webhook alerts",
             "GET /optimize/{address}": f"{OPTIMIZE_PRICE} USDC — gas optimization report",
             "GET /retry/{address}": f"{RETRY_PRICE} USDC — optimized retry transactions for recent failures",
@@ -2108,6 +2199,12 @@ async def coupon_network_map(code: str, address: str, chain: str = "ethereum"):
 async def coupon_wash(code: str, address: str):
     _require_coupon(code)
     return await get_wash_report(address)
+
+
+@app.get("/coupon/ahs/{code}/{address}")
+async def coupon_ahs(code: str, address: str, request: Request):
+    _require_coupon(code)
+    return await get_ahs_report(address, request)
 
 
 class ChatRequest(BaseModel):
@@ -2703,6 +2800,145 @@ async def get_wash_report(address: str):
     )
 
     return WashResponse(status="ok", report=report)
+
+
+# -- Agent Health Score (AHS) Endpoint --------------------------------------
+
+@app.get("/ahs/{address}", response_model=AHSResponse)
+async def get_ahs_report(address: str, request: Request):
+    """
+    Agent Health Score: Composite 0-100 index for on-chain agent wallets.
+
+    Requires x402 payment ($1.00 USDC on Base) OR valid X-Internal-Key header.
+
+    Three dimensions:
+    - D1 Wallet Hygiene (dust, spam, gas efficiency, failure rate, nonce gaps)
+    - D2 Behavioural Patterns (repeated failures, gas adaptation, timing, diversity, retry storms)
+    - D3 Infrastructure Health (optional — provide ?agent_url= to enable 3D mode)
+
+    Plus cross-dimensional pattern detection (Zombie Agent, Cascading Failure, etc.)
+    and temporal scoring via X-AHS-Previous JWT header.
+    """
+    if not ADDRESS_RE.match(address):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid Ethereum address format: {address}",
+        )
+
+    address = address.lower()
+    loop = asyncio.get_running_loop()
+
+    # Optional agent_url for D3 probing
+    agent_url = request.query_params.get("agent_url")
+    if agent_url:
+        if not _is_safe_webhook_url(agent_url):
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid agent_url. Must be a public https/http URL (no private IPs or internal hosts).",
+            )
+
+    # Parse previous AHS JWT token for temporal scoring
+    previous_score = None
+    previous_ema = None
+    scan_count = 1
+    prev_token = request.headers.get("X-AHS-Previous")
+    if prev_token:
+        try:
+            payload = jwt.decode(prev_token, AHS_JWT_SECRET, algorithms=["HS256"])
+            if payload.get("address", "").lower() == address:
+                previous_score = payload.get("score")
+                previous_ema = payload.get("ema")
+                scan_count = payload.get("scan_count", 1) + 1
+        except (jwt.ExpiredSignatureError, jwt.InvalidTokenError):
+            pass  # Ignore invalid tokens, proceed without temporal data
+
+    # Parallel fetch: tokens, transactions, ETH price
+    eth_price, transactions, tokens = await asyncio.gather(
+        loop.run_in_executor(None, partial(get_eth_price, BASESCAN_API_KEY)),
+        loop.run_in_executor(None, partial(fetch_transactions, address, BASESCAN_API_KEY)),
+        loop.run_in_executor(None, partial(fetch_tokens_v2, address)),
+    )
+
+    # Run scoring engine
+    result = await loop.run_in_executor(
+        None,
+        partial(
+            calculate_ahs,
+            address=address,
+            tokens=tokens,
+            transactions=transactions,
+            eth_price=eth_price,
+            agent_url=agent_url,
+            previous_score=previous_score,
+            previous_ema=previous_ema,
+            scan_count=scan_count,
+        ),
+    )
+
+    # Build dimension scores list
+    dimensions = [
+        AHSDimensionScore(
+            dimension="D1: Wallet Hygiene",
+            score=result.d1_score,
+            weight=result.d1_weight,
+            contributing_factors=result.d1_top_factors,
+        ),
+        AHSDimensionScore(
+            dimension="D2: Behavioural Patterns",
+            score=result.d2_score,
+            weight=result.d2_weight,
+            contributing_factors=result.d2_top_factors,
+        ),
+    ]
+    if result.d3_score is not None:
+        dimensions.append(
+            AHSDimensionScore(
+                dimension="D3: Infrastructure Health",
+                score=result.d3_score,
+                weight=result.d3_weight,
+                contributing_factors=result.d3_top_factors,
+            )
+        )
+
+    # Build patterns list
+    patterns = [
+        AHSCrossDimensionalPattern(
+            name=p["name"],
+            detected=p["detected"],
+            severity=p["severity"],
+            description=p["description"],
+        )
+        for p in result.patterns_detected
+    ]
+
+    # Generate signed JWT token for temporal scoring
+    token_payload = {
+        "address": address,
+        "score": result.agent_health_score,
+        "ema": result.temporal_score if result.temporal_score is not None else float(result.agent_health_score),
+        "scan_count": scan_count,
+        "ts": result.scan_timestamp,
+        "exp": int((datetime.now(timezone.utc) + timedelta(days=90)).timestamp()),
+    }
+    ahs_token = jwt.encode(token_payload, AHS_JWT_SECRET, algorithm="HS256")
+
+    report = AHSReport(
+        address=address,
+        agent_health_score=result.agent_health_score,
+        grade=f"{result.grade} — {result.grade_label}",
+        confidence=result.confidence,
+        mode=result.mode,
+        dimensions=dimensions,
+        patterns_detected=patterns,
+        trend=result.trend,
+        recommendations=result.recommendations,
+        ahs_token=ahs_token,
+        model_version=result.model_version,
+        scan_timestamp=result.scan_timestamp,
+        next_scan_recommended=result.next_scan_recommended,
+    )
+
+    return AHSResponse(status="ok", report=report)
 
 
 @app.get("/optimize/{address}", response_model=OptimizeResponse)

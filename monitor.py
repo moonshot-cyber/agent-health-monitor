@@ -1581,5 +1581,1070 @@ def analyze_wash(
     return result
 
 
+# -- Agent Health Score (AHS) Scoring Engine ---------------------------------
+
+import statistics
+from dataclasses import dataclass, field
+from typing import Optional
+
+
+@dataclass
+class AHSResult:
+    """Full AHS scan result."""
+    address: str
+    agent_health_score: int = 50
+    grade: str = "Fair"
+    grade_label: str = "Degraded"
+    confidence: str = "LOW"
+    mode: str = "2D"
+    d1_score: int = 50
+    d2_score: int = 50
+    d3_score: Optional[int] = None
+    d1_weight: float = 0.30
+    d2_weight: float = 0.70
+    d3_weight: float = 0.0
+    cdp_modifier: int = 0
+    patterns_detected: list = field(default_factory=list)
+    d1_top_factors: list = field(default_factory=list)
+    d2_top_factors: list = field(default_factory=list)
+    d3_top_factors: list = field(default_factory=list)
+    recommendations: list = field(default_factory=list)
+    trend: Optional[str] = None
+    temporal_score: Optional[int] = None
+    model_version: str = "AHS-v1"
+    scan_timestamp: str = ""
+    next_scan_recommended: str = "14 days"
+    tx_count: int = 0
+    history_days: int = 0
+    # Internal signal values (NOT exposed in API)
+    _signals: dict = field(default_factory=dict)
+
+
+def _ahs_grade(score: int) -> tuple[str, str]:
+    """Map AHS score to grade and label."""
+    if score >= 90:
+        return "A", "Excellent"
+    if score >= 75:
+        return "B", "Good"
+    if score >= 60:
+        return "C", "Needs Attention"
+    if score >= 40:
+        return "D", "Degraded"
+    if score >= 20:
+        return "E", "Critical"
+    return "F", "Failing"
+
+
+def _ahs_confidence(tx_count: int, history_days: int, has_d3: bool, has_previous: bool) -> str:
+    """Determine confidence level based on data availability."""
+    level = 0
+    if tx_count >= 100 and history_days >= 7:
+        level = 2  # base HIGH
+    elif tx_count >= 50 and history_days >= 3:
+        level = 1  # base MEDIUM
+    elif tx_count >= 10:
+        level = 0  # base LOW
+    else:
+        return "INSUFFICIENT"
+
+    if has_d3:
+        level = min(level + 1, 2)
+    if has_previous:
+        level = min(level + 1, 2)
+
+    return ["LOW", "MEDIUM", "HIGH"][level]
+
+
+def _next_scan_recommendation(score: int, confidence: str) -> str:
+    if score >= 80 and confidence == "HIGH":
+        return "30 days"
+    if score >= 60:
+        return "14 days"
+    return "7 days"
+
+
+# -- D1: Wallet Hygiene Scoring --
+
+def calculate_d1_score(
+    dust_count: int,
+    dust_total_usd: float,
+    spam_count: int,
+    avg_gas_efficiency: float,
+    failed_pct_24h: float,
+    nonce_gaps: int,
+) -> tuple[int, list]:
+    """Calculate Dimension 1 (Wallet Hygiene) score. Returns (score, top_factors)."""
+    # Signal scores
+    d1_dust = max(0, 100 - dust_count * 1.5)
+    d1_dust_val = 100 if dust_total_usd < 0.10 else max(0, 100 - (dust_total_usd - 0.10) * 50)
+    d1_spam = max(0, 100 - spam_count * 2)
+
+    # Gas efficiency
+    avg_eff = avg_gas_efficiency / 100.0 if avg_gas_efficiency > 1 else avg_gas_efficiency
+    if 0.40 <= avg_eff <= 0.85:
+        d1_gas_eff = 100
+    elif avg_eff < 0.40:
+        d1_gas_eff = (avg_eff / 0.40) * 100 if avg_eff > 0 else 0
+    else:
+        d1_gas_eff = max(0, 100 - (avg_eff - 0.85) * 500)
+
+    d1_fail_rate = max(0, 100 - failed_pct_24h * 3)
+    d1_nonce = max(0, 100 - nonce_gaps * 15)
+
+    score = (
+        d1_dust * 0.15
+        + d1_dust_val * 0.05
+        + d1_spam * 0.20
+        + d1_gas_eff * 0.25
+        + d1_fail_rate * 0.20
+        + d1_nonce * 0.15
+    )
+    score = max(0, min(100, int(round(score))))
+
+    # Top factors (only report significant detractors)
+    factors = []
+    if d1_dust < 70:
+        factors.append(f"{dust_count} dust tokens cluttering wallet")
+    if d1_spam < 70:
+        factors.append(f"{spam_count} spam tokens detected")
+    if d1_gas_eff < 70:
+        factors.append(f"Gas efficiency suboptimal ({avg_gas_efficiency:.1f}%)")
+    if d1_fail_rate < 70:
+        factors.append(f"Failed transaction rate elevated ({failed_pct_24h:.1f}%)")
+    if d1_nonce < 70:
+        factors.append(f"{nonce_gaps} nonce gaps in sequence")
+    if not factors:
+        factors.append("Wallet hygiene is healthy")
+
+    return score, factors[:3]
+
+
+# -- D2: Behavioural Patterns Scoring --
+
+def _calc_repeated_failure_score(transactions: list[dict]) -> tuple[int, int, bool]:
+    """Repeated failure patterns. Returns (score, max_consecutive, has_recovery)."""
+    groups: dict[str, list[dict]] = {}
+    for tx in transactions:
+        to_addr = (tx.get("to") or "").lower()
+        inp = tx.get("input", "0x")
+        method_id = inp[:10] if len(inp) >= 10 else "0x"
+        key = f"{to_addr}:{method_id}"
+        groups.setdefault(key, []).append(tx)
+
+    max_consec = 0
+    has_recovery = False
+
+    for key, txs in groups.items():
+        sorted_txs = sorted(txs, key=lambda t: int(t.get("timeStamp", 0)))
+        consecutive = 0
+        group_max = 0
+        seen_failure = False
+
+        for tx in sorted_txs:
+            is_error = tx.get("isError") == "1" or tx.get("txreceipt_status") == "0"
+            if is_error:
+                consecutive += 1
+                seen_failure = True
+                group_max = max(group_max, consecutive)
+            else:
+                if seen_failure and consecutive > 0:
+                    has_recovery = True
+                consecutive = 0
+
+        max_consec = max(max_consec, group_max)
+
+    if max_consec <= 2:
+        score = 100
+    elif max_consec <= 5:
+        score = 80 - (max_consec - 2) * 10
+    elif max_consec <= 10:
+        score = 50 - (max_consec - 5) * 8
+    else:
+        score = 0
+
+    if has_recovery and score < 80:
+        score = min(80, score + 15)
+
+    return max(0, score), max_consec, has_recovery
+
+
+def _calc_gas_adaptation_score(transactions: list[dict]) -> tuple[int, float]:
+    """Gas adaptation index. Returns (score, cv)."""
+    now_ts = datetime.now(timezone.utc).timestamp()
+    twenty_four_hours_ago = now_ts - 86400
+
+    gas_prices = []
+    for tx in transactions:
+        try:
+            tx_ts = int(tx.get("timeStamp", 0))
+            if tx_ts >= twenty_four_hours_ago:
+                gp = int(tx.get("gasPrice", 0))
+                if gp > 0:
+                    gas_prices.append(gp)
+        except (ValueError, TypeError):
+            continue
+
+    if len(gas_prices) < 5:
+        return 50, 0.0  # insufficient data
+
+    mean_gp = statistics.mean(gas_prices)
+    std_gp = statistics.stdev(gas_prices)
+    cv = std_gp / mean_gp if mean_gp > 0 else 0
+
+    if cv >= 0.15:
+        score = 100
+    elif cv >= 0.05:
+        score = int(60 + (cv - 0.05) * 400)
+    elif cv >= 0.01:
+        score = int(30 + (cv - 0.01) * 750)
+    else:
+        score = int(max(0, cv * 3000))
+
+    return max(0, min(100, score)), cv
+
+
+def _calc_nonce_management_score(transactions: list[dict]) -> tuple[int, int]:
+    """Nonce management quality. Returns (score, persistent_gaps)."""
+    nonce_gaps, _ = detect_nonce_issues(transactions)
+
+    # Check for persistent gaps (gaps in txs > 48h apart)
+    nonces_with_ts = []
+    for tx in transactions:
+        try:
+            nonces_with_ts.append((int(tx.get("nonce", 0)), int(tx.get("timeStamp", 0))))
+        except (ValueError, TypeError):
+            continue
+
+    if not nonces_with_ts:
+        return 100, 0
+
+    nonces_with_ts.sort(key=lambda x: x[1])
+    unique_sorted = sorted(set(n for n, _ in nonces_with_ts))
+
+    persistent_gaps = 0
+    gap_nonces = set()
+    for i in range(1, len(unique_sorted)):
+        for missing in range(unique_sorted[i - 1] + 1, unique_sorted[i]):
+            gap_nonces.add(missing)
+
+    if gap_nonces:
+        # Find time span of gap: earliest tx after gap vs latest tx before gap
+        nonce_to_ts = {}
+        for n, ts in nonces_with_ts:
+            nonce_to_ts[n] = ts
+
+        for gap_n in gap_nonces:
+            before_ts = max((ts for n, ts in nonces_with_ts if n < gap_n), default=0)
+            after_ts = min((ts for n, ts in nonces_with_ts if n > gap_n), default=0)
+            if before_ts > 0 and after_ts > 0 and (after_ts - before_ts) > 48 * 3600:
+                persistent_gaps += 1
+
+    if persistent_gaps == 0 and nonce_gaps <= 1:
+        score = 100
+    elif persistent_gaps == 0:
+        score = max(60, 100 - nonce_gaps * 10)
+    elif persistent_gaps <= 2:
+        score = max(20, 60 - persistent_gaps * 20)
+    else:
+        score = 0
+
+    return max(0, min(100, score)), persistent_gaps
+
+
+def _calc_timing_regularity_score(transactions: list[dict]) -> tuple[int, float, float, int]:
+    """Timing regularity. Returns (score, cv, gap_ratio, burst_count)."""
+    timestamps = sorted(int(tx.get("timeStamp", 0)) for tx in transactions)
+    timestamps = [t for t in timestamps if t > 0]
+
+    if len(timestamps) < 6:
+        return 50, 0.0, 1.0, 0  # insufficient data
+
+    intervals = [timestamps[i + 1] - timestamps[i] for i in range(len(timestamps) - 1)]
+    intervals = [i for i in intervals if i > 0]
+
+    if not intervals:
+        return 50, 0.0, 1.0, 0
+
+    mean_int = statistics.mean(intervals)
+    median_int = statistics.median(intervals)
+    max_int = max(intervals)
+
+    cv = statistics.stdev(intervals) / mean_int if mean_int > 0 else 0
+    gap_ratio = max_int / median_int if median_int > 0 else 1.0
+    burst_count = sum(1 for i in intervals if median_int > 0 and i < median_int / 10)
+
+    if 0.3 <= cv <= 2.0:
+        timing_base = 100
+    elif cv < 0.3:
+        timing_base = 75
+    else:
+        timing_base = max(0, int(100 - (cv - 2.0) * 15))
+
+    if gap_ratio > 20:
+        timing_base -= 30
+    elif gap_ratio > 10:
+        timing_base -= 15
+
+    if burst_count > 5:
+        timing_base -= 20
+
+    return max(0, min(100, timing_base)), cv, gap_ratio, burst_count
+
+
+def _calc_tx_diversity_score(transactions: list[dict]) -> tuple[int, float, int]:
+    """Transaction diversity. Returns (score, diversity_ratio, unique_pairs)."""
+    now_ts = datetime.now(timezone.utc).timestamp()
+    seven_days_ago = now_ts - 7 * 86400
+
+    recent_txs = []
+    for tx in transactions:
+        try:
+            if int(tx.get("timeStamp", 0)) >= seven_days_ago:
+                recent_txs.append(tx)
+        except (ValueError, TypeError):
+            continue
+
+    if not recent_txs:
+        recent_txs = transactions[-100:] if len(transactions) > 100 else transactions
+
+    pairs = set()
+    for tx in recent_txs:
+        to_addr = (tx.get("to") or "").lower()
+        inp = tx.get("input", "0x")
+        method_id = inp[:10] if len(inp) >= 10 else "0x"
+        if inp != "0x":
+            pairs.add((to_addr, method_id))
+
+    diversity_ratio = len(pairs) / len(recent_txs) if recent_txs else 0
+    unique_pairs = len(pairs)
+
+    if unique_pairs >= 10 or diversity_ratio >= 0.10:
+        score = 100
+    elif unique_pairs >= 5 or diversity_ratio >= 0.05:
+        score = 75
+    elif unique_pairs >= 2 or diversity_ratio >= 0.02:
+        score = 50
+    elif unique_pairs == 1:
+        score = 25
+    else:
+        score = 0
+
+    return score, diversity_ratio, unique_pairs
+
+
+def _calc_retry_storm_score(transactions: list[dict]) -> tuple[int, int]:
+    """Retry storm frequency. Returns (score, storm_events)."""
+    groups: dict[str, list[int]] = {}
+    for tx in transactions:
+        to_addr = (tx.get("to") or "").lower()
+        inp = tx.get("input", "0x")
+        key = f"{to_addr}:{inp}"
+        try:
+            ts = int(tx.get("timeStamp", 0))
+            groups.setdefault(key, []).append(ts)
+        except (ValueError, TypeError):
+            continue
+
+    storm_events = 0
+    for key, timestamps in groups.items():
+        if len(timestamps) < 3:
+            continue
+        sorted_ts = sorted(timestamps)
+        window_start = sorted_ts[0]
+        window_count = 1
+        for ts in sorted_ts[1:]:
+            if ts - window_start <= 300:
+                window_count += 1
+            else:
+                if window_count >= 3:
+                    storm_events += 1
+                window_start = ts
+                window_count = 1
+        if window_count >= 3:
+            storm_events += 1
+
+    if storm_events == 0:
+        score = 100
+    elif storm_events <= 2:
+        score = 70 - storm_events * 10
+    elif storm_events <= 5:
+        score = 50 - (storm_events - 2) * 10
+    else:
+        score = max(0, 20 - (storm_events - 5) * 5)
+
+    return score, storm_events
+
+
+def _calc_contract_breadth_score(transactions: list[dict]) -> tuple[int, float, int]:
+    """Contract interaction breadth. Returns (score, breadth_ratio, unique_contracts)."""
+    now_ts = datetime.now(timezone.utc).timestamp()
+    seven_days_ago = now_ts - 7 * 86400
+
+    recent_txs = []
+    for tx in transactions:
+        try:
+            if int(tx.get("timeStamp", 0)) >= seven_days_ago:
+                recent_txs.append(tx)
+        except (ValueError, TypeError):
+            continue
+
+    if not recent_txs:
+        recent_txs = transactions[-100:] if len(transactions) > 100 else transactions
+
+    unique_contracts = set()
+    for tx in recent_txs:
+        to_addr = (tx.get("to") or "").lower()
+        if to_addr:
+            unique_contracts.add(to_addr)
+
+    breadth_ratio = len(unique_contracts) / len(recent_txs) if recent_txs else 0
+
+    if breadth_ratio >= 0.15 or len(unique_contracts) >= 8:
+        score = 100
+    elif breadth_ratio >= 0.05 or len(unique_contracts) >= 4:
+        score = 70
+    elif len(unique_contracts) >= 2:
+        score = 40
+    else:
+        score = 10
+
+    return score, breadth_ratio, len(unique_contracts)
+
+
+def _calc_activity_gap_score(transactions: list[dict]) -> tuple[int, float]:
+    """Activity gap detection. Returns (score, gap_ratio)."""
+    now_ts = datetime.now(timezone.utc).timestamp()
+    seven_days_ago = now_ts - 7 * 86400
+
+    recent = []
+    for tx in transactions:
+        try:
+            ts = int(tx.get("timeStamp", 0))
+            if ts >= seven_days_ago:
+                recent.append(ts)
+        except (ValueError, TypeError):
+            continue
+
+    if not recent:
+        recent = sorted(int(tx.get("timeStamp", 0)) for tx in transactions[-50:])
+
+    if len(recent) < 3:
+        return 50, 1.0
+
+    recent.sort()
+    intervals = [recent[i + 1] - recent[i] for i in range(len(recent) - 1)]
+    intervals = [i for i in intervals if i > 0]
+
+    if not intervals:
+        return 50, 1.0
+
+    max_gap = max(intervals)
+    median_gap = statistics.median(intervals)
+    gap_ratio = max_gap / median_gap if median_gap > 0 else 1.0
+
+    if gap_ratio < 5:
+        score = 100
+    elif gap_ratio < 10:
+        score = 70
+    elif gap_ratio < 20:
+        score = 40
+    else:
+        score = 10
+
+    return score, gap_ratio
+
+
+def calculate_d2_score(transactions: list[dict]) -> tuple[int, list, dict]:
+    """Calculate Dimension 2 (Behavioural Patterns) score.
+
+    Returns (score, top_factors, raw_signals dict).
+    """
+    if len(transactions) < 10:
+        return 50, ["Insufficient transaction history for behavioural analysis"], {}
+
+    rep_score, max_consec, has_recovery = _calc_repeated_failure_score(transactions)
+    gas_adapt_score, gas_cv = _calc_gas_adaptation_score(transactions)
+    nonce_score, persistent_gaps = _calc_nonce_management_score(transactions)
+    timing_score, timing_cv, gap_ratio, burst_count = _calc_timing_regularity_score(transactions)
+    diversity_score, diversity_ratio, unique_pairs = _calc_tx_diversity_score(transactions)
+    storm_score, storm_events = _calc_retry_storm_score(transactions)
+    breadth_score, breadth_ratio, unique_contracts = _calc_contract_breadth_score(transactions)
+    gap_score, activity_gap_ratio = _calc_activity_gap_score(transactions)
+
+    # Weighted average per design doc
+    score = (
+        rep_score * 0.20
+        + gas_adapt_score * 0.15
+        + nonce_score * 0.10
+        + timing_score * 0.15
+        + diversity_score * 0.10
+        + storm_score * 0.15
+        + breadth_score * 0.10
+        + gap_score * 0.05
+    )
+    score = max(0, min(100, int(round(score))))
+
+    # Top factors
+    factors = []
+    signal_scores = [
+        (rep_score, f"Repeated failures: {max_consec} consecutive to same contract"),
+        (gas_adapt_score, f"Gas adaptation index: {gas_cv:.3f} (CV)"),
+        (nonce_score, f"Nonce management: {persistent_gaps} persistent gaps"),
+        (timing_score, f"Timing regularity: CV={timing_cv:.2f}, gap ratio={gap_ratio:.1f}"),
+        (diversity_score, f"Transaction diversity: {unique_pairs} unique pairs ({diversity_ratio:.3f})"),
+        (storm_score, f"Retry storms: {storm_events} events detected"),
+        (breadth_score, f"Contract breadth: {unique_contracts} unique contracts ({breadth_ratio:.3f})"),
+        (gap_score, f"Activity gaps: ratio {activity_gap_ratio:.1f}"),
+    ]
+
+    # Report worst signals
+    signal_scores.sort(key=lambda x: x[0])
+    for s, desc in signal_scores[:3]:
+        if s < 70:
+            factors.append(desc)
+
+    if not factors:
+        factors.append("Behavioural patterns are healthy")
+
+    raw_signals = {
+        "repeated_failure_score": rep_score,
+        "max_consecutive_failures": max_consec,
+        "has_recovery": has_recovery,
+        "gas_adaptation_score": gas_adapt_score,
+        "gas_adaptation_cv": gas_cv,
+        "nonce_management_score": nonce_score,
+        "persistent_nonce_gaps": persistent_gaps,
+        "timing_score": timing_score,
+        "timing_cv": timing_cv,
+        "gap_ratio": gap_ratio,
+        "burst_count": burst_count,
+        "tx_diversity_score": diversity_score,
+        "tx_diversity_ratio": diversity_ratio,
+        "unique_pairs": unique_pairs,
+        "retry_storm_score": storm_score,
+        "storm_events": storm_events,
+        "contract_breadth_score": breadth_score,
+        "breadth_ratio": breadth_ratio,
+        "unique_contracts": unique_contracts,
+        "activity_gap_score": gap_score,
+        "activity_gap_ratio": activity_gap_ratio,
+    }
+
+    return score, factors[:3], raw_signals
+
+
+# -- D3: Infrastructure Health Scoring (sync probing) --
+
+def probe_infrastructure_sync(agent_url: str) -> tuple[int, list]:
+    """Probe agent infrastructure (synchronous). Returns (score, top_factors)."""
+    import time as _time
+
+    scores = {}
+    factors = []
+
+    # Probe 1: Availability
+    try:
+        start = _time.monotonic()
+        resp = requests.get(agent_url, timeout=10, allow_redirects=True)
+        latency_ms = (_time.monotonic() - start) * 1000
+
+        if resp.status_code < 500:
+            scores["availability"] = 100
+        else:
+            scores["availability"] = 20
+            factors.append(f"Agent returned {resp.status_code}")
+    except Exception:
+        scores["availability"] = 0
+        scores["latency"] = 0
+        factors.append("Agent unreachable — endpoint timed out or refused")
+        # Can't probe further if unreachable
+        d3 = int(scores["availability"] * 0.30 + scores.get("latency", 0) * 0.20)
+        return max(0, min(100, d3)), factors[:3] if factors else ["Agent completely unreachable"]
+
+    # Probe 2: Latency
+    if latency_ms < 200:
+        scores["latency"] = 100
+    elif latency_ms < 500:
+        scores["latency"] = 85
+    elif latency_ms < 1000:
+        scores["latency"] = 65
+    elif latency_ms < 3000:
+        scores["latency"] = 35
+    else:
+        scores["latency"] = 10
+        factors.append(f"Response latency {latency_ms:.0f}ms (>3s)")
+
+    # Probe 3: x402 header correctness
+    if resp.status_code == 402:
+        try:
+            body = resp.json()
+            x402_score = 0
+            if "payTo" in body:
+                x402_score += 25
+            if "maxAmountRequired" in body:
+                x402_score += 25
+            if "network" in body:
+                x402_score += 25
+            if "resource" in body:
+                x402_score += 25
+            scores["x402"] = x402_score
+            if x402_score < 75:
+                factors.append("x402 payment headers incomplete")
+        except Exception:
+            scores["x402"] = 50
+    else:
+        scores["x402"] = 50  # can't assess
+
+    # Probe 4: API metadata
+    scores["metadata"] = 0
+    try:
+        parsed = requests.compat.urlparse(agent_url)
+        base = f"{parsed.scheme}://{parsed.netloc}"
+
+        r1 = requests.get(f"{base}/.well-known/x402", timeout=5)
+        if r1.status_code == 200:
+            try:
+                data = r1.json()
+                if "endpoints" in data or "routes" in data:
+                    scores["metadata"] += 50
+            except Exception:
+                pass
+
+        r2 = requests.get(f"{base}/api/info", timeout=5)
+        if r2.status_code == 200:
+            try:
+                data = r2.json()
+                if "version" in data:
+                    scores["metadata"] += 25
+                if "endpoints" in data:
+                    scores["metadata"] += 25
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    if scores["metadata"] == 0:
+        factors.append("No API metadata endpoints found")
+
+    # Probe 5: Data freshness
+    scores["freshness"] = 50  # default neutral
+    try:
+        parsed = requests.compat.urlparse(agent_url)
+        base = f"{parsed.scheme}://{parsed.netloc}"
+        r3 = requests.get(f"{base}/api/info", timeout=5)
+        if r3.status_code == 200:
+            data = r3.json()
+            for field_name in ["last_updated", "analyzed_at", "scan_timestamp"]:
+                if field_name in data:
+                    try:
+                        ts_val = datetime.fromisoformat(data[field_name].replace("Z", "+00:00"))
+                        age_seconds = (datetime.now(timezone.utc) - ts_val).total_seconds()
+                        if age_seconds < 300:
+                            scores["freshness"] = 100
+                        elif age_seconds < 3600:
+                            scores["freshness"] = 70
+                        elif age_seconds < 86400:
+                            scores["freshness"] = 40
+                        else:
+                            scores["freshness"] = 10
+                    except Exception:
+                        pass
+                    break
+    except Exception:
+        pass
+
+    # Weighted D3 score
+    d3 = (
+        scores.get("availability", 0) * 0.30
+        + scores.get("latency", 0) * 0.20
+        + scores.get("x402", 50) * 0.15
+        + scores.get("metadata", 0) * 0.15
+        + scores.get("freshness", 50) * 0.20
+    )
+
+    if not factors:
+        factors.append("Infrastructure is responding well")
+
+    return max(0, min(100, int(round(d3)))), factors[:3]
+
+
+# -- Cross-Dimensional Pattern Detection --
+
+def detect_cdp_patterns(
+    d1_score: int,
+    d2_score: int,
+    d3_score: Optional[int],
+    signals: dict,
+    transactions: list[dict],
+) -> tuple[int, list]:
+    """Detect cross-dimensional patterns. Returns (modifier, patterns_list)."""
+    modifier = 0
+    patterns = []
+
+    # Extract signal values safely
+    failed_pct = signals.get("failed_pct_24h", 0)
+    d1_gas_eff_raw = signals.get("d1_gas_eff_score", 100)
+    tx_div_ratio = signals.get("tx_diversity_ratio", 1.0)
+    unique_contracts = signals.get("unique_contracts", 10)
+    max_consec = signals.get("max_consecutive_failures", 0)
+    gas_cv = signals.get("gas_adaptation_cv", 0.5)
+    persistent_gaps = signals.get("persistent_nonce_gaps", 0)
+    gap_ratio = signals.get("gap_ratio", 1.0)
+    storm_events = signals.get("storm_events", 0)
+    gas_adapt_score = signals.get("gas_adaptation_score", 50)
+
+    # Pattern 1: Zombie Agent
+    if (d1_gas_eff_raw > 90 and failed_pct == 0 and
+            tx_div_ratio < 0.02 and unique_contracts <= 1):
+        modifier -= 15
+        patterns.append({
+            "name": "Zombie Agent",
+            "detected": True,
+            "severity": "critical",
+            "description": (
+                "Agent appears technically functional but brain-dead — executing "
+                "the same single operation on repeat with zero diversity. Possible "
+                "crashed strategy module with transaction sender still running."
+            ),
+        })
+
+    # Pattern 2: Cascading Infrastructure Failure
+    now_ts = datetime.now(timezone.utc).timestamp()
+    seven_days_ago = now_ts - 7 * 86400
+    recent = [tx for tx in transactions if int(tx.get("timeStamp", 0)) >= seven_days_ago]
+    if len(recent) >= 10:
+        mid = len(recent) // 2
+        first_half = recent[:mid]
+        second_half = recent[mid:]
+        first_fail = sum(1 for tx in first_half if tx.get("isError") == "1" or tx.get("txreceipt_status") == "0") / max(len(first_half), 1)
+        second_fail = sum(1 for tx in second_half if tx.get("isError") == "1" or tx.get("txreceipt_status") == "0") / max(len(second_half), 1)
+        failure_rising = second_fail > first_fail * 1.5 and second_fail > 0.05
+
+        if failure_rising and persistent_gaps > 0 and gap_ratio > 10:
+            modifier -= 15
+            patterns.append({
+                "name": "Cascading Infrastructure Failure",
+                "detected": True,
+                "severity": "critical",
+                "description": (
+                    "Active degradation detected — failure rate is rising, nonce gaps "
+                    "are widening, and timing shows crash-restart patterns. This agent "
+                    "is in an infrastructure death spiral."
+                ),
+            })
+
+    # Pattern 3: Stale Strategy
+    if max_consec > 5 and tx_div_ratio < 0.03 and gas_cv < 0.05:
+        modifier -= 10
+        patterns.append({
+            "name": "Stale Strategy",
+            "detected": True,
+            "severity": "warning",
+            "description": (
+                "Agent is repeatedly failing on the same contract interaction without "
+                "adapting. Possible causes: revoked approval, removed liquidity, "
+                "contract upgrade. Gas price is hardcoded (no adaptation)."
+            ),
+        })
+
+    # Pattern 4: Healthy Operator
+    if (d1_score >= 80 and gas_cv > 0.15 and tx_div_ratio > 0.05 and
+            storm_events == 0 and (d3_score is None or d3_score >= 80)):
+        modifier += 5
+        patterns.append({
+            "name": "Healthy Operator",
+            "detected": True,
+            "severity": "info",
+            "description": (
+                "All dimensions performing well — clean wallet, adaptive gas "
+                "pricing, diverse interactions, and no retry storms."
+            ),
+        })
+
+    # Pattern 5: Gas War Casualty
+    if gas_cv > 0.40 and failed_pct > 15 and storm_events > 2 and gas_adapt_score < 60:
+        modifier -= 10
+        patterns.append({
+            "name": "Gas War Casualty",
+            "detected": True,
+            "severity": "warning",
+            "description": (
+                "Agent is adapting gas prices but losing gas wars — high variance "
+                "with high failure rate and retry storms. Needs better MEV protection "
+                "or gas bidding strategy."
+            ),
+        })
+
+    # Pattern 6: Phantom Activity (requires D3)
+    if d3_score is not None and d3_score >= 70 and len(recent) < 3 and len(transactions) > 20:
+        modifier -= 8
+        patterns.append({
+            "name": "Phantom Activity",
+            "detected": True,
+            "severity": "warning",
+            "description": (
+                "Agent server is running and responding to health checks, but "
+                "near-zero on-chain activity in the last 7 days despite historical "
+                "activity. Service is up but agent is idle."
+            ),
+        })
+
+    # Pattern 7: Recovery in Progress
+    twenty_four_hours_ago = now_ts - 86400
+    recent_24h = [tx for tx in transactions if int(tx.get("timeStamp", 0)) >= twenty_four_hours_ago]
+    older = [tx for tx in transactions if seven_days_ago <= int(tx.get("timeStamp", 0)) < twenty_four_hours_ago]
+    if len(recent_24h) > 5 and len(older) > 10:
+        recent_fail_rate = sum(1 for tx in recent_24h if tx.get("isError") == "1" or tx.get("txreceipt_status") == "0") / len(recent_24h)
+        older_fail_rate = sum(1 for tx in older if tx.get("isError") == "1" or tx.get("txreceipt_status") == "0") / len(older)
+        nonce_gaps_recent, _ = detect_nonce_issues(recent_24h)
+        nonce_gaps_older, _ = detect_nonce_issues(older)
+        if recent_fail_rate < older_fail_rate * 0.5 and nonce_gaps_recent <= nonce_gaps_older:
+            modifier += 3
+            patterns.append({
+                "name": "Recovery in Progress",
+                "detected": True,
+                "severity": "info",
+                "description": (
+                    "Recent failure rate has dropped significantly compared to the "
+                    "previous period. Agent appears to be recovering from a prior issue."
+                ),
+            })
+
+    # Clamp modifier
+    modifier = max(-15, min(5, modifier))
+
+    return modifier, patterns
+
+
+# -- Main AHS Calculation --
+
+def calculate_ahs(
+    address: str,
+    tokens: list[dict],
+    transactions: list[dict],
+    eth_price: float,
+    agent_url: Optional[str] = None,
+    previous_score: Optional[int] = None,
+    previous_ema: Optional[float] = None,
+    scan_count: int = 1,
+) -> AHSResult:
+    """Calculate the full Agent Health Score.
+
+    Args:
+        address: Wallet address (lowercase).
+        tokens: Token list from fetch_tokens_v2().
+        transactions: Transaction list from fetch_transactions().
+        eth_price: Current ETH/USD price.
+        agent_url: Optional agent service URL for D3 probing.
+        previous_score: Previous AHS score (from JWT token).
+        previous_ema: Previous EMA score (from JWT token).
+        scan_count: Number of scans (from JWT token).
+
+    Returns:
+        AHSResult with composite score and all details.
+    """
+    result = AHSResult(
+        address=address,
+        scan_timestamp=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    )
+
+    # Filter to outgoing transactions
+    outgoing = [
+        tx for tx in transactions
+        if tx.get("from", "").lower() == address.lower()
+    ]
+
+    result.tx_count = len(outgoing)
+
+    # Calculate history span
+    if outgoing:
+        timestamps = [int(tx.get("timeStamp", 0)) for tx in outgoing]
+        first_ts = min(t for t in timestamps if t > 0) if any(t > 0 for t in timestamps) else 0
+        last_ts = max(timestamps)
+        result.history_days = max(1, int((last_ts - first_ts) / 86400)) if first_ts > 0 else 0
+
+    # -- D1: Wallet Hygiene --
+    # Reuse wash analysis data extraction
+    dust_count = 0
+    dust_total_usd = 0.0
+    for item in tokens:
+        tok = item.get("token", {})
+        exchange_rate_str = tok.get("exchange_rate")
+        if exchange_rate_str is None:
+            continue
+        try:
+            exchange_rate = float(exchange_rate_str)
+            raw_value = item.get("value", "0")
+            decimals = int(tok.get("decimals") or 18)
+            balance = int(raw_value) / (10 ** decimals)
+            usd_value = balance * exchange_rate
+            if 0 <= usd_value < 0.01:
+                dust_count += 1
+                dust_total_usd += usd_value
+        except (ValueError, TypeError, OverflowError):
+            continue
+
+    spam_count = sum(1 for item in tokens if is_spam_token(item.get("token", {}))[0])
+
+    # Gas efficiency
+    gas_efficiencies = []
+    for tx in outgoing:
+        gas_used = int(tx.get("gasUsed") or 0)
+        gas_limit = int(tx.get("gas") or 0)
+        if gas_limit > 0:
+            gas_efficiencies.append(gas_used / gas_limit * 100)
+    avg_gas_eff = statistics.mean(gas_efficiencies) if gas_efficiencies else 0
+
+    # Failed tx rate 24h
+    now_ts = datetime.now(timezone.utc).timestamp()
+    twenty_four_hours_ago = now_ts - 86400
+    txs_24h = [tx for tx in outgoing if int(tx.get("timeStamp", 0)) >= twenty_four_hours_ago]
+    failed_24h = sum(1 for tx in txs_24h if tx.get("isError") == "1" or tx.get("txreceipt_status") == "0")
+    failed_pct_24h = (failed_24h / len(txs_24h) * 100) if txs_24h else 0
+
+    # Nonce gaps
+    nonce_gaps, _ = detect_nonce_issues(outgoing)
+
+    d1_score, d1_factors = calculate_d1_score(
+        dust_count, dust_total_usd, spam_count,
+        avg_gas_eff, failed_pct_24h, nonce_gaps,
+    )
+    result.d1_score = d1_score
+    result.d1_top_factors = d1_factors
+
+    # -- D2: Behavioural Patterns --
+    d2_score, d2_factors, d2_signals = calculate_d2_score(outgoing)
+    result.d2_score = d2_score
+    result.d2_top_factors = d2_factors
+
+    # -- D3: Infrastructure Health --
+    d3_score = None
+    d3_factors = []
+    if agent_url:
+        d3_score, d3_factors = probe_infrastructure_sync(agent_url)
+        result.d3_score = d3_score
+        result.d3_top_factors = d3_factors
+        result.mode = "3D"
+        result.d1_weight = 0.25
+        result.d2_weight = 0.45
+        result.d3_weight = 0.30
+    else:
+        result.mode = "2D"
+        result.d1_weight = 0.30
+        result.d2_weight = 0.70
+        result.d3_weight = 0.0
+
+    # -- Composite Score --
+    if d3_score is not None:
+        composite = 0.25 * d1_score + 0.45 * d2_score + 0.30 * d3_score
+    else:
+        composite = 0.30 * d1_score + 0.70 * d2_score
+
+    # -- CDP Patterns --
+    # Build signals dict for CDP detection
+    d1_gas_eff_val = avg_gas_eff
+    if 40 <= avg_gas_eff <= 85:
+        d1_gas_eff_score = 100
+    elif avg_gas_eff < 40:
+        d1_gas_eff_score = (avg_gas_eff / 40) * 100
+    else:
+        d1_gas_eff_score = max(0, 100 - (avg_gas_eff - 85) * 5)
+
+    cdp_signals = {
+        **d2_signals,
+        "failed_pct_24h": failed_pct_24h,
+        "d1_gas_eff_score": d1_gas_eff_score,
+    }
+
+    cdp_modifier, patterns = detect_cdp_patterns(
+        d1_score, d2_score, d3_score, cdp_signals, outgoing,
+    )
+    result.cdp_modifier = cdp_modifier
+    result.patterns_detected = patterns
+
+    composite = max(0, min(100, int(round(composite + cdp_modifier))))
+
+    # -- Temporal Scoring --
+    has_previous = previous_score is not None
+    if has_previous:
+        if scan_count == 2:
+            temporal = composite * 0.8 + previous_score * 0.2
+        else:
+            alpha = 0.6
+            prev_ema = previous_ema if previous_ema is not None else previous_score
+            temporal = composite * alpha + prev_ema * (1 - alpha)
+
+        result.temporal_score = int(round(temporal))
+
+        delta = composite - previous_score
+        if delta > 5:
+            result.trend = "improving"
+        elif delta < -5:
+            result.trend = "declining"
+        else:
+            result.trend = "stable"
+
+        composite = int(round(temporal))
+
+    result.agent_health_score = max(0, min(100, composite))
+
+    # Grade
+    grade_letter, grade_label = _ahs_grade(result.agent_health_score)
+    result.grade = grade_letter
+    result.grade_label = grade_label
+
+    # Confidence
+    result.confidence = _ahs_confidence(
+        result.tx_count, result.history_days,
+        has_d3=d3_score is not None, has_previous=has_previous,
+    )
+
+    # Next scan recommendation
+    result.next_scan_recommended = _next_scan_recommendation(
+        result.agent_health_score, result.confidence,
+    )
+
+    # -- Recommendations --
+    recs = []
+    # Based on worst patterns
+    for p in patterns:
+        if p["severity"] == "critical":
+            recs.append(p["description"][:120])
+    # Based on worst D2 signals
+    for factor in d2_factors:
+        if "healthy" not in factor.lower() and len(recs) < 3:
+            recs.append(factor)
+    # Based on D1 issues
+    for factor in d1_factors:
+        if "healthy" not in factor.lower() and len(recs) < 3:
+            recs.append(factor)
+    # Based on D3 issues
+    for factor in d3_factors:
+        if "well" not in factor.lower() and len(recs) < 3:
+            recs.append(factor)
+
+    if not recs:
+        if result.agent_health_score >= 80:
+            recs.append(f"Maintaining excellent health — scan again in {result.next_scan_recommended}")
+        elif result.tx_count < 20:
+            recs.append(f"Insufficient history for full assessment — scan again in 7 days to build baseline")
+        else:
+            recs.append(f"Score {result.agent_health_score}/100 — next scan recommended in {result.next_scan_recommended}")
+
+    result.recommendations = recs[:3]
+
+    # Store internal signals
+    result._signals = {
+        "d1_dust_count": dust_count,
+        "d1_spam_count": spam_count,
+        "d1_gas_eff": avg_gas_eff,
+        "d1_failed_pct_24h": failed_pct_24h,
+        "d1_nonce_gaps": nonce_gaps,
+        **d2_signals,
+    }
+
+    return result
+
+
 if __name__ == "__main__":
     main()
