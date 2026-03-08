@@ -1,10 +1,10 @@
 # Agent Health Monitor
 
-10-endpoint wallet intelligence API enriched with [Nansen](https://nansen.ai) blockchain analytics. Risk scores, health checks, counterparty analysis, wallet network mapping, PnL summaries, wallet hygiene scans, and autonomous protection — all pay-per-call via [x402 protocol](https://x402.org) on Base.
+11-endpoint wallet intelligence API enriched with [Nansen](https://nansen.ai) blockchain analytics. Risk scores, health checks, counterparty analysis, wallet network mapping, PnL summaries, wallet hygiene scans, composite Agent Health Score, and autonomous protection — all pay-per-call via [x402 protocol](https://x402.org) on Base.
 
 ## What it does
 
-**Screen** with `/risk` — **profile** with `/risk/premium` — **investigate** with `/counterparties` and `/network-map` — **diagnose** with `/health` — **clean** with `/wash` — **monitor** with `/alerts` — **fix** with `/optimize` — **retry** with `/retry` — **protect** with `/agent/protect`.
+**Screen** with `/risk` — **profile** with `/risk/premium` — **investigate** with `/counterparties` and `/network-map` — **diagnose** with `/health` — **clean** with `/wash` — **score** with `/ahs` — **monitor** with `/alerts` — **fix** with `/optimize` — **retry** with `/retry` — **protect** with `/agent/protect`.
 
 | Endpoint | Price | Purpose |
 |---|---|---|
@@ -14,6 +14,7 @@
 | `GET /network-map/{address}` | $0.10 USDC | Wallet network map — funding, deployer & multisig links via Nansen |
 | `GET /health/{address}` | $0.50 USDC | Full wallet health score with risk analysis |
 | `POST /wash/{address}` | $0.50 USDC | Wallet hygiene scan — dust, spam, gas waste, failed tx patterns |
+| `GET /ahs/{address}` | $1.00 USDC | Agent Health Score — composite 0-100 blending wallet, behaviour & infra |
 | `GET /alerts/subscribe/{address}` | $2.00 USDC/month | Automated monitoring — webhook alerts every 6 hours |
 | `GET /optimize/{address}` | $5.00 USDC | Per-transaction-type gas optimization report |
 | `GET /retry/{address}` | $10.00 USDC | Retry failed transactions — ready-to-sign replacements |
@@ -149,7 +150,78 @@ Scans for dust tokens, spam airdrops, gas inefficiency, failed transaction patte
 }
 ```
 
-### 3. Alert Monitoring ($2.00/month) — Stay on top of it
+### 3. Agent Health Score ($1.00) — Composite diagnostic
+
+```
+GET /ahs/{wallet_address}
+```
+
+```bash
+curl https://agenthealthmonitor.xyz/ahs/0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045
+```
+
+Proprietary composite 0-100 diagnostic blending wallet hygiene, behavioural patterns, and infrastructure health. Optional `agent_url` query parameter enables infrastructure probing (3D mode).
+
+#### 3D Mode (with infrastructure probing)
+
+```bash
+curl "https://agenthealthmonitor.xyz/ahs/0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045?agent_url=https://myagent.example.com"
+```
+
+#### Example Response
+
+```json
+{
+  "status": "ok",
+  "report": {
+    "address": "0xd8dA...96045",
+    "ahs": 41,
+    "grade": "Critical",
+    "mode": "3d",
+    "dimensions": {
+      "wallet_hygiene": { "score": 28, "weight": 0.35 },
+      "behavioural": { "score": 55, "weight": 0.35 },
+      "infrastructure": { "score": 38, "weight": 0.30 }
+    },
+    "patterns_detected": [
+      {
+        "pattern": "Zombie Agent",
+        "severity": "critical",
+        "description": "Wallet active but infrastructure unresponsive — agent may be running headless with no oversight"
+      }
+    ],
+    "trend": {
+      "direction": "declining",
+      "previous_score": 58,
+      "delta": -17,
+      "trend_token": "eyJhbGciOiJIUzI1NiIs..."
+    },
+    "recommendations": [
+      {
+        "priority": 1,
+        "category": "infrastructure",
+        "action": "Restore agent service availability — health endpoint returned 503"
+      },
+      {
+        "priority": 2,
+        "category": "wallet_hygiene",
+        "action": "Clear 131 dust tokens and 255 spam tokens cluttering wallet"
+      }
+    ],
+    "analyzed_at": "2026-03-08T14:30:00Z"
+  }
+}
+```
+
+**Modes:**
+- **2D** (default) — wallet hygiene + behavioural patterns only
+- **3D** (with `agent_url`) — adds infrastructure health probing (uptime, latency, error rates)
+
+**Cross-dimensional patterns** detected include: Zombie Agent, Cascading Infrastructure Failure, Spam Drain, and Gas Hemorrhage.
+
+**Trend tracking:** pass the returned `trend_token` (JWT) as a query parameter on subsequent calls to track score changes over time.
+
+### 4. Alert Monitoring ($2.00/month) — Stay on top of it
 
 A two-step flow: pay to subscribe, then configure your webhook.
 
@@ -205,7 +277,7 @@ DELETE /alerts/unsubscribe/{wallet_address}
 }
 ```
 
-### 4. Gas Optimization ($5.00) — Fix the problem
+### 5. Gas Optimization ($5.00) — Fix the problem
 
 ```
 GET /optimize/{wallet_address}
@@ -271,7 +343,7 @@ curl https://agenthealthmonitor.xyz/optimize/0xd8dA6BF26964aF9D7eEd9e03E53415D37
 }
 ```
 
-### 5. RetryBot ($10.00) — Retry failed transactions
+### 6. RetryBot ($10.00) — Retry failed transactions
 
 Non-custodial: returns ready-to-sign EIP-1559 transactions. Your agent signs and submits.
 
@@ -339,7 +411,7 @@ GET /retry/preview/{wallet_address}
 - `medium` — slippage reverts on DEX trades (market conditions may have changed)
 - `low` — other reverts that used significant gas (root cause unclear)
 
-### 6. Protection Agent ($25.00) — Autonomous full protection
+### 7. Protection Agent ($25.00) — Autonomous full protection
 
 One endpoint that triages risk and runs the right combination of all services automatically.
 
@@ -449,20 +521,20 @@ Actions are ranked by potential value recovered (highest dollar amount first).
 ## The Service Funnel
 
 ```
-  Screen    Profile    Investigate   Diagnose     Clean      Monitor      Fix       Retry     Protect
-  $0.01     $0.05    $0.10 each     $0.50      $0.50     $2.00/mo    $5.00     $10.00     $25.00
+  Screen    Profile    Investigate   Diagnose     Clean      Score      Monitor      Fix       Retry     Protect
+  $0.01     $0.05    $0.10 each     $0.50      $0.50      $1.00     $2.00/mo    $5.00     $10.00     $25.00
 
-GET /risk  /premium  /counterparties  /health  POST /wash  /alerts/sub /optimize  /retry  /agent/protect
-    |          |     /network-map        |          |          |          |         |         |
-    v          v          v              v          v          v          v         v         v
- "Score:    Nansen    Top counter-   Full health  Dust +    Every 6h:  Per-type  Ready-to  Autonomous
-  8/100"    labels    parties +      score +      spam +    check &    gas       sign      triage +
-            + PnL     network map    gas waste    hygiene   alert      limits    EIP-1559  all services
+GET /risk  /premium  /counterparties  /health  POST /wash  /ahs     /alerts/sub /optimize  /retry  /agent/protect
+    |          |     /network-map        |          |        |          |          |         |         |
+    v          v          v              v          v        v          v          v         v         v
+ "Score:    Nansen    Top counter-   Full health  Dust +  Composite  Every 6h:  Per-type  Ready-to  Autonomous
+  8/100"    labels    parties +      score +      spam +  0-100 AHS  check &    gas       sign      triage +
+            + PnL     network map    gas waste    hygiene 3D infra   alert      limits    EIP-1559  all services
 ```
 
 Or skip straight to `GET /agent/protect/{address}` ($25) and let the agent figure it out.
 
-**Listed on:** [Virtuals ACP](https://app.virtuals.io) (10 offerings) · [x402scan](https://x402scan.com) · [Bankr Skills](https://bankr.chat) · [agdp.io](https://agdp.io)
+**Listed on:** [Virtuals ACP](https://app.virtuals.io) (11 offerings) · [x402scan](https://x402scan.com) · [Bankr Skills](https://bankr.chat) · [agdp.io](https://agdp.io)
 
 ## How Payment Works
 
@@ -518,6 +590,12 @@ health = client.get("https://agenthealthmonitor.xyz/health/0x1234...")
 # Wallet hygiene scan ($0.50)
 wash = client.post("https://agenthealthmonitor.xyz/wash/0x1234...")
 
+# Agent Health Score — 2D mode ($1.00)
+ahs = client.get("https://agenthealthmonitor.xyz/ahs/0x1234...")
+
+# Agent Health Score — 3D mode with infrastructure probing ($1.00)
+ahs_3d = client.get("https://agenthealthmonitor.xyz/ahs/0x1234...?agent_url=https://myagent.example.com")
+
 # Full autonomous protection — recommended ($25.00)
 protection = client.get("https://agenthealthmonitor.xyz/agent/protect/0x1234...")
 ```
@@ -555,6 +633,8 @@ uvicorn api:app --host 0.0.0.0 --port 4021
 | `NETWORK_MAP_PRICE_USD` | No | `$0.10` | Price per network map |
 | `PRICE_USD` | No | `$0.50` | Price per health check |
 | `WASH_PRICE_USD` | No | `$0.50` | Price per wash hygiene scan |
+| `AHS_PRICE_USD` | No | `$1.00` | Price per Agent Health Score |
+| `AHS_JWT_SECRET` | No | (generated) | Secret for signing AHS trend-tracking JWT tokens |
 | `ALERT_PRICE_USD` | No | `$2.00` | Price per alert subscription (30 days) |
 | `OPTIMIZE_PRICE_USD` | No | `$5.00` | Price per gas optimization |
 | `RETRY_PRICE_USD` | No | `$10.00` | Price per retry analysis |
