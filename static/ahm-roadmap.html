@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agent Health Monitor — Roadmap</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Outfit:wght@300;400;600;700;800&display=swap');
+
+  :root {
+    --bg: #060a10;
+    --bg-card: #0c1018;
+    --bg-card-hover: #111824;
+    --accent: #00ffc8;
+    --accent-dim: rgba(0, 255, 200, 0.15);
+    --accent-glow: rgba(0, 255, 200, 0.08);
+    --text: #e0e0e0;
+    --text-muted: #6a7a8a;
+    --text-dim: #3a4a5a;
+    --border: rgba(0, 255, 200, 0.12);
+    --red: #ff4a6a;
+    --amber: #ffaa2a;
+    --green: #00ffc8;
+    --blue: #4a9eff;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Outfit', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Subtle grid background */
+  body::before {
+    content: '';
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background-image:
+      linear-gradient(rgba(0,255,200,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,255,200,0.03) 1px, transparent 1px);
+    background-size: 60px 60px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .container {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 60px 24px 100px;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* Header */
+  .header {
+    text-align: center;
+    margin-bottom: 80px;
+  }
+
+  .header-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 4px;
+    color: var(--accent);
+    text-transform: uppercase;
+    margin-bottom: 20px;
+    opacity: 0.7;
+  }
+
+  .header h1 {
+    font-size: clamp(32px, 5vw, 48px);
+    font-weight: 800;
+    color: #fff;
+    line-height: 1.1;
+    margin-bottom: 16px;
+  }
+
+  .header h1 span {
+    color: var(--accent);
+  }
+
+  .header-sub {
+    font-size: 17px;
+    color: var(--text-muted);
+    font-weight: 300;
+    max-width: 600px;
+    margin: 0 auto;
+    line-height: 1.6;
+  }
+
+  /* Phase timeline */
+  .timeline {
+    position: relative;
+    padding-left: 0;
+  }
+
+  .phase {
+    position: relative;
+    margin-bottom: 64px;
+  }
+
+  .phase-header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+
+  .phase-badge {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 2px;
+    padding: 6px 14px;
+    border-radius: 2px;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+
+  .phase-badge.live {
+    background: rgba(0, 255, 200, 0.15);
+    color: var(--accent);
+    border: 1px solid rgba(0, 255, 200, 0.3);
+  }
+
+  .phase-badge.building {
+    background: rgba(74, 158, 255, 0.15);
+    color: var(--blue);
+    border: 1px solid rgba(74, 158, 255, 0.3);
+  }
+
+  .phase-badge.next {
+    background: rgba(255, 170, 42, 0.15);
+    color: var(--amber);
+    border: 1px solid rgba(255, 170, 42, 0.3);
+  }
+
+  .phase-badge.future {
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-muted);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+  }
+
+  .phase-title {
+    font-size: 22px;
+    font-weight: 700;
+    color: #fff;
+  }
+
+  .phase-description {
+    color: var(--text-muted);
+    font-size: 15px;
+    line-height: 1.7;
+    margin-bottom: 24px;
+    font-weight: 300;
+  }
+
+  /* Capability cards */
+  .capabilities {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: 12px;
+  }
+
+  .cap-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 20px;
+    transition: all 0.2s ease;
+  }
+
+  .cap-card:hover {
+    background: var(--bg-card-hover);
+    border-color: rgba(0, 255, 200, 0.25);
+  }
+
+  .cap-card .cap-icon {
+    font-size: 20px;
+    margin-bottom: 10px;
+    display: block;
+  }
+
+  .cap-card h3 {
+    font-size: 14px;
+    font-weight: 600;
+    color: #fff;
+    margin-bottom: 6px;
+  }
+
+  .cap-card p {
+    font-size: 13px;
+    color: var(--text-muted);
+    line-height: 1.5;
+    font-weight: 300;
+  }
+
+  .cap-card .cap-tag {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--accent);
+    opacity: 0.6;
+    margin-top: 10px;
+    display: block;
+  }
+
+  /* Stats bar */
+  .stats-bar {
+    display: flex;
+    justify-content: center;
+    gap: 40px;
+    margin: 40px 0 80px;
+    flex-wrap: wrap;
+  }
+
+  .stat {
+    text-align: center;
+  }
+
+  .stat-value {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--accent);
+  }
+
+  .stat-label {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-top: 4px;
+    font-weight: 300;
+  }
+
+  /* Divider */
+  .divider {
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--border), transparent);
+    margin: 48px 0;
+  }
+
+  /* Footer */
+  .footer {
+    text-align: center;
+    margin-top: 80px;
+  }
+
+  .footer p {
+    font-size: 13px;
+    color: var(--text-dim);
+    font-weight: 300;
+  }
+
+  .footer a {
+    color: var(--accent);
+    text-decoration: none;
+    opacity: 0.7;
+  }
+
+  .footer a:hover {
+    opacity: 1;
+  }
+
+  .footer .version {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--text-dim);
+    margin-top: 16px;
+    letter-spacing: 2px;
+  }
+
+  /* Mission statement */
+  .mission {
+    text-align: center;
+    margin: 0 auto 80px;
+    max-width: 700px;
+    padding: 40px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--bg-card);
+  }
+
+  .mission p {
+    font-size: 16px;
+    line-height: 1.8;
+    color: var(--text-muted);
+    font-weight: 300;
+  }
+
+  .mission p strong {
+    color: #fff;
+    font-weight: 600;
+  }
+
+  @media (max-width: 600px) {
+    .container { padding: 40px 16px 60px; }
+    .stats-bar { gap: 24px; }
+    .capabilities { grid-template-columns: 1fr; }
+    .phase-header { flex-direction: column; align-items: flex-start; gap: 8px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+
+  <div class="header">
+    <div class="header-label">// Roadmap</div>
+    <h1>Agent Health <span>Monitor</span></h1>
+    <p class="header-sub">Diagnostics, governance, and trust infrastructure for the autonomous agent economy.</p>
+  </div>
+
+  <div class="stats-bar">
+    <div class="stat">
+      <div class="stat-value">11</div>
+      <div class="stat-label">Endpoints Live</div>
+    </div>
+    <div class="stat">
+      <div class="stat-value">$0.01</div>
+      <div class="stat-label">Starting Price</div>
+    </div>
+    <div class="stat">
+      <div class="stat-value">x402</div>
+      <div class="stat-label">Protocol</div>
+    </div>
+    <div class="stat">
+      <div class="stat-value">Base</div>
+      <div class="stat-label">Network</div>
+    </div>
+  </div>
+
+  <div class="mission">
+    <p><strong>Our mission:</strong> build the trust layer for the agent economy. Every autonomous agent needs a mechanic, a credit score, and a title deed. We're building all three — pay-per-call, no accounts, no subscriptions.</p>
+  </div>
+
+  <!-- PHASE 1: LIVE -->
+  <div class="phase">
+    <div class="phase-header">
+      <span class="phase-badge live">LIVE</span>
+      <span class="phase-title">Agent Diagnostics</span>
+    </div>
+    <p class="phase-description">Core health monitoring for autonomous agents on Base. Wallet analysis enriched with Nansen blockchain intelligence, behavioural pattern detection, and composite scoring — all via x402 micropayments.</p>
+    <div class="capabilities">
+      <div class="cap-card">
+        <span class="cap-icon">🔍</span>
+        <h3>Risk Scoring</h3>
+        <p>Quick and premium risk assessment with Nansen smart money labels, PnL enrichment, and operational health indicators.</p>
+        <span class="cap-tag">$0.01 — $0.05</span>
+      </div>
+      <div class="cap-card">
+        <span class="cap-icon">🏥</span>
+        <h3>Health Analysis</h3>
+        <p>Full diagnostic report covering transaction patterns, counterparty risk, network mapping, and wallet intelligence.</p>
+        <span class="cap-tag">$0.10 — $0.50</span>
+      </div>
+      <div class="cap-card">
+        <span class="cap-icon">🧹</span>
+        <h3>Agent Wash</h3>
+        <p>Hygiene scan detecting dust tokens, spam, gas inefficiency, and failed transaction patterns. Cleanliness score with cleanup recommendations.</p>
+        <span class="cap-tag">$0.50</span>
+      </div>
+      <div class="cap-card">
+        <span class="cap-icon">🏆</span>
+        <h3>Agent Health Score</h3>
+        <p>Proprietary composite 0-100 diagnostic blending wallet hygiene, behavioural patterns, and infrastructure health. Detects cross-dimensional patterns.</p>
+        <span class="cap-tag">$1.00</span>
+      </div>
+      <div class="cap-card">
+        <span class="cap-icon">⚡</span>
+        <h3>Optimisation & Protection</h3>
+        <p>Gas strategy analysis, failed transaction retry, real-time alert monitoring, and full autonomous protection suite.</p>
+        <span class="cap-tag">$2.00 — $25.00</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- PHASE 2: BUILDING -->
+  <div class="phase">
+    <div class="phase-header">
+      <span class="phase-badge building">BUILDING</span>
+      <span class="phase-title">Ecosystem Intelligence</span>
+    </div>
+    <p class="phase-description">Proactive scanning across the agent ecosystem to build behavioural baselines, calibrate scoring models, and establish the data layer that powers everything that follows.</p>
+    <div class="capabilities">
+      <div class="cap-card">
+        <span class="cap-icon">📡</span>
+        <h3>Proactive Scanning</h3>
+        <p>Systematically scanning agent wallets across x402 registries, DeFi protocols, and Base mainnet to build intelligence at scale.</p>
+      </div>
+      <div class="cap-card">
+        <span class="cap-icon">📊</span>
+        <h3>Behavioural Baselines</h3>
+        <p>What does "healthy" look like for a trading agent vs a service provider vs an MEV bot? Data-driven benchmarks for every category.</p>
+      </div>
+      <div class="cap-card">
+        <span class="cap-icon">🔄</span>
+        <h3>Temporal Intelligence</h3>
+        <p>Tracking how agent health evolves over time. Trend detection, degradation alerts, and recovery monitoring.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- PHASE 3: NEXT -->
+  <div class="phase">
+    <div class="phase-header">
+      <span class="phase-badge next">NEXT</span>
+      <span class="phase-title">Agent Governance Infrastructure</span>
+    </div>
+    <p class="phase-description">Moving beyond diagnostics into ownership transparency, standards compliance, and trust infrastructure. The agent economy needs more than a mechanic — it needs a Land Registry and a standards body.</p>
+    <div class="capabilities">
+      <div class="cap-card">
+        <span class="cap-icon">📜</span>
+        <h3>Agent Title Reports</h3>
+        <p>Who controls this agent? What does it own? What restrictions apply? Ownership transparency modelled on property title registers.</p>
+      </div>
+      <div class="cap-card">
+        <span class="cap-icon">🛡️</span>
+        <h3>Compromise Detection</h3>
+        <p>Detecting key theft, instruction injection, and backdoor exploitation through behavioural anomaly analysis against established baselines.</p>
+      </div>
+      <div class="cap-card">
+        <span class="cap-icon">✅</span>
+        <h3>Standards Assessment</h3>
+        <p>Build quality, API standards, security posture, documentation quality, and product maturity — graded against industry frameworks.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- PHASE 4: FUTURE -->
+  <div class="phase">
+    <div class="phase-header">
+      <span class="phase-badge future">FUTURE</span>
+      <span class="phase-title">Trust & Certification</span>
+    </div>
+    <p class="phase-description">The endgame: a trust layer where agents prove their health, quality, and legitimacy to each other — automatically, on-chain, pay-per-verification.</p>
+    <div class="capabilities">
+      <div class="cap-card">
+        <span class="cap-icon">🏅</span>
+        <h3>Agent Certification</h3>
+        <p>On-chain attestation that an agent meets quality standards. Gold, Silver, Bronze tiers with 90-day renewal. The food hygiene rating for agents.</p>
+      </div>
+      <div class="cap-card">
+        <span class="cap-icon">📋</span>
+        <h3>Trust Registry</h3>
+        <p>A living whitelist and blacklist built from aggregate scan data. Protocols check the registry before transacting. Network effects compound.</p>
+      </div>
+      <div class="cap-card">
+        <span class="cap-icon">💪</span>
+        <h3>Agent Power Index</h3>
+        <p>Comprehensive measure of an agent's digital footprint — financial power, infrastructure control, network influence, and governance weight.</p>
+      </div>
+      <div class="cap-card">
+        <span class="cap-icon">🏦</span>
+        <h3>Agent Insurance</h3>
+        <p>Title insurance and health guarantees. AHM vouches for the accuracy of its assessments. The credit bureau for the agent economy.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer">
+    <p><a href="https://agenthealthmonitor.xyz">agenthealthmonitor.xyz</a></p>
+    <div class="version">AHM ROADMAP v1 · MARCH 2026</div>
+  </div>
+
+</div>
+
+</body>
+</html>

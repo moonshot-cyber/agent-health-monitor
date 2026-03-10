@@ -779,6 +779,24 @@
     letter-spacing: 0.15em;
   }
 
+  .footer-links {
+    font-family: var(--mono);
+    font-size: 0.6rem;
+    letter-spacing: 0.15em;
+  }
+
+  .footer-link {
+    color: var(--cyan-dim);
+    text-decoration: none;
+    opacity: 0.7;
+    transition: opacity 0.2s;
+  }
+
+  .footer-link:hover {
+    opacity: 1;
+    color: var(--cyan);
+  }
+
   .footer-network {
     font-family: var(--mono);
     font-size: 0.6rem;
@@ -1084,6 +1102,9 @@
 <!-- FOOTER -->
 <footer>
   <div class="footer-text">AGENT HEALTH MONITOR // PAY-PER-CALL // NO ACCOUNTS REQUIRED</div>
+  <div class="footer-links">
+    <a href="/roadmap" class="footer-link">ROADMAP</a>
+  </div>
   <div class="footer-network">
     <div class="status-dot"></div>
     BASE MAINNET // USDC // x402 PROTOCOL
