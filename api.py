@@ -40,7 +40,7 @@ import jwt
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
 from x402.http import FacilitatorConfig, HTTPFacilitatorClient, PaymentOption
@@ -2015,8 +2015,8 @@ async def root():
 
 @app.get("/roadmap")
 async def roadmap():
-    """Redirect to the roadmap page."""
-    return RedirectResponse(url="/static/ahm-roadmap.html")
+    """Serve the roadmap page."""
+    return FileResponse(STATIC_DIR / "ahm-roadmap.html")
 
 
 @app.get("/.well-known/x402")
