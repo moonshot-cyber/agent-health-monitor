@@ -26,6 +26,8 @@ import logging
 import os
 import re
 import secrets
+
+import db as scan_db
 from contextlib import asynccontextmanager
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -1180,14 +1182,19 @@ def generate_recommendations(health) -> list[Recommendation]:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    task = asyncio.create_task(alert_monitor_loop())
-    logger.info("Alert monitor background task started")
+    import db as _db
+    _db.init_db()
+    alert_task = asyncio.create_task(alert_monitor_loop())
+    rescan_task = asyncio.create_task(rescan_loop())
+    logger.info("Background tasks started: alert_monitor, rescan_loop")
     yield
-    task.cancel()
-    try:
-        await task
-    except asyncio.CancelledError:
-        pass
+    alert_task.cancel()
+    rescan_task.cancel()
+    for t in [alert_task, rescan_task]:
+        try:
+            await t
+        except asyncio.CancelledError:
+            pass
 
 
 app = FastAPI(
@@ -2562,6 +2569,12 @@ async def get_premium_risk_score(address: str):
                     definition=item.get("definition"),
                 ))
 
+    asyncio.get_running_loop().run_in_executor(None, lambda: scan_db.log_scan(
+        address=address, endpoint="risk_premium",
+        scan_timestamp=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        risk_score=risk_score,
+        response_data={"risk_score": risk_score, "risk_level": risk_level, "verdict": verdict},
+    ))
     return PremiumRiskResponse(
         risk_score=risk_score,
         risk_level=risk_level,
@@ -2630,6 +2643,11 @@ async def get_counterparties(address: str):
         address, nansen_available, len(counterparties),
     )
 
+    asyncio.get_running_loop().run_in_executor(None, lambda: scan_db.log_scan(
+        address=address, endpoint="counterparties",
+        scan_timestamp=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        response_data={"total_counterparties": len(counterparties)},
+    ))
     return CounterpartyResponse(
         status="ok",
         address=address,
@@ -2698,6 +2716,11 @@ async def get_network_map(address: str, chain: str = "ethereum"):
         address, nansen_available, len(related_wallets),
     )
 
+    asyncio.get_running_loop().run_in_executor(None, lambda: scan_db.log_scan(
+        address=address, endpoint="network_map",
+        scan_timestamp=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        response_data={"total_related": len(related_wallets)},
+    ))
     return RelatedWalletsResponse(
         status="ok",
         address=address,
@@ -2775,6 +2798,12 @@ async def get_risk_score(address: str):
     else:
         verdict = f"{risk_level.capitalize()} - {' with '.join(signals)} detected"
 
+    asyncio.get_running_loop().run_in_executor(None, lambda: scan_db.log_scan(
+        address=address, endpoint="risk",
+        scan_timestamp=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        risk_score=risk_score,
+        response_data={"risk_score": risk_score, "risk_level": risk_level, "verdict": verdict},
+    ))
     return RiskResponse(
         risk_score=risk_score,
         risk_level=risk_level,
@@ -2867,6 +2896,12 @@ async def get_health_report(address: str):
         address, nansen_available, len(nansen_labels), len(token_balances), total_portfolio_usd,
     )
 
+    asyncio.get_running_loop().run_in_executor(None, lambda: scan_db.log_scan(
+        address=address, endpoint="health",
+        scan_timestamp=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        health_score=report.health_score if hasattr(report, "health_score") else None,
+        response_data={"status": "ok", "total_portfolio_usd": total_portfolio_usd},
+    ))
     return HealthResponse(
         status="ok",
         report=report,
@@ -2935,6 +2970,12 @@ async def get_wash_report(address: str):
         next_wash_recommended=wash.next_wash_recommended,
     )
 
+    asyncio.get_running_loop().run_in_executor(None, lambda: scan_db.log_scan(
+        address=address, endpoint="wash",
+        scan_timestamp=wash.scan_timestamp,
+        cleanliness_score=wash.cleanliness_score,
+        response_data={"cleanliness_score": wash.cleanliness_score, "total_issues": wash.total_issues},
+    ))
     return WashResponse(status="ok", report=report)
 
 
@@ -3074,6 +3115,21 @@ async def get_ahs_report(address: str, request: Request):
         next_scan_recommended=result.next_scan_recommended,
     )
 
+    asyncio.get_running_loop().run_in_executor(None, lambda: scan_db.log_scan(
+        address=address, endpoint="ahs",
+        scan_timestamp=result.scan_timestamp,
+        ahs_score=result.agent_health_score,
+        grade=result.grade, grade_label=result.grade_label,
+        confidence=result.confidence, mode=result.mode,
+        d1_score=result.d1_score, d2_score=result.d2_score,
+        d3_score=result.d3_score, cdp_modifier=result.cdp_modifier,
+        patterns=[{"name": p.get("name", ""), "severity": p.get("severity", ""),
+                   "description": p.get("description", ""), "modifier": p.get("modifier")}
+                  for p in result.patterns_detected] if result.patterns_detected else None,
+        tx_count=result.tx_count, history_days=result.history_days,
+        response_data={"agent_health_score": result.agent_health_score, "grade": result.grade,
+                       "d1_score": result.d1_score, "d2_score": result.d2_score},
+    ))
     return AHSResponse(status="ok", report=report)
 
 
@@ -3139,6 +3195,11 @@ async def get_optimization_report(address: str):
         analyzed_at=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
     )
 
+    asyncio.get_running_loop().run_in_executor(None, lambda: scan_db.log_scan(
+        address=address, endpoint="optimize",
+        scan_timestamp=report.analyzed_at,
+        response_data={"total_savings_usd": optimization.total_potential_savings_usd},
+    ))
     return OptimizeResponse(status="ok", report=report)
 
 
@@ -3328,6 +3389,13 @@ async def get_protection_report(address: str):
         analyzed_at=now_str,
     )
 
+    asyncio.get_running_loop().run_in_executor(None, lambda: scan_db.log_scan(
+        address=address, endpoint="protect",
+        scan_timestamp=now_str,
+        health_score=protection.health_score,
+        response_data={"risk_level": protection.risk_level, "health_score": protection.health_score,
+                       "total_issues_found": protection.summary.total_issues_found},
+    ))
     return ProtectionResponse(status="ok", report=report)
 
 
@@ -3433,6 +3501,12 @@ async def get_retry_transactions(address: str):
         analyzed_at=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
     )
 
+    asyncio.get_running_loop().run_in_executor(None, lambda: scan_db.log_scan(
+        address=address, endpoint="retry",
+        scan_timestamp=report.analyzed_at,
+        response_data={"retryable_count": analysis.retryable_count,
+                       "total_estimated_retry_cost_usd": analysis.total_estimated_retry_cost_usd},
+    ))
     return RetryResponse(status="ok", report=report)
 
 
@@ -3539,6 +3613,86 @@ async def unsubscribe_alerts(address: str):
 
     del subscriptions[address]
     return {"status": "ok", "message": f"Subscription removed for {address}."}
+
+
+# -- Trust Registry Endpoint -------------------------------------------------
+
+@app.get("/trust-registry")
+async def trust_registry(request: Request):
+    """
+    Aggregated scan statistics for the AHM trust layer.
+
+    Protected by X-Internal-Key header. Not accessible via x402 payment.
+    """
+    internal_key = request.headers.get("X-Internal-Key", "")
+    if not INTERNAL_API_KEY or not hmac.compare_digest(internal_key, INTERNAL_API_KEY):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    loop = asyncio.get_running_loop()
+    stats = await loop.run_in_executor(None, scan_db.get_trust_registry_stats)
+    return stats
+
+
+# -- Rescan Background Loop --------------------------------------------------
+
+async def rescan_loop():
+    """Background loop: re-scan known wallets on their configured interval."""
+    await asyncio.sleep(300)  # 5-minute startup delay
+
+    while True:
+        try:
+            loop = asyncio.get_running_loop()
+            wallets_due = await loop.run_in_executor(None, scan_db.get_wallets_due_for_rescan)
+            if wallets_due:
+                logger.info("Rescan loop: %d wallets due", len(wallets_due))
+
+            for wallet in wallets_due:
+                try:
+                    eth_price, transactions, tokens = await asyncio.gather(
+                        loop.run_in_executor(None, partial(get_eth_price, BASESCAN_API_KEY)),
+                        loop.run_in_executor(None, partial(fetch_transactions, wallet["address"], BASESCAN_API_KEY)),
+                        loop.run_in_executor(None, partial(fetch_tokens_v2, wallet["address"])),
+                    )
+
+                    result = await loop.run_in_executor(None, partial(
+                        calculate_ahs,
+                        address=wallet["address"],
+                        tokens=tokens,
+                        transactions=transactions,
+                        eth_price=eth_price,
+                    ))
+
+                    patterns = None
+                    if result.patterns_detected:
+                        patterns = [{"name": p.get("name", ""), "severity": p.get("severity", ""),
+                                     "description": p.get("description", ""), "modifier": p.get("modifier")}
+                                    for p in result.patterns_detected]
+
+                    await loop.run_in_executor(None, lambda: scan_db.log_scan(
+                        address=wallet["address"], endpoint="ahs",
+                        scan_timestamp=result.scan_timestamp,
+                        source="rescan", label=wallet.get("label"),
+                        ahs_score=result.agent_health_score,
+                        grade=result.grade, grade_label=result.grade_label,
+                        confidence=result.confidence, mode=result.mode,
+                        d1_score=result.d1_score, d2_score=result.d2_score,
+                        d3_score=result.d3_score, cdp_modifier=result.cdp_modifier,
+                        patterns=patterns,
+                        tx_count=result.tx_count, history_days=result.history_days,
+                        response_data={"agent_health_score": result.agent_health_score,
+                                       "grade": result.grade},
+                    ))
+                    logger.info("Rescan %s: AHS=%d/%s", wallet["address"][:10], result.agent_health_score, result.grade)
+
+                except Exception as e:
+                    logger.warning("Rescan failed for %s: %s", wallet["address"][:10], e)
+
+                await asyncio.sleep(3)  # Rate limit between scans
+
+        except Exception as e:
+            logger.error("Rescan loop error: %s", e)
+
+        await asyncio.sleep(3600)  # Check every hour
 
 
 if __name__ == "__main__":
