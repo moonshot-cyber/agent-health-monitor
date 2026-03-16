@@ -10,4 +10,8 @@ addresses.txt
 *.pem
 *.key
 secrets/
+*.db
+*.db-wal
+*.db-shm
 ahs_scoring_design.md
+_erc8004_abi.json

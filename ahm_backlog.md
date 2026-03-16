@@ -7,8 +7,9 @@
 ## Current State (as of Mar 16 2026)
 
 - **11 endpoints** live on Base mainnet at agenthealthmonitor.xyz
+- **ERC-8004 registered** — agentId #32328 on Base mainnet
 - **Nansen integration** — 4 direct API connections (labels, counterparties, PnL, related wallets)
-- **Listed on:** Virtuals ACP (11 offerings), x402scan, Bankr Skills, agdp.io
+- **Listed on:** Virtuals ACP (11 offerings), x402scan, Bankr Skills, agdp.io, 8004scan.io
 - **Stack:** FastAPI, x402 SDK v2, Nansen API, Blockscout API, Base Mainnet, Railway
 - **Repo:** github.com/moonshot-cyber/agent-health-monitor
 
@@ -16,20 +17,20 @@
 
 ## P1 — Active / In-Flight
 
-### Distribution & Partnerships (added Mar 13-16)
+### Distribution & Partnerships
 
-- [ ] **OpenServ/SERV Foundry hackathon** — Submitted, awaiting response on selection. If selected, ship on OpenServ within 2 weeks. Prep needed: demo recording (Loom), add `issa-me-sush` as GitHub collaborator on `moonshot-cyber/agent-health-monitor`
 - [ ] **KAMIYO (@kamiyoai)** — Singularity platform launching this week, has "hard risk checks" pre-agent-funding. AHM `/risk` and `/ahs` are natural pre-funding health verification layer. Reach out
-- [ ] **synthesis.md** — Agent-native hackathon/registry at synthesis.md, registration flow via `curl -s https://synthesis.md/skill.md`. Investigate and register Monday
-- [ ] **8004scan.io** — ERC-8004 equivalent of x402scan. Register AHM here for discovery
 - [ ] **@BaseHubHB** — Weekly Base launch curator, 2.5K+ views per post. Engage every week to get included in future roundups
 - [ ] **FairScale (@fairscalexyz)** — Solana credibility scoring, complementary to AHM on Base. Monitor and engage
-- [ ] **Messari x402 integration** — Explore consuming Messari's x402 endpoints (market data, token unlocks, X mindshare) to enrich AHS D3 scoring. Also a co-marketing story
-- [x] **PayAI Network** — Already registered as merchant, new analytics dashboard coming. No action needed
-- [x] **Coinbase PR #1207** — Logo fix pushed Mar 16, approved & merged
-- [ ] **Bankr Skills PR #195** — Bumped Mar 8, chase this week if no response
 
-### ERC-8004 (URGENT — added Mar 13-16)
+### Pending Response / Follow-up (Mar 16)
+
+- [ ] **Daydreams** — DM sent Mar 16, flagged 38/E Critical "Stale Strategy" finding. Chase if no response by **Thu Mar 19**
+- [ ] **PayAI** — DM sent Mar 16, shared signer wallet scores (51/D and 61/C). Chase if no response by **Thu Mar 19**
+- [ ] **Bankr Skills PR #195** — Chased via X post on @bankrbot Mar 16 in addition to GitHub bumps. Chase again if no response by **Fri Mar 20**
+- [ ] **OpenServ hackathon** — Submitted, awaiting selection decision. If selected, ship on OpenServ within 2 weeks. Prep needed: demo recording (Loom), add `issa-me-sush` as GitHub collaborator
+
+### ERC-8004 (added Mar 13-16)
 
 ERC-8004 deployed on Ethereum mainnet Jan 29 2026. Identity + reputation standard for agents, complements x402. AHM health scoring sits naturally on top of this stack.
 
@@ -42,9 +43,11 @@ ERC-8004 deployed on Ethereum mainnet Jan 29 2026. Identity + reputation standar
 
 ### New Endpoints / Features
 
+- [ ] **Messari x402 integration** — Explore consuming Messari's x402 endpoints (market data, token unlocks, X mindshare) to enrich AHS D3 scoring. Also a co-marketing story
 - [ ] **Messari signal integration** — X mindshare, token unlocks, fundraising data as enrichment layer for AHS D3 or new premium endpoint
 - [ ] **B2B customer angle** — Agent credit providers, lending protocols, agent creation platforms are natural AHM customers (not just agents themselves). Develop pitch for this segment
 - [ ] **Wash Phase 2** — Token approvals scan + dead contract detection (deferred from wash MVP, see wash_spike_results.md)
+- [ ] **ERC-8183 integration** — Pre-flight health check before a client funds an ERC-8183 job escrow. Add to product backlog as agentic commerce verification layer
 
 ### Long-term Product Visions
 
@@ -53,6 +56,7 @@ ERC-8004 deployed on Ethereum mainnet Jan 29 2026. Identity + reputation standar
 - [ ] **Agent Certification** — On-chain attestation badges (Gold/Silver/Bronze), 90-day renewal
 - [ ] **Agent Power Index** — Comprehensive measure of agent digital footprint and influence
 - [ ] **Micro-Utility Portfolio** — 20-50 tiny single-purpose x402 endpoints, separate strategy
+- [ ] **ERC-8183 pre-flight check** — AHM as the health verification layer before a client funds an ERC-8183 job escrow. Natural fit: x402 (payments) + ERC-8004 (identity) + ERC-8183 (commerce) + AHM (health) = complete agent stack
 
 ### AHS Enhancements
 
@@ -64,9 +68,7 @@ ERC-8004 deployed on Ethereum mainnet Jan 29 2026. Identity + reputation standar
 
 ## P3 — Tech Debt / Frontend Fixes
 
-- [ ] **Update pinned tweet** on @AHMprotocol from "9 endpoints" to 11
-- [x] **Fix OG/Open Graph image** on agenthealthmonitor.xyz — ~~currently showing old cached "Wallet Health Analytics" branding~~ Interim fix: updated og:image to self-hosted ahm-logo.png, updated descriptions. Force refresh via Twitter Card Validator (cards-dev.twitter.com/validator) after deploy
-- [ ] **Create proper OG banner image** (1200x630 landscape) with current Agent Health Monitor branding and update og:image meta tag — replace interim logo fix
+- [ ] **Proper OG banner (1200x630)** — `generate_og_banner.py` created, interim logo fix live. Complete this week
 - [ ] Wash scan composite scoring refinement (see wash_spike_results.md for formula)
 
 ---
@@ -84,6 +86,7 @@ ERC-8004 deployed on Ethereum mainnet Jan 29 2026. Identity + reputation standar
 
 - [ ] **Demo recording** — Short Loom walkthrough of AHM for hackathon submissions, partnership pitches, cold outreach. Record this week
 - [ ] **@BaseHubHB engagement** — weekly Base launch curator, 2.5K+ views per post. Engage every week for inclusion in roundups
+- [ ] **Pin a new X post** — Draft and pin a fresh @AHMprotocol post once a meaningful milestone is hit (e.g. first organic payment, OpenServ selection, Coinbase PR merge). Replace the unpinned post with something current
 
 ---
 
@@ -102,3 +105,18 @@ ERC-8004 deployed on Ethereum mainnet Jan 29 2026. Identity + reputation standar
 - [x] RetryBot with non-custodial ready-to-sign transactions
 - [x] Protection Agent autonomous triage
 - [x] Wash API spike completed (see wash_spike_results.md)
+
+### Completed Mar 16 2026
+
+- [x] ERC-8004 registration — agentId #32328, owner `0xB109A7...13aD`, tx [`0x048b55ea...`](https://basescan.org/tx/0x048b55ea60e24896eb932f250711c346d16a97382f88391c646c75f418fc7fe9), Base mainnet
+- [x] 8004scan.io listing — x402 enabled, reputation trust, active, verified owner
+- [x] Ecosystem scan — 18 agents scanned, results in ecosystem_scan_results.md, average AHS 60/D
+- [x] Security audit & hardening — 49/49 tests passing, 3 findings fixed (HIGH: address validation middleware, MEDIUM: global exception handler, MEDIUM: coupon rate limiting)
+- [x] GitHub Actions CI — security tests run on every push/PR to master, branch protection enabled
+- [x] Outreach scan — 7 named services scanned, results in ecosystem_scan_outreach.md, Daydreams 38/E Critical flagged
+- [x] Daydreams DM sent — flagged 38/E Critical "Stale Strategy" finding on facilitator wallet `0x279e08...4653`
+- [x] PayAI DM sent — shared signer wallet scores (51/D and 61/C)
+- [x] Bankr Skills PR #195 chased — via X post on @bankrbot
+- [x] synthesis.md registration — completed
+- [x] OG image interim fix — og:image updated to self-hosted ahm-logo.png, descriptions updated, deployed
+- [x] Coinbase PR #1207 — Merged by @Must-be-Ash on Fri Mar 14 2026. AHM now listed in official Coinbase x402 ecosystem
