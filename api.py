@@ -1228,6 +1228,74 @@ async def security_headers(request: Request, call_next):
 
 # -- Custom Middleware to Bypass x402 on Internal Calls ----------------------
 
+class AddressValidationMiddleware:
+    """
+    ASGI middleware that rejects invalid Ethereum addresses early,
+    before the x402 middleware processes the request.
+
+    Checks any path segment that looks like an address parameter
+    in known endpoint patterns. Returns 400 JSON for invalid addresses.
+    """
+    _ADDRESS_RE = re.compile(r"^0x[0-9a-fA-F]{40}$")
+    # Path prefixes that take an {address} parameter
+    _ADDRESS_PREFIXES = (
+        "/health/", "/risk/", "/risk/premium/", "/counterparties/",
+        "/network-map/", "/wash/", "/ahs/", "/optimize/", "/retry/",
+        "/retry/preview/", "/agent/protect/", "/agent/protect/preview/",
+        "/alerts/subscribe/", "/alerts/status/", "/alerts/unsubscribe/",
+    )
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        path = scope.get("path", "")
+
+        # Check direct endpoint patterns: /prefix/{address}
+        for prefix in self._ADDRESS_PREFIXES:
+            if path.startswith(prefix) and len(path) > len(prefix):
+                address_part = path[len(prefix):].split("/")[0].split("?")[0]
+                if not self._ADDRESS_RE.match(address_part):
+                    await self._send_400(send)
+                    return
+                break
+
+        # Check coupon endpoint patterns: /coupon/{action}/{code}/{address}
+        if path.startswith("/coupon/") and path.count("/") >= 4:
+            parts = path.strip("/").split("/")
+            if len(parts) >= 4:
+                address_part = parts[3].split("?")[0]
+                if address_part and not self._ADDRESS_RE.match(address_part):
+                    await self._send_400(send)
+                    return
+
+        await self.app(scope, receive, send)
+
+    @staticmethod
+    async def _send_400(send):
+        import json
+        body = json.dumps({
+            "error": "Invalid address format",
+            "detail": "Address must be a valid 0x-prefixed 40-character hex string",
+        }).encode()
+        await send({
+            "type": "http.response.start",
+            "status": 400,
+            "headers": [
+                (b"content-type", b"application/json"),
+                (b"content-length", str(len(body)).encode()),
+            ],
+        })
+        await send({
+            "type": "http.response.body",
+            "body": body,
+        })
+
+
 class InternalKeyBypassMiddleware:
     """
     ASGI middleware that skips x402 payment when X-Internal-Key header is valid.
@@ -1998,6 +2066,30 @@ app.add_middleware(PaymentMiddlewareASGI, routes=x402_routes, server=server)
 # When valid X-Internal-Key is present, skips x402 entirely.
 app.add_middleware(InternalKeyBypassMiddleware)
 
+# Add address validation as outermost middleware — rejects invalid addresses
+# before x402 or internal key bypass can process them.
+app.add_middleware(AddressValidationMiddleware)
+
+
+# -- Global Exception Handler ------------------------------------------------
+
+logger = logging.getLogger("ahm")
+
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """Catch unhandled exceptions — log full traceback, return generic error."""
+    import traceback
+    logger.error(
+        "Unhandled exception on %s %s: %s\n%s",
+        request.method, request.url.path, exc,
+        traceback.format_exc(),
+    )
+    return JSONResponse(
+        status_code=500,
+        content={"error": "Internal server error"},
+    )
+
 
 # -- Routes ------------------------------------------------------------------
 
@@ -2147,68 +2239,100 @@ def _require_coupon(code: str):
         raise HTTPException(status_code=403, detail="Invalid coupon code")
 
 
+# Coupon access rate limiting: 5 requests per IP per minute (separate from validation)
+_coupon_access_rate: dict[str, list[float]] = {}
+COUPON_ACCESS_RATE_LIMIT = 5
+COUPON_ACCESS_RATE_WINDOW = 60  # seconds
+
+
+def _check_coupon_access_rate(ip: str):
+    import time
+    now = time.time()
+    timestamps = _coupon_access_rate.get(ip, [])
+    timestamps = [t for t in timestamps if now - t < COUPON_ACCESS_RATE_WINDOW]
+    if len(timestamps) >= COUPON_ACCESS_RATE_LIMIT:
+        raise HTTPException(status_code=429, detail="Too many coupon access requests")
+    timestamps.append(now)
+    _coupon_access_rate[ip] = timestamps
+    if len(_coupon_access_rate) > 1000:
+        stale = [k for k, v in _coupon_access_rate.items() if not v or now - v[-1] > COUPON_ACCESS_RATE_WINDOW]
+        for k in stale:
+            del _coupon_access_rate[k]
+
+
 @app.get("/coupon/risk/{code}/{address}")
-async def coupon_risk(code: str, address: str):
+async def coupon_risk(code: str, address: str, request: Request):
+    _check_coupon_access_rate(request.client.host)
     _require_coupon(code)
     return await get_risk_score(address)
 
 
 @app.get("/coupon/health/{code}/{address}")
-async def coupon_health(code: str, address: str):
+async def coupon_health(code: str, address: str, request: Request):
+    _check_coupon_access_rate(request.client.host)
     _require_coupon(code)
     return await get_health_report(address)
 
 
 @app.get("/coupon/optimize/{code}/{address}")
-async def coupon_optimize(code: str, address: str):
+async def coupon_optimize(code: str, address: str, request: Request):
+    _check_coupon_access_rate(request.client.host)
     _require_coupon(code)
     return await get_optimization_report(address)
 
 
 @app.get("/coupon/retry/{code}/{address}")
-async def coupon_retry(code: str, address: str):
+async def coupon_retry(code: str, address: str, request: Request):
+    _check_coupon_access_rate(request.client.host)
     _require_coupon(code)
     return await get_retry_transactions(address)
 
 
 @app.get("/coupon/protect/{code}/{address}")
-async def coupon_protect(code: str, address: str):
+async def coupon_protect(code: str, address: str, request: Request):
+    _check_coupon_access_rate(request.client.host)
     _require_coupon(code)
     return await get_protection_report(address)
 
 
 @app.get("/coupon/alerts/{code}/{address}")
-async def coupon_alerts(code: str, address: str):
+async def coupon_alerts(code: str, address: str, request: Request):
+    _check_coupon_access_rate(request.client.host)
     _require_coupon(code)
     return await subscribe_alerts(address)
 
 
 @app.get("/coupon/risk-premium/{code}/{address}")
-async def coupon_premium_risk(code: str, address: str):
+async def coupon_premium_risk(code: str, address: str, request: Request):
+    _check_coupon_access_rate(request.client.host)
     _require_coupon(code)
     return await get_premium_risk_score(address)
 
 
 @app.get("/coupon/counterparties/{code}/{address}")
-async def coupon_counterparties(code: str, address: str):
+async def coupon_counterparties(code: str, address: str, request: Request):
+    _check_coupon_access_rate(request.client.host)
     _require_coupon(code)
     return await get_counterparties(address)
 
 
 @app.get("/coupon/network-map/{code}/{address}")
-async def coupon_network_map(code: str, address: str, chain: str = "ethereum"):
+async def coupon_network_map(code: str, address: str, request: Request, chain: str = "ethereum"):
+    _check_coupon_access_rate(request.client.host)
     _require_coupon(code)
     return await get_network_map(address, chain=chain)
 
 
 @app.get("/coupon/wash/{code}/{address}")
-async def coupon_wash(code: str, address: str):
+async def coupon_wash(code: str, address: str, request: Request):
+    _check_coupon_access_rate(request.client.host)
     _require_coupon(code)
     return await get_wash_report(address)
 
 
 @app.get("/coupon/ahs/{code}/{address}")
 async def coupon_ahs(code: str, address: str, request: Request):
+    _check_coupon_access_rate(request.client.host)
     _require_coupon(code)
     return await get_ahs_report(address, request)
 
