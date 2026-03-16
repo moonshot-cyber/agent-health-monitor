@@ -2111,6 +2111,12 @@ async def roadmap():
     return FileResponse(STATIC_DIR / "ahm-roadmap.html")
 
 
+@app.get("/.well-known/agent-registration.json")
+async def agent_registration():
+    """ERC-8004 agent registration document."""
+    return FileResponse("static/agent-registration.json", media_type="application/json")
+
+
 @app.get("/.well-known/x402")
 async def x402_discovery(request: Request):
     """

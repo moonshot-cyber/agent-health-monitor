@@ -1,0 +1,16 @@
+{
+  "type": "https://eips.ethereum.org/EIPS/eip-8004#registration-v1",
+  "name": "Agent Health Monitor",
+  "description": "Pay-per-call diagnostic infrastructure for autonomous agents on Base. 11 x402 endpoints delivering health scores, risk analysis, gas optimisation, wash scans, and AHS composite scoring. The mechanic layer for the agent economy.",
+  "image": "https://agenthealthmonitor.xyz/ahm-logo.png",
+  "services": [
+    {
+      "name": "web",
+      "endpoint": "https://agenthealthmonitor.xyz"
+    },
+    {
+      "name": "x402",
+      "endpoint": "https://agenthealthmonitor.xyz"
+    }
+  ]
+}
