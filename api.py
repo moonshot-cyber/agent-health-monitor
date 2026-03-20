@@ -40,7 +40,7 @@ from urllib.parse import urlparse
 import httpx as httpx_client
 import jwt
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
@@ -2122,6 +2122,15 @@ async def roadmap():
 async def agent_registration():
     """ERC-8004 agent registration document."""
     return FileResponse("static/agent-registration.json", media_type="application/json")
+
+
+@app.get("/.well-known/402index-verify.txt")
+async def verify_402index():
+    """402index.io domain verification token."""
+    return Response(
+        content="d259ab24f09ce339920742368a801a04794b8b4c7c9d72bdedb39ffd88881ed5",
+        media_type="text/plain",
+    )
 
 
 @app.get("/.well-known/x402")
