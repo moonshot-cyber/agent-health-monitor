@@ -43,6 +43,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from x402.http import FacilitatorConfig, HTTPFacilitatorClient, PaymentOption
@@ -3640,6 +3641,10 @@ async def trust_registry(request: Request):
     loop = asyncio.get_running_loop()
     stats = await loop.run_in_executor(None, scan_db.get_trust_registry_stats)
     return stats
+
+
+# -- Static file serving (must be after all route definitions) ----------------
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
 # -- Rescan Background Loop --------------------------------------------------
