@@ -1246,12 +1246,14 @@ class AddressValidationMiddleware:
     """
     _ADDRESS_RE = re.compile(r"^0x[0-9a-fA-F]{40}$")
     # Path prefixes that take an {address} parameter
-    _ADDRESS_PREFIXES = (
+    # Sorted by length descending so longer/more-specific prefixes
+    # (e.g. /risk/premium/) match before shorter ones (e.g. /risk/).
+    _ADDRESS_PREFIXES = tuple(sorted([
         "/health/", "/risk/", "/risk/premium/", "/counterparties/",
         "/network-map/", "/wash/", "/ahs/", "/optimize/", "/retry/",
         "/retry/preview/", "/agent/protect/", "/agent/protect/preview/",
         "/alerts/subscribe/", "/alerts/status/", "/alerts/unsubscribe/",
-    )
+    ], key=len, reverse=True))
 
     def __init__(self, app):
         self.app = app
