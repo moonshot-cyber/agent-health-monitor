@@ -235,6 +235,78 @@ class TestRootEndpoint:
         assert resp.status_code == 200
 
 
+class TestPrefixOrdering:
+    """Verify _ADDRESS_PREFIXES are ordered so longer prefixes match first."""
+
+    def test_prefixes_sorted_by_length_descending(self):
+        """Prefixes must be sorted longest-first so /risk/premium/ matches
+        before /risk/. If someone adds a new prefix out of order, this fails."""
+        from api import AddressValidationMiddleware
+        prefixes = AddressValidationMiddleware._ADDRESS_PREFIXES
+        assert prefixes == tuple(sorted(prefixes, key=len, reverse=True)), (
+            "AddressValidationMiddleware._ADDRESS_PREFIXES must be sorted by "
+            "length descending. Shorter prefixes like /risk/ would otherwise "
+            "shadow longer ones like /risk/premium/."
+        )
+
+
+ZERO_ADDR = "0x0000000000000000000000000000000000000001"
+
+# Paid endpoints: x402 middleware should return 402.
+_PAID_ENDPOINTS = [
+    f"/health/{ZERO_ADDR}",
+    f"/risk/{ZERO_ADDR}",
+    f"/risk/premium/{ZERO_ADDR}",
+    f"/counterparties/{ZERO_ADDR}",
+    f"/network-map/{ZERO_ADDR}",
+    f"/ahs/{ZERO_ADDR}",
+    f"/optimize/{ZERO_ADDR}",
+    f"/retry/{ZERO_ADDR}",
+    f"/agent/protect/{ZERO_ADDR}",
+    f"/alerts/subscribe/{ZERO_ADDR}",
+]
+
+# Free endpoints: should return 200 (or another valid code), not 400.
+_FREE_ENDPOINTS = [
+    f"/retry/preview/{ZERO_ADDR}",
+    f"/agent/protect/preview/{ZERO_ADDR}",
+    f"/alerts/status/{ZERO_ADDR}",
+    f"/alerts/unsubscribe/{ZERO_ADDR}",
+]
+
+
+class TestMiddlewareRouting:
+    """Verify valid addresses reach the correct handler through the middleware.
+
+    A prefix-ordering bug (e.g. /risk/ before /risk/premium/) causes the
+    middleware to extract a wrong address segment, fail the hex regex, and
+    return 400 — preventing x402 from returning 402 on paid endpoints.
+    """
+
+    @pytest.mark.parametrize("endpoint", _PAID_ENDPOINTS,
+                             ids=[e.split("/")[1] + ("/" + e.split("/")[2] if len(e.split("/")) > 3 and not e.split("/")[2].startswith("0x") else "") for e in _PAID_ENDPOINTS])
+    def test_paid_endpoint_returns_402(self, client, endpoint):
+        """Paid endpoints must return 402 (x402 paywall), never 400."""
+        resp = client.get(endpoint)
+        assert resp.status_code == 402, (
+            f"{endpoint} returned {resp.status_code}; expected 402. "
+            "If 400, the address-validation middleware likely matched the "
+            "wrong prefix — check _ADDRESS_PREFIXES ordering."
+        )
+
+    @pytest.mark.parametrize("endpoint", _FREE_ENDPOINTS,
+                             ids=[e.split("/")[1] + "/" + e.split("/")[2] for e in _FREE_ENDPOINTS])
+    def test_free_endpoint_not_blocked(self, client, endpoint):
+        """Free endpoints must not be blocked by the address-validation
+        middleware (status 400) for a valid address."""
+        resp = client.get(endpoint)
+        assert resp.status_code != 400, (
+            f"{endpoint} returned 400 for a valid address. "
+            "The address-validation middleware likely matched the wrong "
+            "prefix — check _ADDRESS_PREFIXES ordering."
+        )
+
+
 class TestGitignore:
     """Verify .gitignore covers sensitive files."""
 
