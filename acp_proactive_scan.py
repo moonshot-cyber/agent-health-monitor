@@ -634,8 +634,8 @@ def main():
     parser = argparse.ArgumentParser(description="ACP Proactive Ecosystem Scanner")
     parser.add_argument("--max-agents", type=int, default=500,
                         help="Max agents to fetch from ACP API (default: 500)")
-    parser.add_argument("--max-scans", type=int, default=500,
-                        help="Max AHS scans to perform (default: 500)")
+    parser.add_argument("--max-scans", type=int, default=100,
+                        help="Max AHS scans to perform (default: 100)")
     parser.add_argument("--skip-scan", action="store_true",
                         help="Discovery + dedup only, no AHS scanning")
     parser.add_argument("--force-rescan", action="store_true",
