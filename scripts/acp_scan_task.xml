@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo>
+    <Description>ACP Proactive Scan — nightly at 02:00 UTC. Discovers ACP agents, runs AHS D1+D2 scans, stores results in database.</Description>
+    <Author>Pablo</Author>
+  </RegistrationInfo>
+  <Triggers>
+    <CalendarTrigger>
+      <StartBoundary>2026-03-25T02:00:00Z</StartBoundary>
+      <Enabled>true</Enabled>
+      <ScheduleByDay>
+        <DaysInterval>1</DaysInterval>
+      </ScheduleByDay>
+    </CalendarTrigger>
+  </Triggers>
+  <Principals>
+    <Principal id="Author">
+      <UserId>Pablo</UserId>
+      <LogonType>S4U</LogonType>
+      <RunLevel>LeastPrivilege</RunLevel>
+    </Principal>
+  </Principals>
+  <Settings>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <AllowHardTerminate>true</AllowHardTerminate>
+    <StartWhenAvailable>true</StartWhenAvailable>
+    <RunOnlyIfNetworkAvailable>true</RunOnlyIfNetworkAvailable>
+    <AllowStartOnDemand>true</AllowStartOnDemand>
+    <Enabled>true</Enabled>
+    <Hidden>false</Hidden>
+    <ExecutionTimeLimit>PT2H</ExecutionTimeLimit>
+    <Priority>7</Priority>
+    <WakeComputer>false</WakeComputer>
+  </Settings>
+  <Actions Context="Author">
+    <Exec>
+      <Command>C:\Users\Pablo\agent-health-monitor\scripts\run_acp_scan.bat</Command>
+      <WorkingDirectory>C:\Users\Pablo\agent-health-monitor</WorkingDirectory>
+    </Exec>
+  </Actions>
+</Task>
