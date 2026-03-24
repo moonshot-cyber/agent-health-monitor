@@ -15,7 +15,7 @@ logger = logging.getLogger("ahm.db")
 
 DB_PATH = os.getenv("DB_PATH", "./ahm_history.db")
 
-_SCHEMA_VERSION = 1
+_SCHEMA_VERSION = 2
 
 _SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS scans (
@@ -96,6 +96,18 @@ def init_db():
         # Track schema version
         row = conn.execute("SELECT MAX(version) FROM schema_version").fetchone()
         current = row[0] if row[0] is not None else 0
+
+        # v2: Add registries column for cross-registry tracking
+        if current < 2:
+            try:
+                conn.execute("ALTER TABLE known_wallets ADD COLUMN registries TEXT DEFAULT ''")
+            except sqlite3.OperationalError:
+                pass  # Column already exists
+            conn.execute(
+                "UPDATE known_wallets SET registries = source "
+                "WHERE (registries IS NULL OR registries = '') AND source IS NOT NULL"
+            )
+
         if current < _SCHEMA_VERSION:
             conn.execute("INSERT INTO schema_version (version) VALUES (?)", (_SCHEMA_VERSION,))
             conn.commit()
@@ -170,18 +182,30 @@ def log_scan(
         elif grade == "C":
             rescan_interval = 336  # biweekly
 
+        # Map source to registry name for cross-registry tracking
+        registry = source
+        if registry == "api":
+            registry = "ahm_api"
+
         conn.execute(
             """INSERT INTO known_wallets (address, label, source, first_seen_at, last_scanned_at,
-                scan_count, latest_ahs, latest_grade, rescan_interval_hours)
-            VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)
+                scan_count, latest_ahs, latest_grade, rescan_interval_hours, registries)
+            VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?)
             ON CONFLICT(address) DO UPDATE SET
                 last_scanned_at = excluded.last_scanned_at,
                 scan_count = known_wallets.scan_count + 1,
                 latest_ahs = COALESCE(excluded.latest_ahs, known_wallets.latest_ahs),
                 latest_grade = COALESCE(excluded.latest_grade, known_wallets.latest_grade),
                 label = COALESCE(excluded.label, known_wallets.label),
-                rescan_interval_hours = excluded.rescan_interval_hours""",
-            (addr, label, source, now_iso, now_iso, ahs_score, grade, rescan_interval),
+                rescan_interval_hours = excluded.rescan_interval_hours,
+                registries = CASE
+                    WHEN known_wallets.registries IS NULL OR known_wallets.registries = ''
+                        THEN excluded.registries
+                    WHEN instr(known_wallets.registries, excluded.registries) > 0
+                        THEN known_wallets.registries
+                    ELSE known_wallets.registries || ',' || excluded.registries
+                END""",
+            (addr, label, source, now_iso, now_iso, ahs_score, grade, rescan_interval, registry),
         )
 
         conn.commit()
