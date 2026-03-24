@@ -98,6 +98,56 @@ def fetch_transactions(address: str, api_key: str = "") -> list[dict]:
     return []
 
 
+def fetch_token_transfers(address: str, max_pages: int = 5) -> list[dict]:
+    """Fetch ERC-20 token transfer history via Blockscout V2 API.
+
+    Used as a D2 fallback for smart contract wallets that have zero
+    regular transactions but active token transfer activity (e.g. ACP agents).
+
+    Returns list of transfer dicts normalized to etherscan-compat format:
+    {from, to, timeStamp, contractAddress, tokenName, hash, value, ...}
+    """
+    transfers: list[dict] = []
+    url = f"{BLOCKSCOUT_V2_URL}/addresses/{address}/token-transfers"
+    params: dict = {"type": "ERC-20"}
+
+    for _ in range(max_pages):
+        try:
+            resp = requests.get(url, params=params, timeout=30)
+            resp.raise_for_status()
+            data = resp.json()
+        except (requests.RequestException, ValueError):
+            break
+
+        items = data.get("items", [])
+        for item in items:
+            # Normalize V2 nested format to flat dict for D2 sub-signals
+            ts_str = item.get("timestamp", "")
+            unix_ts = 0
+            if ts_str:
+                try:
+                    from datetime import datetime as _dt
+                    unix_ts = int(_dt.fromisoformat(ts_str.replace("Z", "+00:00")).timestamp())
+                except (ValueError, TypeError):
+                    pass
+            transfers.append({
+                "from": (item.get("from") or {}).get("hash", ""),
+                "to": (item.get("to") or {}).get("hash", ""),
+                "timeStamp": str(unix_ts),
+                "contractAddress": (item.get("token") or {}).get("address_hash", ""),
+                "tokenName": (item.get("token") or {}).get("name", ""),
+                "hash": item.get("transaction_hash", ""),
+                "value": (item.get("total") or {}).get("value", "0"),
+            })
+
+        next_page = data.get("next_page_params")
+        if not next_page:
+            break
+        params = {"type": "ERC-20", **next_page}
+
+    return transfers
+
+
 def get_eth_price(api_key: str = "") -> float:
     """Fetch current ETH/USD price."""
     # Try Blockscout stats endpoint
@@ -1616,6 +1666,7 @@ class AHSResult:
     next_scan_recommended: str = "14 days"
     tx_count: int = 0
     history_days: int = 0
+    d2_data_source: str = "txlist"
     # Internal signal values (NOT exposed in API)
     _signals: dict = field(default_factory=dict)
 
@@ -1932,6 +1983,50 @@ def _calc_tx_diversity_score(transactions: list[dict]) -> tuple[int, float, int]
     return score, diversity_ratio, unique_pairs
 
 
+def _calc_token_transfer_diversity_score(transfers: list[dict]) -> tuple[int, float, int]:
+    """Token transfer diversity. Adapted from _calc_tx_diversity_score.
+
+    Uses (to, contractAddress) pairs instead of (to, methodId) since token
+    transfers don't have an input field.
+    """
+    now_ts = datetime.now(timezone.utc).timestamp()
+    seven_days_ago = now_ts - 7 * 86400
+
+    recent = []
+    for tx in transfers:
+        try:
+            if int(tx.get("timeStamp", 0)) >= seven_days_ago:
+                recent.append(tx)
+        except (ValueError, TypeError):
+            continue
+
+    if not recent:
+        recent = transfers[-100:] if len(transfers) > 100 else transfers
+
+    pairs = set()
+    for tx in recent:
+        to_addr = (tx.get("to") or "").lower()
+        token_addr = (tx.get("contractAddress") or tx.get("tokenAddress") or "").lower()
+        if to_addr and token_addr:
+            pairs.add((to_addr, token_addr))
+
+    diversity_ratio = len(pairs) / len(recent) if recent else 0
+    unique_pairs = len(pairs)
+
+    if unique_pairs >= 10 or diversity_ratio >= 0.10:
+        score = 100
+    elif unique_pairs >= 5 or diversity_ratio >= 0.05:
+        score = 75
+    elif unique_pairs >= 2 or diversity_ratio >= 0.02:
+        score = 50
+    elif unique_pairs == 1:
+        score = 25
+    else:
+        score = 0
+
+    return score, diversity_ratio, unique_pairs
+
+
 def _calc_retry_storm_score(transactions: list[dict]) -> tuple[int, int]:
     """Retry storm frequency. Returns (score, storm_events)."""
     groups: dict[str, list[int]] = {}
@@ -2133,6 +2228,74 @@ def calculate_d2_score(transactions: list[dict]) -> tuple[int, list, dict]:
     return score, factors[:3], raw_signals
 
 
+def calculate_d2_score_from_transfers(transfers: list[dict]) -> tuple[int, list, dict]:
+    """Calculate D2 (Behavioural Patterns) from token transfers.
+
+    Fallback for smart contract wallets with no regular txlist data.
+    Uses 4 of 8 signals (those that don't require nonce, gasPrice, input, isError).
+    Weights redistributed proportionally from the 4 usable signals.
+    """
+    if len(transfers) < 10:
+        return 50, ["Insufficient token transfer history for behavioural analysis"], {}
+
+    timing_score, timing_cv, gap_ratio, burst_count = _calc_timing_regularity_score(transfers)
+    breadth_score, breadth_ratio, unique_contracts = _calc_contract_breadth_score(transfers)
+    gap_score, activity_gap_ratio = _calc_activity_gap_score(transfers)
+    diversity_score, diversity_ratio, unique_pairs = _calc_token_transfer_diversity_score(transfers)
+
+    # Original weights for these 4 signals sum to 0.40; normalize to 1.0
+    score = (
+        timing_score * 0.375
+        + diversity_score * 0.250
+        + breadth_score * 0.250
+        + gap_score * 0.125
+    )
+    score = max(0, min(100, int(round(score))))
+
+    factors = []
+    signal_scores = [
+        (timing_score, f"Timing regularity: CV={timing_cv:.2f}, gap ratio={gap_ratio:.1f}"),
+        (diversity_score, f"Transfer diversity: {unique_pairs} unique pairs ({diversity_ratio:.3f})"),
+        (breadth_score, f"Counterparty breadth: {unique_contracts} unique recipients ({breadth_ratio:.3f})"),
+        (gap_score, f"Activity gaps: ratio {activity_gap_ratio:.1f}"),
+    ]
+    signal_scores.sort(key=lambda x: x[0])
+    for s, desc in signal_scores[:3]:
+        if s < 70:
+            factors.append(desc)
+    if not factors:
+        factors.append("Token transfer behavioural patterns are healthy")
+    factors.append("(scored from token transfers \u2014 4/8 signals used)")
+
+    raw_signals = {
+        "repeated_failure_score": None,
+        "max_consecutive_failures": 0,
+        "has_recovery": False,
+        "gas_adaptation_score": None,
+        "gas_adaptation_cv": 0.0,
+        "nonce_management_score": None,
+        "persistent_nonce_gaps": 0,
+        "retry_storm_score": None,
+        "storm_events": 0,
+        "timing_score": timing_score,
+        "timing_cv": timing_cv,
+        "gap_ratio": gap_ratio,
+        "burst_count": burst_count,
+        "tx_diversity_score": diversity_score,
+        "tx_diversity_ratio": diversity_ratio,
+        "unique_pairs": unique_pairs,
+        "contract_breadth_score": breadth_score,
+        "breadth_ratio": breadth_ratio,
+        "unique_contracts": unique_contracts,
+        "activity_gap_score": gap_score,
+        "activity_gap_ratio": activity_gap_ratio,
+        "d2_data_source": "tokentx",
+        "d2_signals_used": 4,
+    }
+
+    return score, factors[:4], raw_signals
+
+
 # -- D3: Infrastructure Health Scoring (sync probing) --
 
 def probe_infrastructure_sync(agent_url: str) -> tuple[int, list]:
@@ -2281,17 +2444,23 @@ def detect_cdp_patterns(
     modifier = 0
     patterns = []
 
-    # Extract signal values safely
-    failed_pct = signals.get("failed_pct_24h", 0)
-    d1_gas_eff_raw = signals.get("d1_gas_eff_score", 100)
-    tx_div_ratio = signals.get("tx_diversity_ratio", 1.0)
-    unique_contracts = signals.get("unique_contracts", 10)
-    max_consec = signals.get("max_consecutive_failures", 0)
-    gas_cv = signals.get("gas_adaptation_cv", 0.5)
-    persistent_gaps = signals.get("persistent_nonce_gaps", 0)
-    gap_ratio = signals.get("gap_ratio", 1.0)
-    storm_events = signals.get("storm_events", 0)
-    gas_adapt_score = signals.get("gas_adaptation_score", 50)
+    # Extract signal values safely. Use _sig() to handle None from token
+    # transfer fallback (where some D2 signals are unavailable). Defaults
+    # are "neutral" values that prevent false-triggering on missing data.
+    def _sig(key, default):
+        val = signals.get(key, default)
+        return default if val is None else val
+
+    failed_pct = _sig("failed_pct_24h", 0)
+    d1_gas_eff_raw = _sig("d1_gas_eff_score", 100)
+    tx_div_ratio = _sig("tx_diversity_ratio", 1.0)
+    unique_contracts = _sig("unique_contracts", 10)
+    max_consec = _sig("max_consecutive_failures", 0)
+    gas_cv = _sig("gas_adaptation_cv", 0.5)
+    persistent_gaps = _sig("persistent_nonce_gaps", 0)
+    gap_ratio = _sig("gap_ratio", 1.0)
+    storm_events = _sig("storm_events", 0)
+    gas_adapt_score = _sig("gas_adaptation_score", 50)
 
     # Pattern 1: Zombie Agent
     if (d1_gas_eff_raw > 90 and failed_pct == 0 and
@@ -2513,9 +2682,39 @@ def calculate_ahs(
     result.d1_top_factors = d1_factors
 
     # -- D2: Behavioural Patterns --
-    d2_score, d2_factors, d2_signals = calculate_d2_score(outgoing)
+    if len(outgoing) >= 10:
+        # Normal path: sufficient txlist data
+        d2_score, d2_factors, d2_signals = calculate_d2_score(outgoing)
+        result.d2_data_source = "txlist"
+    else:
+        # Fallback: try token transfers for smart contract wallets.
+        # Use ALL transfers (not just outgoing) because ACP agents and
+        # similar smart contract wallets primarily receive payments.
+        # Normalize so "to" always = counterparty (the other party in
+        # the transfer), matching how D2 sub-signals use the "to" field.
+        token_transfers = fetch_token_transfers(address)
+        addr_lower = address.lower()
+        for tt in token_transfers:
+            if tt.get("to", "").lower() == addr_lower:
+                # Incoming: swap so "to" = sender (counterparty)
+                tt["to"], tt["from"] = tt["from"], tt["to"]
+        if len(token_transfers) >= 10:
+            d2_score, d2_factors, d2_signals = calculate_d2_score_from_transfers(token_transfers)
+            result.d2_data_source = "tokentx"
+            result.tx_count = len(token_transfers)
+            tt_timestamps = [int(tx.get("timeStamp", 0)) for tx in token_transfers]
+            tt_valid = [t for t in tt_timestamps if t > 0]
+            if tt_valid:
+                tt_first = min(tt_valid)
+                tt_last = max(tt_valid)
+                result.history_days = max(result.history_days, max(1, int((tt_last - tt_first) / 86400)))
+        else:
+            # Neither txlist nor tokentx has enough data — baseline
+            d2_score, d2_factors, d2_signals = calculate_d2_score(outgoing)
+            result.d2_data_source = "txlist"
     result.d2_score = d2_score
     result.d2_top_factors = d2_factors
+    d2_signals["d2_data_source"] = result.d2_data_source
 
     # -- D3: Infrastructure Health --
     d3_score = None
