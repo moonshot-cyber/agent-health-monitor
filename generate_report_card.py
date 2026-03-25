@@ -28,8 +28,37 @@ TEXT_DIM = (74, 122, 138)
 TEXT_BRIGHT = (232, 248, 255)
 
 # -- Fonts --
-MONO = "C:/Windows/Fonts/consola.ttf"
-MONO_BOLD = "C:/Windows/Fonts/consolab.ttf"
+# Try Windows → Linux common monospace paths → Pillow built-in fallback
+def _find_font(candidates: list[str]) -> str | None:
+    import os
+    for p in candidates:
+        if os.path.isfile(p):
+            return p
+    return None
+
+MONO = _find_font([
+    "C:/Windows/Fonts/consola.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+    "/usr/share/fonts/TTF/DejaVuSansMono.ttf",
+    "/usr/share/fonts/truetype/liberation/LiberationMono-Regular.ttf",
+])
+MONO_BOLD = _find_font([
+    "C:/Windows/Fonts/consolab.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf",
+    "/usr/share/fonts/TTF/DejaVuSansMono-Bold.ttf",
+    "/usr/share/fonts/truetype/liberation/LiberationMono-Bold.ttf",
+])
+
+
+def _load_font(path: str | None, size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
+    """Load a TrueType font, falling back to Pillow's built-in default."""
+    if path:
+        return ImageFont.truetype(path, size)
+    try:
+        return ImageFont.load_default(size=size)
+    except TypeError:
+        # Pillow <10.1 doesn't support size= on load_default
+        return ImageFont.load_default()
 
 
 # -- Reusable helpers (from generate_health_report_2.py) --
@@ -185,20 +214,20 @@ def generate_report_card(
 
     # Load fonts
     fonts = {
-        "title": ImageFont.truetype(MONO_BOLD, 26),
-        "subtitle": ImageFont.truetype(MONO, 14),
-        "big_score": ImageFont.truetype(MONO_BOLD, 80),
-        "grade": ImageFont.truetype(MONO_BOLD, 28),
-        "grade_label": ImageFont.truetype(MONO, 16),
-        "dim_title": ImageFont.truetype(MONO_BOLD, 13),
-        "dim_score": ImageFont.truetype(MONO_BOLD, 30),
-        "dim_label": ImageFont.truetype(MONO, 11),
-        "section": ImageFont.truetype(MONO_BOLD, 13),
-        "body": ImageFont.truetype(MONO, 13),
-        "small": ImageFont.truetype(MONO, 11),
-        "footer": ImageFont.truetype(MONO, 12),
-        "corner": ImageFont.truetype(MONO, 13),
-        "bar_label": ImageFont.truetype(MONO_BOLD, 12),
+        "title": _load_font(MONO_BOLD, 26),
+        "subtitle": _load_font(MONO, 14),
+        "big_score": _load_font(MONO_BOLD, 80),
+        "grade": _load_font(MONO_BOLD, 28),
+        "grade_label": _load_font(MONO, 16),
+        "dim_title": _load_font(MONO_BOLD, 13),
+        "dim_score": _load_font(MONO_BOLD, 30),
+        "dim_label": _load_font(MONO, 11),
+        "section": _load_font(MONO_BOLD, 13),
+        "body": _load_font(MONO, 13),
+        "small": _load_font(MONO, 11),
+        "footer": _load_font(MONO, 12),
+        "corner": _load_font(MONO, 13),
+        "bar_label": _load_font(MONO_BOLD, 12),
     }
 
     gc = _grade_color(grade)
@@ -268,7 +297,7 @@ def generate_report_card(
             bar_w = card_w - 24
             draw_bar(draw, bar_x, bar_y, bar_w, 6, score / 100.0, ds_color)
         else:
-            ns_font = ImageFont.truetype(MONO, 20)
+            ns_font = _load_font(MONO, 20)
             draw.text((cx + 12, card_y + 38), "Not scored", font=ns_font, fill=TEXT_DIM)
 
     # ── Ecosystem Comparison ──
