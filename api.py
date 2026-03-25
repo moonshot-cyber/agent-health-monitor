@@ -28,6 +28,7 @@ import re
 import secrets
 
 import db as scan_db
+from generate_report_card import generate_report_card
 from contextlib import asynccontextmanager
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -35,7 +36,7 @@ from functools import partial
 from ipaddress import ip_address
 from pathlib import Path
 from typing import Optional
-from urllib.parse import urlparse
+from urllib.parse import quote as url_quote, urlparse
 
 import httpx as httpx_client
 import jwt
@@ -94,6 +95,7 @@ COUNTERPARTY_PRICE = os.getenv("COUNTERPARTY_PRICE_USD", "$0.10")
 NETWORK_MAP_PRICE = os.getenv("NETWORK_MAP_PRICE_USD", "$0.10")
 WASH_PRICE = os.getenv("WASH_PRICE_USD", "$0.50")
 AHS_PRICE = os.getenv("AHS_PRICE_USD", "$1.00")
+REPORT_CARD_PRICE = os.getenv("REPORT_CARD_PRICE_USD", "$2.00")
 AHS_JWT_SECRET = os.getenv("AHS_JWT_SECRET", secrets.token_urlsafe(32))
 NANSEN_PAYER_PRIVATE_KEY = os.getenv("NANSEN_PAYER_PRIVATE_KEY", "")
 NETWORK = os.getenv("NETWORK", "eip155:8453")  # Base mainnet
@@ -467,6 +469,37 @@ class AHSReport(BaseModel):
 class AHSResponse(BaseModel):
     status: str
     report: AHSReport
+
+
+# -- Report Card models ------------------------------------------------------
+
+class EcosystemComparison(BaseModel):
+    average_ahs: Optional[float] = None
+    percentile_rank: int
+    grade_distribution: dict
+    total_agents_scored: int
+
+class ReportCardDimension(BaseModel):
+    dimension: str
+    score: Optional[int] = None
+    weight: float
+
+class ReportCardReport(BaseModel):
+    address: str
+    agent_health_score: int
+    grade: str
+    confidence: str
+    mode: str
+    dimensions: list[ReportCardDimension]
+    patterns_detected: list[AHSCrossDimensionalPattern]
+    recommendations: list[str]
+    ecosystem_comparison: EcosystemComparison
+    image_url: str
+    share_url: str
+
+class ReportCardResponse(BaseModel):
+    status: str
+    report: ReportCardReport
 
 
 # -- Nansen Helper -----------------------------------------------------------
@@ -1253,6 +1286,7 @@ class AddressValidationMiddleware:
         "/network-map/", "/wash/", "/ahs/", "/optimize/", "/retry/",
         "/retry/preview/", "/agent/protect/", "/agent/protect/preview/",
         "/alerts/subscribe/", "/alerts/status/", "/alerts/unsubscribe/",
+        "/report-card/",
     ], key=len, reverse=True))
 
     def __init__(self, app):
@@ -1988,6 +2022,57 @@ x402_routes = {
                                 "recommendations": ["Investigate repeated failures", "Enable dynamic gas pricing"],
                                 "model_version": "AHS-v1",
                                 "next_scan_recommended": "7 days",
+                            },
+                        },
+                    },
+                },
+            },
+        },
+    ),
+    "GET /report-card/*": RouteConfig(
+        accepts=[
+            PaymentOption(
+                scheme="exact",
+                pay_to=PAYMENT_ADDRESS,
+                price=REPORT_CARD_PRICE,
+                network=NETWORK,
+            ),
+        ],
+        mime_type="application/json",
+        description=(
+            "Agent Report Card: Visual health report card with ecosystem benchmarks. "
+            "Generates a shareable 1200x675 PNG image with AHS score, dimension breakdown, "
+            "ecosystem comparison, and detected patterns."
+        ),
+        extensions={
+            "bazaar": {
+                "info": {
+                    "input": {
+                        "type": "http",
+                        "method": "GET",
+                        "discoverable": True,
+                        "queryParams": {
+                            "address": "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
+                        },
+                    },
+                    "output": {
+                        "type": "json",
+                        "example": {
+                            "status": "ok",
+                            "report": {
+                                "address": "0xd8da6bf26964af9d7eed9e03e53415d37aa96045",
+                                "agent_health_score": 72,
+                                "grade": "C — Needs Attention",
+                                "dimensions": [
+                                    {"dimension": "D1: Wallet Hygiene", "score": 68, "weight": 0.30},
+                                    {"dimension": "D2: Behavioural Patterns", "score": 55, "weight": 0.70},
+                                ],
+                                "ecosystem_comparison": {
+                                    "average_ahs": 47.3,
+                                    "percentile_rank": 65,
+                                    "total_agents_scored": 1006,
+                                },
+                                "image_url": "/static/report-cards/0xd8da...6045.png",
                             },
                         },
                     },
@@ -3145,6 +3230,173 @@ async def get_ahs_report(address: str, request: Request):
     return AHSResponse(status="ok", report=report)
 
 
+# ── Report Card endpoint ────────────────────────────────────────────────────
+
+@app.get("/report-card/{address}", response_model=ReportCardResponse)
+async def get_report_card(address: str, request: Request):
+    """
+    Agent Report Card: Visual health report card with ecosystem benchmarks.
+
+    Requires x402 payment ($2.00 USDC on Base) OR valid X-Internal-Key header.
+
+    Runs a full AHS scan, pulls ecosystem comparison data, and generates
+    a personalised 1200x675 PNG report card image. Returns JSON with scores,
+    benchmarks, and a URL to the generated image.
+    """
+    if not ADDRESS_RE.match(address):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid Ethereum address format: {address}",
+        )
+
+    address = address.lower()
+    loop = asyncio.get_running_loop()
+
+    # Parallel fetch: tokens, transactions, ETH price (same as AHS)
+    eth_price, transactions, tokens = await asyncio.gather(
+        loop.run_in_executor(None, partial(get_eth_price, BASESCAN_API_KEY)),
+        loop.run_in_executor(None, partial(fetch_transactions, address, BASESCAN_API_KEY)),
+        loop.run_in_executor(None, partial(fetch_tokens_v2, address)),
+    )
+
+    # Run scoring engine + fetch ecosystem stats in parallel
+    result, eco_stats = await asyncio.gather(
+        loop.run_in_executor(
+            None,
+            partial(
+                calculate_ahs,
+                address=address,
+                tokens=tokens,
+                transactions=transactions,
+                eth_price=eth_price,
+            ),
+        ),
+        loop.run_in_executor(None, scan_db.get_trust_registry_stats),
+    )
+
+    # Generate report card image
+    png_bytes = await loop.run_in_executor(
+        None,
+        partial(
+            generate_report_card,
+            address=address,
+            ahs_score=result.agent_health_score,
+            grade=result.grade,
+            grade_label=result.grade_label,
+            d1_score=result.d1_score,
+            d2_score=result.d2_score,
+            d3_score=result.d3_score,
+            mode=result.mode,
+            patterns=result.patterns_detected,
+            recommendations=result.recommendations,
+            ecosystem=eco_stats,
+        ),
+    )
+
+    # Save PNG to static directory
+    img_filename = f"{address}.png"
+    img_path = Path("static/report-cards") / img_filename
+    await loop.run_in_executor(None, lambda: img_path.write_bytes(png_bytes))
+    image_url = f"/static/report-cards/{img_filename}"
+
+    # Calculate percentile rank
+    percentiles = eco_stats.get("baseline_calibration", {}).get("score_percentiles", {})
+    pct_rank = _report_card_percentile(result.agent_health_score, percentiles)
+
+    # Build share URL
+    grade_full = f"{result.grade} — {result.grade_label}"
+    share_text = (
+        f"My agent scored {result.agent_health_score}/100 ({grade_full}) "
+        f"on @AHM_xyz Report Card — Top {100 - pct_rank}% of agents on Base"
+    )
+    share_url = f"https://x.com/intent/tweet?text={url_quote(share_text)}"
+
+    # Build dimension list
+    dimensions = [
+        ReportCardDimension(dimension="D1: Wallet Hygiene", score=result.d1_score, weight=result.d1_weight),
+        ReportCardDimension(dimension="D2: Behavioural Patterns", score=result.d2_score, weight=result.d2_weight),
+    ]
+    if result.d3_score is not None:
+        dimensions.append(
+            ReportCardDimension(dimension="D3: Infrastructure Health", score=result.d3_score, weight=result.d3_weight)
+        )
+
+    # Build patterns list
+    patterns = [
+        AHSCrossDimensionalPattern(
+            name=p["name"], detected=p["detected"],
+            severity=p["severity"], description=p["description"],
+        )
+        for p in result.patterns_detected
+    ]
+
+    eco_comparison = EcosystemComparison(
+        average_ahs=eco_stats.get("average_ahs"),
+        percentile_rank=pct_rank,
+        grade_distribution=eco_stats.get("grade_distribution", {}),
+        total_agents_scored=eco_stats.get("summary", {}).get("total_unique_addresses", 0),
+    )
+
+    report = ReportCardReport(
+        address=address,
+        agent_health_score=result.agent_health_score,
+        grade=grade_full,
+        confidence=result.confidence,
+        mode=result.mode,
+        dimensions=dimensions,
+        patterns_detected=patterns,
+        recommendations=result.recommendations,
+        ecosystem_comparison=eco_comparison,
+        image_url=image_url,
+        share_url=share_url,
+    )
+
+    # Log scan to DB
+    loop.run_in_executor(None, lambda: scan_db.log_scan(
+        address=address, endpoint="report-card",
+        scan_timestamp=result.scan_timestamp,
+        ahs_score=result.agent_health_score,
+        grade=result.grade, grade_label=result.grade_label,
+        confidence=result.confidence, mode=result.mode,
+        d1_score=result.d1_score, d2_score=result.d2_score,
+        d3_score=result.d3_score, cdp_modifier=result.cdp_modifier,
+        patterns=[{"name": p.get("name", ""), "severity": p.get("severity", ""),
+                   "description": p.get("description", ""), "modifier": p.get("modifier")}
+                  for p in result.patterns_detected] if result.patterns_detected else None,
+        tx_count=result.tx_count, history_days=result.history_days,
+        response_data={"agent_health_score": result.agent_health_score, "grade": result.grade,
+                       "d1_score": result.d1_score, "d2_score": result.d2_score,
+                       "image_url": image_url},
+    ))
+
+    return ReportCardResponse(status="ok", report=report)
+
+
+def _report_card_percentile(score: int, percentiles: dict) -> int:
+    """Estimate percentile rank from p10/p25/p50/p75/p90 percentile dict."""
+    if not percentiles:
+        return 50
+    checkpoints = [
+        (percentiles.get("p10", 0), 10),
+        (percentiles.get("p25", 0), 25),
+        (percentiles.get("p50", 0), 50),
+        (percentiles.get("p75", 0), 75),
+        (percentiles.get("p90", 0), 90),
+    ]
+    if score <= checkpoints[0][0]:
+        return max(1, int(10 * score / max(checkpoints[0][0], 1)))
+    if score >= checkpoints[-1][0]:
+        return min(99, 90 + int(10 * (score - checkpoints[-1][0]) / max(100 - checkpoints[-1][0], 1)))
+    for i in range(len(checkpoints) - 1):
+        s1, p1 = checkpoints[i]
+        s2, p2 = checkpoints[i + 1]
+        if s1 <= score <= s2:
+            if s2 == s1:
+                return p1
+            return int(p1 + (p2 - p1) * (score - s1) / (s2 - s1))
+    return 50
+
+
 @app.get("/optimize/{address}", response_model=OptimizeResponse)
 async def get_optimization_report(address: str):
     """
@@ -3646,6 +3898,7 @@ async def trust_registry(request: Request):
 
 
 # -- Static file serving (must be after all route definitions) ----------------
+os.makedirs("static/report-cards", exist_ok=True)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 

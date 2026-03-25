@@ -937,7 +937,7 @@
 <section class="hero">
   <div class="hero-tag">Blockchain Intelligence Protocol</div>
   <h1>AGENT <span>HEALTH</span> MONITOR</h1>
-  <p class="hero-sub">// Diagnostics for the agent economy &middot; 11 endpoints from $0.01 &middot; USDC on Base</p>
+  <p class="hero-sub">// Diagnostics for the agent economy &middot; 12 endpoints from $0.01 &middot; USDC on Base</p>
 </section>
 
 <!-- MAIN APP -->
@@ -958,6 +958,7 @@
         <button class="guided-btn" data-endpoint="health" onclick="selectService('health')">Full Health Check <span class="guided-price">$0.50</span></button>
         <button class="guided-btn" data-endpoint="wash" onclick="selectService('wash')">Agent Wash <span class="guided-price">$0.50</span></button>
         <button class="guided-btn" data-endpoint="ahs" onclick="selectService('ahs')">Agent Health Score <span class="guided-price">$1.00</span></button>
+        <button class="guided-btn" data-endpoint="report-card" onclick="selectService('report-card')">Report Card <span class="guided-price">$2.00</span></button>
         <button class="guided-btn" data-endpoint="alerts" onclick="selectService('alerts')">Live Alerts <span class="guided-price">$2.00</span></button>
         <button class="guided-btn" data-endpoint="optimize" onclick="selectService('optimize')">Optimize <span class="guided-price">$5.00</span></button>
         <button class="guided-btn" data-endpoint="retry" onclick="selectService('retry')">Retry Failed Txns <span class="guided-price">$10.00</span></button>
@@ -1036,7 +1037,7 @@
   <div class="panel" id="browse-section">
     <div class="panel-header browse-toggle-header" onclick="toggleBrowse()">
       <span class="panel-title">// BROWSE_ENDPOINTS</span>
-      <span class="panel-tag" id="browse-toggle-label">▶ Show all 11 services</span>
+      <span class="panel-tag" id="browse-toggle-label">▶ Show all 12 services</span>
     </div>
     <div class="panel-body" id="browse-body" style="display:none">
       <div class="endpoint-grid">
@@ -1074,6 +1075,11 @@
           <div class="ep-price">$1.00</div>
           <div class="ep-name">/ahs</div>
           <div class="ep-desc">Agent Health Score — composite 0-100 index across wallet hygiene, behaviour &amp; infrastructure</div>
+        </div>
+        <div class="endpoint-card" data-endpoint="report-card" data-price="2.00" data-path="/report-card" onclick="selectEndpoint(this)">
+          <div class="ep-price">$2.00</div>
+          <div class="ep-name">/report-card</div>
+          <div class="ep-desc">Visual report card with ecosystem benchmarks — shareable 1200x675 PNG image</div>
         </div>
         <div class="endpoint-card" data-endpoint="alerts" data-price="2.00" data-path="/alerts/subscribe" onclick="selectEndpoint(this)">
           <div class="ep-price">$2.00</div>
@@ -1135,6 +1141,7 @@
     if (/health|full.*report|score|overview|diagnos/.test(t)) return 'health';
     if (/alert|monitor|watch|notif|subscribe/.test(t)) return 'alerts';
     if (/wash|clean|hygiene|dust|spam|clutter|sweep/.test(t)) return 'wash';
+    if (/report\s*card|visual|share|png|image/i.test(t)) return 'report-card';
     if (/\bahs\b|agent\s*health\s*score|composite\s*score|behavio|infra.*health|zombie|pattern/i.test(t)) return 'ahs';
     if (/optimi[sz]|gas|efficien|save|cheaper/.test(t)) return 'optimize';
     if (/retry|fail|revert|stuck|rescue/.test(t)) return 'retry';
@@ -1181,7 +1188,7 @@
     const label = document.getElementById('browse-toggle-label');
     const visible = body.style.display !== 'none';
     body.style.display = visible ? 'none' : 'block';
-    label.textContent = visible ? '\u25B6 Show all 11 services' : '\u25BC Hide services';
+    label.textContent = visible ? '\u25B6 Show all 12 services' : '\u25BC Hide services';
   }
 
   // ─── ENDPOINT SELECT ───
@@ -1758,6 +1765,56 @@
             ...ahsData,
           },
         };
+      } else if (selectedEndpoint.name === 'report-card') {
+        const rcByMode = {
+          'TEST-ELITE': {
+            agent_health_score: 92, grade: 'A — Excellent', confidence: 'HIGH', mode: '2D',
+            dimensions: [
+              { dimension: 'D1: Wallet Hygiene', score: 95, weight: 0.30 },
+              { dimension: 'D2: Behavioural Patterns', score: 90, weight: 0.70 },
+            ],
+            patterns_detected: [],
+            recommendations: ['Maintaining excellent health — scan again in 30 days'],
+            ecosystem_comparison: { average_ahs: 47.3, percentile_rank: 95, grade_distribution: { A: 1, B: 3, C: 12, D: 45, E: 38, F: 8 }, total_agents_scored: 1006 },
+            image_url: '/static/report-cards/test-placeholder.png',
+            share_url: 'https://x.com/intent/tweet?text=My%20agent%20scored%2092%2F100%20on%20%40AHM_xyz%20Report%20Card',
+          },
+          'TEST-CRITICAL': {
+            agent_health_score: 22, grade: 'E — Critical', confidence: 'MEDIUM', mode: '2D',
+            dimensions: [
+              { dimension: 'D1: Wallet Hygiene', score: 35, weight: 0.30 },
+              { dimension: 'D2: Behavioural Patterns', score: 17, weight: 0.70 },
+            ],
+            patterns_detected: [
+              { name: 'Cascading Infrastructure Failure', detected: true, severity: 'critical', description: 'Active degradation detected.' },
+            ],
+            recommendations: ['Active degradation detected — failure rate is rising'],
+            ecosystem_comparison: { average_ahs: 47.3, percentile_rank: 12, grade_distribution: { A: 1, B: 3, C: 12, D: 45, E: 38, F: 8 }, total_agents_scored: 1006 },
+            image_url: '/static/report-cards/test-placeholder.png',
+            share_url: 'https://x.com/intent/tweet?text=My%20agent%20scored%2022%2F100%20on%20%40AHM_xyz%20Report%20Card',
+          },
+          'TEST-MODERATE': {
+            agent_health_score: 58, grade: 'C — Needs Attention', confidence: 'MEDIUM', mode: '2D',
+            dimensions: [
+              { dimension: 'D1: Wallet Hygiene', score: 65, weight: 0.30 },
+              { dimension: 'D2: Behavioural Patterns', score: 55, weight: 0.70 },
+            ],
+            patterns_detected: [],
+            recommendations: ['Transaction diversity: 3 unique pairs', 'Gas adaptation index: 0.035'],
+            ecosystem_comparison: { average_ahs: 47.3, percentile_rank: 62, grade_distribution: { A: 1, B: 3, C: 12, D: 45, E: 38, F: 8 }, total_agents_scored: 1006 },
+            image_url: '/static/report-cards/test-placeholder.png',
+            share_url: 'https://x.com/intent/tweet?text=My%20agent%20scored%2058%2F100%20on%20%40AHM_xyz%20Report%20Card',
+          },
+        };
+        const rcData = rcByMode[testMode] || rcByMode['TEST-MODERATE'];
+        data = {
+          status: 'ok',
+          report: {
+            address: '0x' + 'test'.repeat(10).slice(0, 40),
+            scan_timestamp: new Date().toISOString(),
+            ...rcData,
+          },
+        };
       } else {
         data = mockResult(testScore);
       }
@@ -2095,6 +2152,98 @@
       panel.classList.add('active');
       panel.classList.toggle('elite-glow', ws >= 90);
       document.getElementById('chat-panel').style.display = 'block';
+      return;
+    }
+
+    // Report Card endpoint returns {image_url, ecosystem_comparison, agent_health_score} — handle specially
+    if (r.image_url !== undefined && r.ecosystem_comparison !== undefined) {
+      const ahs = r.agent_health_score;
+      const ahsColor = ahs >= 90 ? 'var(--green, #00ff88)' : ahs >= 75 ? 'var(--cyan, #00f5ff)' : ahs >= 60 ? 'var(--amber, #ffaa00)' : ahs >= 40 ? '#ff8800' : 'var(--red, #ff3355)';
+      const ahsClass = ahs >= 70 ? 'high' : ahs >= 40 ? 'medium' : 'low';
+      const gradeClass = ahs >= 90 ? 'tier-elite' : ahs >= 75 ? 'tier-healthy' : ahs >= 60 ? 'tier-atrisk' : 'tier-critical';
+      const eco = r.ecosystem_comparison;
+      const pctRank = eco.percentile_rank ?? 50;
+      const imgUrl = API_BASE + r.image_url;
+      const shareUrl = r.share_url ?? '#';
+
+      // Build dimensions HTML
+      let dimsHtml = '';
+      if ((r.dimensions ?? []).length > 0) {
+        dimsHtml = '<div style="font-family:var(--mono); font-size:0.6rem; letter-spacing:0.2em; color:var(--text-dim); margin-bottom:0.5rem">// DIMENSION SCORES</div>' +
+          '<div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:0.5rem; margin-bottom:1rem">' +
+          r.dimensions.map(d => {
+            const ds = d.score;
+            const dColor = ds == null ? 'var(--text-dim)' : ds >= 80 ? 'var(--green)' : ds >= 60 ? 'var(--cyan)' : ds >= 40 ? 'var(--amber)' : 'var(--red)';
+            return '<div style="border:1px solid var(--border); padding:0.6rem; background:rgba(0,0,0,0.2)">' +
+              '<div style="font-family:var(--mono); font-size:0.55rem; color:var(--text-dim); letter-spacing:0.15em; margin-bottom:0.3rem">' + d.dimension + '</div>' +
+              '<div style="display:flex; align-items:baseline; gap:0.5rem; margin-bottom:0.3rem">' +
+                '<span style="font-family:var(--display); font-size:1.5rem; color:' + dColor + '">' + (ds ?? 'N/A') + '</span>' +
+                (ds != null ? '<span style="font-family:var(--mono); font-size:0.6rem; color:var(--text-dim)">/ 100</span>' : '') +
+                '<span style="font-family:var(--mono); font-size:0.55rem; color:var(--text-dim); margin-left:auto">weight: ' + (d.weight * 100).toFixed(0) + '%</span>' +
+              '</div>' +
+              (ds != null ? '<div style="height:3px; background:var(--border)"><div style="height:100%; width:' + ds + '%; background:' + dColor + '"></div></div>' : '') +
+            '</div>';
+          }).join('') + '</div>';
+      }
+
+      // Build patterns HTML
+      let patsHtml = '';
+      if ((r.patterns_detected ?? []).length > 0) {
+        patsHtml = '<div style="margin-bottom:1rem">' +
+          '<div style="font-family:var(--mono); font-size:0.6rem; letter-spacing:0.2em; color:var(--text-dim); margin-bottom:0.5rem">// PATTERNS DETECTED (' + r.patterns_detected.length + ')</div>' +
+          r.patterns_detected.map(p => {
+            const pColor = p.severity === 'critical' ? 'var(--red)' : p.severity === 'warning' ? 'var(--amber)' : 'var(--green)';
+            return '<div style="border-left:3px solid ' + pColor + '; padding:0.4rem 0.6rem; margin-bottom:0.4rem; background:rgba(0,0,0,0.2); font-family:var(--mono); font-size:0.7rem">' +
+              '<div style="display:flex; gap:0.5rem; align-items:center; margin-bottom:0.2rem">' +
+                '<span style="color:' + pColor + '; text-transform:uppercase; font-size:0.6rem; letter-spacing:0.1em">' + p.severity + '</span>' +
+                '<span style="color:var(--text-bright); font-weight:bold">' + p.name + '</span>' +
+              '</div>' +
+              '<div style="color:var(--text); font-size:0.65rem">' + p.description + '</div>' +
+            '</div>';
+          }).join('') + '</div>';
+      }
+
+      body.innerHTML = `
+        <div class="health-score">
+          <div class="score-label">// AGENT REPORT CARD</div>
+          <div class="score-number ${ahsClass}" style="color:${ahsColor}">${ahs}<span style="font-size:2rem;opacity:0.4">/100</span></div>
+          <div class="score-tier ${gradeClass}">${r.grade ?? ''}</div>
+          <div class="score-bar-container">
+            <div class="score-bar-fill ${ahsClass}" style="width:${ahs}%; background:${ahsColor}"></div>
+          </div>
+        </div>
+
+        <div style="margin-bottom:1rem; text-align:center">
+          <img src="${imgUrl}" alt="Agent Report Card" style="max-width:100%; border:1px solid var(--border); border-radius:6px; margin-bottom:0.75rem" />
+        </div>
+
+        <div style="display:flex; gap:0.5rem; flex-wrap:wrap; justify-content:center; margin-bottom:1rem">
+          <a href="${shareUrl}" target="_blank" rel="noopener" style="display:inline-flex; align-items:center; gap:0.4rem; padding:0.5rem 1rem; background:rgba(0,245,255,0.1); border:1px solid var(--cyan); color:var(--cyan); text-decoration:none; font-family:var(--mono); font-size:0.75rem; letter-spacing:0.05em; cursor:pointer">
+            SHARE ON X &#x2197;
+          </a>
+          <a href="${imgUrl}" download="report-card.png" style="display:inline-flex; align-items:center; gap:0.4rem; padding:0.5rem 1rem; background:rgba(0,255,136,0.1); border:1px solid var(--green); color:var(--green); text-decoration:none; font-family:var(--mono); font-size:0.75rem; letter-spacing:0.05em; cursor:pointer">
+            DOWNLOAD PNG &#x2193;
+          </a>
+        </div>
+
+        <div style="margin-bottom:1rem; border:1px solid var(--border); padding:0.75rem; background:rgba(0,0,0,0.2)">
+          <div style="font-family:var(--mono); font-size:0.6rem; letter-spacing:0.2em; color:var(--text-dim); margin-bottom:0.5rem">// ECOSYSTEM COMPARISON</div>
+          <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(140px, 1fr)); gap:0.5rem; font-family:var(--mono); font-size:0.75rem">
+            <div><span style="color:var(--text-dim)">Your Score:</span> <span style="color:${ahsColor}">${ahs}</span></div>
+            <div><span style="color:var(--text-dim)">Avg Score:</span> <span style="color:var(--amber)">${eco.average_ahs ?? 'N/A'}</span></div>
+            <div><span style="color:var(--text-dim)">Rank:</span> <span style="color:var(--green)">Top ${100 - pctRank}%</span></div>
+            <div><span style="color:var(--text-dim)">Agents Scored:</span> <span style="color:var(--text)">${(eco.total_agents_scored ?? 0).toLocaleString()}</span></div>
+          </div>
+        </div>
+
+        ${dimsHtml}
+        ${patsHtml}
+
+        <button class="toggle-raw" onclick="toggleRaw()">&#x25B6; VIEW RAW JSON</button>
+        <pre class="raw-json" id="raw-json">${JSON.stringify(data, null, 2)}</pre>
+      `;
+      panel.classList.add('active');
+      panel.classList.toggle('elite-glow', ahs >= 90);
       return;
     }
 
