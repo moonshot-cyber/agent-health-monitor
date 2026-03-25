@@ -1,0 +1,857 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agent Economy Health Dashboard // Agent Health Monitor</title>
+<meta property="og:title" content="Agent Economy Health Dashboard — Live Data from Base Mainnet">
+<meta property="og:description" content="Real-time health metrics for the on-chain agent economy. Grade distribution, pattern analysis, and ecosystem benchmarks.">
+<meta property="og:image" content="https://agenthealthmonitor.xyz/static/ahm-og-banner.png">
+<meta property="og:url" content="https://agenthealthmonitor.xyz/dashboard">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Agent Economy Health Dashboard — Live Data from Base Mainnet">
+<meta name="twitter:description" content="Real-time health metrics for the on-chain agent economy. Grade distribution, pattern analysis, and ecosystem benchmarks.">
+<meta name="twitter:image" content="https://agenthealthmonitor.xyz/static/ahm-og-banner.png">
+<link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+<link rel="icon" type="image/png" sizes="32x32" href="/static/ahm-favicon-32.png">
+<link rel="apple-touch-icon" sizes="180x180" href="/static/ahm-favicon-180.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@300;400;500;600;700&family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #030609;
+    --bg2: #070d12;
+    --bg3: #0a1520;
+    --panel: #0d1f2d;
+    --border: #0e3a52;
+    --border-bright: #0ff;
+    --cyan: #00f5ff;
+    --cyan-dim: #007a88;
+    --green: #00ff88;
+    --green-dim: #004d2a;
+    --amber: #ffaa00;
+    --red: #ff3355;
+    --text: #c8e8f0;
+    --text-dim: #4a7a8a;
+    --text-bright: #e8f8ff;
+    --mono: 'Share Tech Mono', monospace;
+    --display: 'Orbitron', sans-serif;
+    --body: 'Rajdhani', sans-serif;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--body);
+    font-size: 16px;
+    overflow-x: hidden;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,245,255,0.015) 2px, rgba(0,245,255,0.015) 4px);
+    pointer-events: none;
+    z-index: 9999;
+  }
+
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(0,245,255,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,245,255,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* ─── HEADER ─── */
+  header {
+    position: relative;
+    z-index: 10;
+    padding: 0 2rem;
+    height: 64px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--border);
+    background: rgba(3,6,9,0.9);
+    backdrop-filter: blur(10px);
+  }
+
+  .logo {
+    font-family: var(--display);
+    font-size: 0.85rem;
+    font-weight: 700;
+    letter-spacing: 0.15em;
+    color: var(--cyan);
+    text-shadow: 0 0 20px var(--cyan);
+    text-decoration: none;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .status-bar {
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    color: var(--green);
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+  }
+
+  .status-dot {
+    width: 6px;
+    height: 6px;
+    background: var(--green);
+    border-radius: 50%;
+    animation: blink 2s ease-in-out infinite;
+    box-shadow: 0 0 8px var(--green);
+  }
+
+  @keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+
+  /* ─── MAIN ─── */
+  .container {
+    position: relative;
+    z-index: 10;
+    max-width: 1000px;
+    margin: 0 auto;
+    padding: 0 1.5rem 4rem;
+  }
+
+  /* ─── HERO ─── */
+  .dash-hero {
+    text-align: center;
+    padding: 2.5rem 1rem 1.5rem;
+  }
+
+  .dash-hero-tag {
+    font-family: var(--mono);
+    font-size: 0.6rem;
+    color: var(--cyan-dim);
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    margin-bottom: 0.75rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+  }
+
+  .dash-hero-tag::before, .dash-hero-tag::after {
+    content: '';
+    width: 30px;
+    height: 1px;
+    background: var(--cyan-dim);
+  }
+
+  .dash-title {
+    font-family: var(--display);
+    font-size: clamp(1.2rem, 3.5vw, 2rem);
+    font-weight: 900;
+    letter-spacing: 0.05em;
+    color: var(--text-bright);
+    text-shadow: 0 0 40px rgba(0,245,255,0.3);
+    margin-bottom: 0.4rem;
+  }
+
+  .dash-title span { color: var(--cyan); text-shadow: 0 0 30px var(--cyan); }
+
+  .dash-sub {
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    color: var(--text-dim);
+    margin-top: 0.4rem;
+  }
+
+  /* ─── PANEL ─── */
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    position: relative;
+    margin-bottom: 1.5rem;
+  }
+
+  .panel::before {
+    content: '';
+    position: absolute;
+    top: -1px; left: -1px; right: -1px;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--cyan), transparent);
+    opacity: 0.6;
+  }
+
+  .panel-header {
+    padding: 0.75rem 1.25rem;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .panel-title {
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    color: var(--cyan);
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+  }
+
+  .panel-body {
+    padding: 1.25rem;
+  }
+
+  /* ─── METRIC CARDS ─── */
+  .metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .metric-card {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    padding: 1.25rem 1rem;
+    text-align: center;
+    position: relative;
+  }
+
+  .metric-card::before {
+    content: '';
+    position: absolute;
+    top: -1px; left: -1px; right: -1px;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--cyan-dim), transparent);
+    opacity: 0.4;
+  }
+
+  .metric-label {
+    font-family: var(--mono);
+    font-size: 0.55rem;
+    color: var(--text-dim);
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    margin-bottom: 0.5rem;
+  }
+
+  .metric-value {
+    font-family: var(--display);
+    font-size: clamp(1.4rem, 3vw, 2rem);
+    font-weight: 900;
+    color: var(--cyan);
+    text-shadow: 0 0 20px rgba(0,245,255,0.3);
+    line-height: 1;
+  }
+
+  .metric-value.amber { color: var(--amber); text-shadow: 0 0 20px rgba(255,170,0,0.3); }
+  .metric-value.red { color: var(--red); text-shadow: 0 0 20px rgba(255,51,85,0.3); }
+  .metric-value.green { color: var(--green); text-shadow: 0 0 20px rgba(0,255,136,0.3); }
+
+  .metric-unit {
+    font-family: var(--mono);
+    font-size: 0.6rem;
+    color: var(--text-dim);
+    margin-top: 0.3rem;
+  }
+
+  /* ─── CHARTS ─── */
+  .chart-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .bar-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 0.6rem;
+  }
+
+  .bar-label {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    color: var(--text);
+    width: 2rem;
+    text-align: right;
+    flex-shrink: 0;
+  }
+
+  .bar-track {
+    flex: 1;
+    height: 22px;
+    background: var(--bg);
+    border: 1px solid rgba(14,58,82,0.5);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .bar-fill {
+    height: 100%;
+    transition: width 0.8s ease-out;
+    position: relative;
+  }
+
+  .bar-fill::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1));
+  }
+
+  .bar-value {
+    font-family: var(--mono);
+    font-size: 0.6rem;
+    color: var(--text-dim);
+    width: 3.5rem;
+    text-align: left;
+    flex-shrink: 0;
+  }
+
+  /* Grade colours */
+  .grade-A { background: var(--green); }
+  .grade-B { background: #22cc66; }
+  .grade-C { background: var(--amber); }
+  .grade-D { background: #ff7722; }
+  .grade-E { background: var(--red); }
+  .grade-F { background: #991133; }
+
+  /* ─── D1 vs D2 ─── */
+  .dimension-compare {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2rem;
+  }
+
+  .dim-card {
+    text-align: center;
+  }
+
+  .dim-tag {
+    font-family: var(--mono);
+    font-size: 0.6rem;
+    color: var(--cyan-dim);
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    margin-bottom: 0.5rem;
+  }
+
+  .dim-score {
+    font-family: var(--display);
+    font-size: clamp(2rem, 5vw, 3rem);
+    font-weight: 900;
+    line-height: 1;
+    margin-bottom: 0.3rem;
+  }
+
+  .dim-name {
+    font-family: var(--body);
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text-bright);
+    margin-bottom: 0.3rem;
+  }
+
+  .dim-desc {
+    font-family: var(--mono);
+    font-size: 0.6rem;
+    color: var(--text-dim);
+    line-height: 1.5;
+  }
+
+  .dim-divider {
+    display: none;
+  }
+
+  /* ─── CTA ─── */
+  .cta-panel {
+    text-align: center;
+  }
+
+  .cta-title {
+    font-family: var(--display);
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--text-bright);
+    margin-bottom: 0.3rem;
+    letter-spacing: 0.05em;
+  }
+
+  .cta-sub {
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    color: var(--text-dim);
+    margin-bottom: 1.25rem;
+  }
+
+  .cta-form {
+    display: flex;
+    gap: 0.75rem;
+    max-width: 560px;
+    margin: 0 auto;
+  }
+
+  .cta-input {
+    flex: 1;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    padding: 0.7rem 1rem;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+
+  .cta-input::placeholder { color: var(--text-dim); }
+  .cta-input:focus { border-color: var(--cyan-dim); }
+
+  .cta-btn {
+    background: linear-gradient(135deg, rgba(0,245,255,0.15), rgba(0,245,255,0.05));
+    border: 1px solid var(--cyan);
+    color: var(--cyan);
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    padding: 0.7rem 1.25rem;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.2s;
+    letter-spacing: 0.05em;
+  }
+
+  .cta-btn:hover {
+    background: rgba(0,245,255,0.2);
+    box-shadow: 0 0 15px rgba(0,245,255,0.2);
+  }
+
+  /* ─── LOADING ─── */
+  .loading-state {
+    text-align: center;
+    padding: 4rem 1rem;
+  }
+
+  .loading-spinner {
+    display: inline-block;
+    width: 24px;
+    height: 24px;
+    border: 2px solid var(--border);
+    border-top-color: var(--cyan);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .loading-text {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    color: var(--text-dim);
+    margin-top: 0.75rem;
+    letter-spacing: 0.1em;
+  }
+
+  .error-state {
+    text-align: center;
+    padding: 3rem 1rem;
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    color: var(--red);
+  }
+
+  /* ─── FOOTER ─── */
+  footer {
+    position: relative;
+    z-index: 10;
+    border-top: 1px solid var(--border);
+    padding: 1.5rem 2rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: rgba(3,6,9,0.9);
+  }
+
+  .footer-text {
+    font-family: var(--mono);
+    font-size: 0.6rem;
+    color: var(--text-dim);
+    letter-spacing: 0.15em;
+  }
+
+  .footer-links {
+    font-family: var(--mono);
+    font-size: 0.6rem;
+    letter-spacing: 0.15em;
+    display: flex;
+    gap: 1.5rem;
+  }
+
+  .footer-link {
+    color: var(--cyan-dim);
+    text-decoration: none;
+    opacity: 0.7;
+    transition: opacity 0.2s;
+  }
+
+  .footer-link:hover { opacity: 1; color: var(--cyan); }
+
+  .footer-network {
+    font-family: var(--mono);
+    font-size: 0.6rem;
+    color: var(--cyan-dim);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  /* ─── DATA SOURCES ─── */
+  .sources-row {
+    display: flex;
+    gap: 1.5rem;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+
+  .source-chip {
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    color: var(--text-dim);
+    border: 1px solid var(--border);
+    padding: 0.3rem 0.75rem;
+    background: var(--bg);
+  }
+
+  .source-chip strong {
+    color: var(--cyan);
+    font-weight: normal;
+  }
+
+  /* ─── RESPONSIVE ─── */
+  @media (max-width: 768px) {
+    .metrics-grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+    .chart-row {
+      grid-template-columns: 1fr;
+    }
+    .dimension-compare {
+      grid-template-columns: 1fr;
+      gap: 1.5rem;
+    }
+    .cta-form {
+      flex-direction: column;
+    }
+    footer {
+      flex-direction: column;
+      gap: 0.75rem;
+      text-align: center;
+    }
+    header {
+      padding: 0 1rem;
+    }
+    .container {
+      padding: 0 1rem 3rem;
+    }
+  }
+
+  @media (max-width: 480px) {
+    .metrics-grid {
+      grid-template-columns: 1fr 1fr;
+      gap: 0.5rem;
+    }
+    .metric-card {
+      padding: 0.75rem 0.5rem;
+    }
+    .bar-label {
+      width: 1.5rem;
+      font-size: 0.6rem;
+    }
+    .bar-value {
+      width: 2.5rem;
+      font-size: 0.55rem;
+    }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <a href="/" class="logo">AGENT HEALTH MONITOR</a>
+  <div class="status-bar">
+    <div class="status-dot"></div>
+    LIVE // BASE MAINNET
+  </div>
+</header>
+
+<div class="container">
+
+  <!-- HERO -->
+  <div class="dash-hero">
+    <div class="dash-hero-tag">// public intelligence</div>
+    <h1 class="dash-title">AGENT ECONOMY <span>HEALTH DASHBOARD</span></h1>
+    <div class="dash-sub" id="dash-sub">Loading live data from Base mainnet...</div>
+  </div>
+
+  <!-- LOADING STATE -->
+  <div id="loading" class="loading-state">
+    <div class="loading-spinner"></div>
+    <div class="loading-text">FETCHING ECOSYSTEM DATA...</div>
+  </div>
+
+  <!-- ERROR STATE -->
+  <div id="error" class="error-state" style="display:none"></div>
+
+  <!-- DASHBOARD CONTENT (hidden until loaded) -->
+  <div id="dashboard" style="display:none">
+
+    <!-- KEY METRICS -->
+    <div class="metrics-grid">
+      <div class="metric-card">
+        <div class="metric-label">Total Agents Scanned</div>
+        <div class="metric-value" id="m-total">—</div>
+        <div class="metric-unit">unique wallets</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Average AHS Score</div>
+        <div class="metric-value amber" id="m-avg">—</div>
+        <div class="metric-unit">out of 100</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Zombie Agent Rate</div>
+        <div class="metric-value red" id="m-zombie">—</div>
+        <div class="metric-unit">of scanned agents</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Last Updated</div>
+        <div class="metric-value green" id="m-updated" style="font-size:clamp(0.7rem,2vw,0.9rem)">—</div>
+        <div class="metric-unit">scan timestamp</div>
+      </div>
+    </div>
+
+    <!-- DATA SOURCES -->
+    <div style="text-align:center; margin-bottom:1.5rem">
+      <div class="sources-row" id="sources-row"></div>
+    </div>
+
+    <!-- GRADE + PATTERN CHARTS -->
+    <div class="chart-row">
+      <!-- Grade Distribution -->
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title">Grade Distribution</div>
+        </div>
+        <div class="panel-body" id="grade-chart"></div>
+      </div>
+
+      <!-- Pattern Breakdown -->
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title">Pattern Breakdown</div>
+        </div>
+        <div class="panel-body" id="pattern-chart"></div>
+      </div>
+    </div>
+
+    <!-- D1 vs D2 -->
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">Dimension Comparison // Ecosystem Averages</div>
+      </div>
+      <div class="panel-body">
+        <div class="dimension-compare">
+          <div class="dim-card">
+            <div class="dim-tag">D1 // Wallet Hygiene</div>
+            <div class="dim-score" id="dim-d1" style="color:var(--green)">—</div>
+            <div class="dim-name">Wallet Hygiene</div>
+            <div class="dim-desc">Dust tokens, spam interactions, gas efficiency, failure rate, nonce gaps</div>
+          </div>
+          <div class="dim-card">
+            <div class="dim-tag">D2 // Behavioural</div>
+            <div class="dim-score" id="dim-d2" style="color:var(--red)">—</div>
+            <div class="dim-name">Behavioural Patterns</div>
+            <div class="dim-desc">Repeated failures, gas adaptation, timing regularity, counterparty diversity, retry storms</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CTA -->
+    <div class="panel">
+      <div class="panel-body cta-panel">
+        <div class="cta-title">How does your agent compare?</div>
+        <div class="cta-sub">Get a personalised Agent Report Card with ecosystem benchmarks</div>
+        <div class="cta-form">
+          <input type="text" class="cta-input" id="cta-address" placeholder="0x... agent wallet address" spellcheck="false" autocomplete="off">
+          <button class="cta-btn" onclick="goReportCard()">GET REPORT CARD &mdash; $2.00 USDC</button>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /dashboard -->
+
+</div><!-- /container -->
+
+<footer>
+  <div class="footer-text">DATA UPDATED NIGHTLY VIA AUTOMATED SCANNING // AGENTHEALTHMONITOR.XYZ</div>
+  <div class="footer-links">
+    <a href="/" class="footer-link">HOME</a>
+    <a href="/roadmap" class="footer-link">ROADMAP</a>
+  </div>
+  <div class="footer-network">
+    <div class="status-dot"></div>
+    BASE MAINNET // USDC // x402
+  </div>
+</footer>
+
+<script>
+(function() {
+  const API = window.location.origin + '/api/ecosystem-stats';
+
+  fetch(API)
+    .then(function(r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    })
+    .then(function(d) { render(d); })
+    .catch(function(e) {
+      document.getElementById('loading').style.display = 'none';
+      var el = document.getElementById('error');
+      el.style.display = 'block';
+      el.textContent = '// ERROR: Failed to load ecosystem data — ' + e.message;
+    });
+
+  function render(d) {
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('dashboard').style.display = 'block';
+
+    // Sub line
+    document.getElementById('dash-sub').textContent =
+      'Live data from ' + d.total_scanned.toLocaleString() + ' agents scanned on Base mainnet';
+
+    // Key metrics
+    document.getElementById('m-total').textContent = d.total_scanned.toLocaleString();
+    document.getElementById('m-avg').textContent = d.avg_ahs;
+
+    // Zombie rate
+    var totalGraded = 0;
+    var grades = d.grade_distribution || {};
+    for (var g in grades) totalGraded += grades[g];
+    var zombieCount = (d.pattern_distribution || {})['Zombie Agent'] || 0;
+    var zombiePct = totalGraded > 0 ? Math.round(zombieCount / totalGraded * 100) : 0;
+    document.getElementById('m-zombie').textContent = zombiePct + '%';
+
+    // Last updated
+    if (d.last_updated) {
+      var dt = new Date(d.last_updated);
+      var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      document.getElementById('m-updated').textContent =
+        months[dt.getUTCMonth()] + ' ' + dt.getUTCDate() + ', ' + dt.getUTCFullYear();
+    }
+
+    // Data sources
+    var srcEl = document.getElementById('sources-row');
+    var sources = d.data_sources || {};
+    for (var key in sources) {
+      var chip = document.createElement('div');
+      chip.className = 'source-chip';
+      chip.innerHTML = key + ': <strong>' + sources[key].toLocaleString() + '</strong> agents';
+      srcEl.appendChild(chip);
+    }
+
+    // Grade distribution chart
+    var gradeOrder = ['A','B','C','D','E','F'];
+    var gradeColors = {A:'grade-A',B:'grade-B',C:'grade-C',D:'grade-D',E:'grade-E',F:'grade-F'};
+    var maxGrade = 0;
+    for (var i = 0; i < gradeOrder.length; i++) {
+      var cnt = grades[gradeOrder[i]] || 0;
+      if (cnt > maxGrade) maxGrade = cnt;
+    }
+    var gradeHtml = '';
+    for (var i = 0; i < gradeOrder.length; i++) {
+      var g = gradeOrder[i];
+      var cnt = grades[g] || 0;
+      var pct = totalGraded > 0 ? (cnt / totalGraded * 100) : 0;
+      var barW = maxGrade > 0 ? (cnt / maxGrade * 100) : 0;
+      gradeHtml += '<div class="bar-row">' +
+        '<div class="bar-label">' + g + '</div>' +
+        '<div class="bar-track"><div class="bar-fill ' + gradeColors[g] + '" style="width:' + barW + '%"></div></div>' +
+        '<div class="bar-value">' + cnt + ' (' + pct.toFixed(1) + '%)</div>' +
+        '</div>';
+    }
+    document.getElementById('grade-chart').innerHTML = gradeHtml;
+
+    // Pattern breakdown chart
+    var patterns = d.pattern_distribution || {};
+    var patKeys = Object.keys(patterns).sort(function(a, b) { return patterns[b] - patterns[a]; });
+    var maxPat = patKeys.length > 0 ? patterns[patKeys[0]] : 1;
+    var patHtml = '';
+    // Show top 6 patterns max
+    var showCount = Math.min(patKeys.length, 6);
+    for (var i = 0; i < showCount; i++) {
+      var name = patKeys[i];
+      var cnt = patterns[name];
+      var patPct = totalGraded > 0 ? (cnt / totalGraded * 100) : 0;
+      var barW = maxPat > 0 ? (cnt / maxPat * 100) : 0;
+      // Color: red-ish for dangerous, amber for moderate
+      var patColor = 'var(--amber)';
+      var nameLower = name.toLowerCase();
+      if (nameLower.indexOf('zombie') >= 0 || nameLower.indexOf('cascading') >= 0) {
+        patColor = 'var(--red)';
+      } else if (nameLower.indexOf('healthy') >= 0) {
+        patColor = 'var(--green)';
+      }
+      patHtml += '<div class="bar-row">' +
+        '<div class="bar-label" style="width:auto; min-width:0; font-size:0.6rem; white-space:nowrap">' + name + '</div>' +
+        '<div class="bar-track"><div class="bar-fill" style="width:' + barW + '%; background:' + patColor + '"></div></div>' +
+        '<div class="bar-value">' + patPct.toFixed(0) + '%</div>' +
+        '</div>';
+    }
+    if (patKeys.length === 0) {
+      patHtml = '<div style="font-family:var(--mono); font-size:0.7rem; color:var(--text-dim); text-align:center; padding:1rem">No pattern data available</div>';
+    }
+    document.getElementById('pattern-chart').innerHTML = patHtml;
+
+    // D1 vs D2
+    document.getElementById('dim-d1').textContent = d.avg_d1;
+    document.getElementById('dim-d2').textContent = d.avg_d2;
+
+    // Color D1 and D2 based on value
+    var d1El = document.getElementById('dim-d1');
+    var d2El = document.getElementById('dim-d2');
+    d1El.style.color = d.avg_d1 >= 60 ? 'var(--green)' : d.avg_d1 >= 40 ? 'var(--amber)' : 'var(--red)';
+    d2El.style.color = d.avg_d2 >= 60 ? 'var(--green)' : d.avg_d2 >= 40 ? 'var(--amber)' : 'var(--red)';
+  }
+})();
+
+function goReportCard() {
+  var addr = document.getElementById('cta-address').value.trim();
+  if (!addr) {
+    document.getElementById('cta-address').style.borderColor = 'var(--red)';
+    setTimeout(function() { document.getElementById('cta-address').style.borderColor = ''; }, 1500);
+    return;
+  }
+  // Navigate to homepage with report-card pre-selected
+  window.location.href = '/?service=report-card&address=' + encodeURIComponent(addr);
+}
+
+// Also handle Enter key in the CTA input
+document.getElementById('cta-address').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') goReportCard();
+});
+</script>
+
+</body>
+</html>

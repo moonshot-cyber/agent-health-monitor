@@ -350,6 +350,90 @@ def get_trust_registry_stats() -> dict:
         conn.close()
 
 
+def get_ecosystem_dashboard_stats() -> dict:
+    """Lightweight aggregate stats for the public dashboard page."""
+    conn = get_connection()
+    try:
+        now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        # Total unique agents scanned (AHS endpoint only — real scores)
+        row = conn.execute(
+            "SELECT COUNT(DISTINCT address) FROM scans WHERE endpoint = 'ahs' AND ahs_score IS NOT NULL"
+        ).fetchone()
+        total_scanned = row[0]
+
+        # Average AHS and dimension scores (latest per address)
+        avg_row = conn.execute(
+            """SELECT AVG(ahs_score), AVG(d1_score), AVG(d2_score) FROM (
+                SELECT address, ahs_score, d1_score, d2_score,
+                    ROW_NUMBER() OVER (PARTITION BY address ORDER BY scan_timestamp DESC) as rn
+                FROM scans WHERE endpoint = 'ahs' AND ahs_score IS NOT NULL
+            ) WHERE rn = 1"""
+        ).fetchone()
+        avg_ahs = round(avg_row[0], 1) if avg_row[0] is not None else 0
+        avg_d1 = round(avg_row[1], 1) if avg_row[1] is not None else 0
+        avg_d2 = round(avg_row[2], 1) if avg_row[2] is not None else 0
+
+        # Last scan timestamp
+        last_row = conn.execute(
+            "SELECT MAX(scan_timestamp) FROM scans WHERE endpoint = 'ahs'"
+        ).fetchone()
+        last_updated = last_row[0] if last_row[0] else now_iso
+
+        # Grade distribution (latest per address)
+        grade_rows = conn.execute(
+            """SELECT grade, COUNT(*) as cnt FROM (
+                SELECT address, grade,
+                    ROW_NUMBER() OVER (PARTITION BY address ORDER BY scan_timestamp DESC) as rn
+                FROM scans WHERE endpoint = 'ahs' AND grade IS NOT NULL
+            ) WHERE rn = 1 GROUP BY grade ORDER BY grade"""
+        ).fetchall()
+        grade_distribution = {r["grade"]: r["cnt"] for r in grade_rows}
+
+        # Pattern distribution (percentage-based from latest scan per address)
+        pattern_rows = conn.execute(
+            """SELECT sp.pattern_name, COUNT(DISTINCT latest.address) as cnt FROM (
+                SELECT id, address,
+                    ROW_NUMBER() OVER (PARTITION BY address ORDER BY scan_timestamp DESC) as rn
+                FROM scans WHERE endpoint = 'ahs' AND ahs_score IS NOT NULL
+            ) latest
+            JOIN scan_patterns sp ON sp.scan_id = latest.id
+            WHERE latest.rn = 1
+            GROUP BY sp.pattern_name
+            ORDER BY cnt DESC"""
+        ).fetchall()
+        pattern_distribution = {r["pattern_name"]: r["cnt"] for r in pattern_rows}
+
+        # Data sources breakdown from known_wallets.source
+        source_rows = conn.execute(
+            """SELECT source, COUNT(*) as cnt FROM known_wallets
+            WHERE latest_ahs IS NOT NULL
+            GROUP BY source ORDER BY cnt DESC"""
+        ).fetchall()
+        data_sources = {}
+        for r in source_rows:
+            key = r["source"]
+            if key and "acp" in key.lower():
+                data_sources["ACP"] = data_sources.get("ACP", 0) + r["cnt"]
+            elif key and "erc8004" in key.lower():
+                data_sources["ERC-8004"] = data_sources.get("ERC-8004", 0) + r["cnt"]
+            else:
+                data_sources["API"] = data_sources.get("API", 0) + r["cnt"]
+
+        return {
+            "total_scanned": total_scanned,
+            "avg_ahs": avg_ahs,
+            "avg_d1": avg_d1,
+            "avg_d2": avg_d2,
+            "last_updated": last_updated,
+            "grade_distribution": grade_distribution,
+            "pattern_distribution": pattern_distribution,
+            "data_sources": data_sources,
+        }
+    finally:
+        conn.close()
+
+
 def forget_address(address: str) -> int:
     """Delete all data for an address. Returns number of scans deleted."""
     addr = address.lower()

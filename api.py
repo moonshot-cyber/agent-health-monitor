@@ -2314,6 +2314,23 @@ async def api_info():
     }
 
 
+@app.get("/api/ecosystem-stats")
+async def ecosystem_stats():
+    """Public aggregate ecosystem stats for the dashboard. No auth required."""
+    loop = asyncio.get_running_loop()
+    stats = await loop.run_in_executor(None, scan_db.get_ecosystem_dashboard_stats)
+    return stats
+
+
+@app.get("/dashboard")
+async def dashboard():
+    """Serve the public ecosystem health dashboard."""
+    dash_file = STATIC_DIR / "dashboard.html"
+    if dash_file.is_file():
+        return FileResponse(dash_file)
+    raise HTTPException(status_code=404, detail="Dashboard not found")
+
+
 # Coupon validation rate limiting: 5 attempts per IP per minute
 _coupon_rate: dict[str, list[float]] = {}
 COUPON_RATE_LIMIT = 5
