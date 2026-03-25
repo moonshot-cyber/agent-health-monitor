@@ -2447,6 +2447,13 @@ async def coupon_ahs(code: str, address: str, request: Request):
     return await get_ahs_report(address, request)
 
 
+@app.get("/coupon/report-card/{code}/{address}")
+async def coupon_report_card(code: str, address: str, request: Request):
+    _check_coupon_access_rate(request.client.host)
+    _require_coupon(code)
+    return await get_report_card(address, request)
+
+
 class ChatRequest(BaseModel):
     message: str
     context: Optional[dict] = None
