@@ -96,15 +96,36 @@ class TestTokentxZombieAgent:
             tx_diversity_ratio=0.01,
             unique_contracts=1,
         )
-        modifier, patterns = detect_cdp_patterns(50, 50, None, signals, [])
+        # Low D2 (<=40) + low diversity triggers Zombie Agent on tokentx
+        modifier, patterns = detect_cdp_patterns(50, 25, None, signals, [])
         names = [p["name"] for p in patterns]
         assert "Zombie Agent" in names
         assert modifier == -15
+
+    def test_fires_low_d2_few_counterparties(self):
+        """Zombie Agent fires with D2<=40 and few counterparties."""
+        signals = _base_tokentx_signals(
+            tx_diversity_ratio=0.05,
+            unique_contracts=2,
+        )
+        modifier, patterns = detect_cdp_patterns(75, 35, None, signals, [])
+        names = [p["name"] for p in patterns]
+        assert "Zombie Agent" in names
 
     def test_does_not_fire_with_diversity(self):
         signals = _base_tokentx_signals(
             tx_diversity_ratio=0.1,
             unique_contracts=5,
+        )
+        modifier, patterns = detect_cdp_patterns(50, 50, None, signals, [])
+        names = [p["name"] for p in patterns]
+        assert "Zombie Agent" not in names
+
+    def test_does_not_fire_high_d2(self):
+        """D2>40 with low diversity should NOT trigger Zombie Agent."""
+        signals = _base_tokentx_signals(
+            tx_diversity_ratio=0.01,
+            unique_contracts=1,
         )
         modifier, patterns = detect_cdp_patterns(50, 50, None, signals, [])
         names = [p["name"] for p in patterns]

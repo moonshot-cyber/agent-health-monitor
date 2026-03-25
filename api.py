@@ -1218,6 +1218,13 @@ def generate_recommendations(health) -> list[Recommendation]:
 async def lifespan(app: FastAPI):
     import db as _db
     _db.init_db()
+    # One-time backfill: populate Zombie Agent patterns for low-D2 scans
+    try:
+        filled = _db.backfill_zombie_patterns()
+        if filled:
+            logger.info("Backfilled %d Zombie Agent patterns on startup", filled)
+    except Exception:
+        logger.exception("Zombie pattern backfill failed (non-fatal)")
     alert_task = asyncio.create_task(alert_monitor_loop())
     rescan_task = asyncio.create_task(rescan_loop())
     logger.info("Background tasks started: alert_monitor, rescan_loop")

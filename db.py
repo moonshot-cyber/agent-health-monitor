@@ -434,6 +434,52 @@ def get_ecosystem_dashboard_stats() -> dict:
         conn.close()
 
 
+def backfill_zombie_patterns() -> int:
+    """One-time backfill: add Zombie Agent patterns for scans with low D2 scores.
+
+    Targets the latest AHS scan per address where D2 <= 40 (indicating
+    zombie-like behaviour on the tokentx path) and no patterns already exist
+    in scan_patterns. Returns number of patterns inserted.
+    """
+    conn = get_connection()
+    try:
+        # Find latest AHS scan per address with low D2 and no existing patterns
+        rows = conn.execute(
+            """SELECT latest.id, latest.address, latest.d2_score FROM (
+                SELECT id, address, d2_score,
+                    ROW_NUMBER() OVER (PARTITION BY address ORDER BY scan_timestamp DESC) as rn
+                FROM scans WHERE endpoint = 'ahs' AND d2_score IS NOT NULL
+            ) latest
+            WHERE latest.rn = 1 AND latest.d2_score <= 40
+            AND NOT EXISTS (
+                SELECT 1 FROM scan_patterns sp WHERE sp.scan_id = latest.id
+            )"""
+        ).fetchall()
+
+        inserted = 0
+        for scan_id, address, d2_score in rows:
+            conn.execute(
+                """INSERT INTO scan_patterns (scan_id, pattern_name, severity, description, modifier)
+                VALUES (?, ?, ?, ?, ?)""",
+                (
+                    scan_id,
+                    "Zombie Agent",
+                    "critical",
+                    "Agent token transfers show very low behavioural diversity — "
+                    "repetitive patterns with few counterparties. Possible crashed "
+                    "strategy module or abandoned agent still receiving payments.",
+                    -15,
+                ),
+            )
+            inserted += 1
+
+        conn.commit()
+        logger.info("Backfilled %d Zombie Agent patterns (D2 <= 40)", inserted)
+        return inserted
+    finally:
+        conn.close()
+
+
 def forget_address(address: str) -> int:
     """Delete all data for an address. Returns number of scans deleted."""
     addr = address.lower()
