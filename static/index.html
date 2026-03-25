@@ -785,6 +785,8 @@
     font-family: var(--mono);
     font-size: 0.6rem;
     letter-spacing: 0.15em;
+    display: flex;
+    gap: 1.5rem;
   }
 
   .footer-link {
@@ -1111,6 +1113,7 @@
 <footer>
   <div class="footer-text">AGENT HEALTH MONITOR // PAY-PER-CALL // NO ACCOUNTS REQUIRED</div>
   <div class="footer-links">
+    <a href="/dashboard" class="footer-link">DASHBOARD</a>
     <a href="/roadmap" class="footer-link">ROADMAP</a>
   </div>
   <div class="footer-network">
@@ -2639,6 +2642,23 @@
   document.getElementById('wallet-input').addEventListener('keydown', e => {
     if (e.key === 'Enter') execute();
   });
+
+  // Handle URL params from dashboard CTA (?service=report-card&address=0x...)
+  (function() {
+    var params = new URLSearchParams(window.location.search);
+    var svc = params.get('service');
+    var addr = params.get('address');
+    if (svc) {
+      selectService(svc);
+      if (addr) {
+        document.getElementById('wallet-input').value = addr;
+      }
+      // Clean URL without reload
+      if (window.history.replaceState) {
+        window.history.replaceState({}, '', '/');
+      }
+    }
+  })();
 </script>
 </body>
 </html>
