@@ -59,6 +59,10 @@ Railway supports cron jobs on all plans. The scan runs as a **separate service**
 - The service must **exit** when done — `cron_acp_scan.py` handles this
 - Execution time may vary by a few minutes from the scheduled time
 
+### Why There's No Procfile
+
+This repo intentionally has **no Procfile**. Nixpacks treats the Procfile `web:` command as the highest-priority start command, overriding `startCommand` in `railway.json` / `railway.cron.json`. With a Procfile present, both the web API and cron service would run `uvicorn` regardless of their config file settings. Start commands are defined exclusively in `railway.json` (web) and `railway.cron.json` (cron) to allow per-service control.
+
 ---
 
 ## Option B: Windows Task Scheduler (Local Fallback)
