@@ -2477,9 +2477,10 @@ def detect_cdp_patterns(
 
     # Pattern 1: Zombie Agent
     # txlist:  high gas efficiency + zero failures + minimal diversity + single contract
-    # tokentx: minimal diversity + single counterparty (gas/failure unavailable)
+    # tokentx: low behavioural score with minimal diversity/breadth — only 4/8
+    #          D2 signals available so use composite D2 score as primary gate.
     if is_tokentx:
-        if tx_div_ratio < 0.02 and unique_contracts <= 1:
+        if d2_score <= 40 and unique_contracts <= 3 and tx_div_ratio < 0.10:
             modifier -= 15
             patterns.append({
                 "name": "Zombie Agent",
@@ -2487,9 +2488,9 @@ def detect_cdp_patterns(
                 "severity": "critical",
                 "modifier": -15,
                 "description": (
-                    "Agent token transfers show near-zero diversity — all activity "
-                    "directed at a single counterparty. Possible crashed strategy "
-                    "module or abandoned agent still receiving payments."
+                    "Agent token transfers show very low behavioural diversity — "
+                    "repetitive patterns with few counterparties. Possible crashed "
+                    "strategy module or abandoned agent still receiving payments."
                 ),
             })
     else:
