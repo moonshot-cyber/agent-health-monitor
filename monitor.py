@@ -2440,13 +2440,26 @@ def detect_cdp_patterns(
     signals: dict,
     transactions: list[dict],
 ) -> tuple[int, list]:
-    """Detect cross-dimensional patterns. Returns (modifier, patterns_list)."""
+    """Detect cross-dimensional patterns. Returns (modifier, patterns_list).
+
+    Works with both full txlist data (8 D2 signals) and the token transfer
+    fallback (4 D2 signals). On the tokentx path, patterns that require
+    gas/nonce/failure signals are skipped; patterns that only need diversity
+    and timing signals are evaluated with adapted criteria.
+
+    Signal availability by data source:
+        txlist:  all 8 D2 signals + outgoing tx list with isError, nonce, gas
+        tokentx: timing, diversity, breadth, activity gaps only
+                 (gas_adaptation_cv, storm_events, max_consecutive_failures,
+                  persistent_nonce_gaps are placeholders — not real data)
+    """
     modifier = 0
     patterns = []
 
-    # Extract signal values safely. Use _sig() to handle None from token
-    # transfer fallback (where some D2 signals are unavailable). Defaults
-    # are "neutral" values that prevent false-triggering on missing data.
+    is_tokentx = signals.get("d2_data_source") == "tokentx"
+
+    # Extract signal values safely. _sig() substitutes a default when the
+    # signal is None (unavailable on tokentx path).
     def _sig(key, default):
         val = signals.get(key, default)
         return default if val is None else val
@@ -2463,25 +2476,45 @@ def detect_cdp_patterns(
     gas_adapt_score = _sig("gas_adaptation_score", 50)
 
     # Pattern 1: Zombie Agent
-    if (d1_gas_eff_raw > 90 and failed_pct == 0 and
-            tx_div_ratio < 0.02 and unique_contracts <= 1):
-        modifier -= 15
-        patterns.append({
-            "name": "Zombie Agent",
-            "detected": True,
-            "severity": "critical",
-            "description": (
-                "Agent appears technically functional but brain-dead — executing "
-                "the same single operation on repeat with zero diversity. Possible "
-                "crashed strategy module with transaction sender still running."
-            ),
-        })
+    # txlist:  high gas efficiency + zero failures + minimal diversity + single contract
+    # tokentx: minimal diversity + single counterparty (gas/failure unavailable)
+    if is_tokentx:
+        if tx_div_ratio < 0.02 and unique_contracts <= 1:
+            modifier -= 15
+            patterns.append({
+                "name": "Zombie Agent",
+                "detected": True,
+                "severity": "critical",
+                "modifier": -15,
+                "description": (
+                    "Agent token transfers show near-zero diversity — all activity "
+                    "directed at a single counterparty. Possible crashed strategy "
+                    "module or abandoned agent still receiving payments."
+                ),
+            })
+    else:
+        if (d1_gas_eff_raw > 90 and failed_pct == 0 and
+                tx_div_ratio < 0.02 and unique_contracts <= 1):
+            modifier -= 15
+            patterns.append({
+                "name": "Zombie Agent",
+                "detected": True,
+                "severity": "critical",
+                "modifier": -15,
+                "description": (
+                    "Agent appears technically functional but brain-dead — executing "
+                    "the same single operation on repeat with zero diversity. Possible "
+                    "crashed strategy module with transaction sender still running."
+                ),
+            })
 
     # Pattern 2: Cascading Infrastructure Failure
+    # Requires nonce gaps + failure trends from outgoing transactions.
+    # SKIP on tokentx — nonce and failure data not available.
     now_ts = datetime.now(timezone.utc).timestamp()
     seven_days_ago = now_ts - 7 * 86400
     recent = [tx for tx in transactions if int(tx.get("timeStamp", 0)) >= seven_days_ago]
-    if len(recent) >= 10:
+    if not is_tokentx and len(recent) >= 10:
         mid = len(recent) // 2
         first_half = recent[:mid]
         second_half = recent[mid:]
@@ -2495,6 +2528,7 @@ def detect_cdp_patterns(
                 "name": "Cascading Infrastructure Failure",
                 "detected": True,
                 "severity": "critical",
+                "modifier": -15,
                 "description": (
                     "Active degradation detected — failure rate is rising, nonce gaps "
                     "are widening, and timing shows crash-restart patterns. This agent "
@@ -2503,12 +2537,15 @@ def detect_cdp_patterns(
             })
 
     # Pattern 3: Stale Strategy
-    if max_consec > 5 and tx_div_ratio < 0.03 and gas_cv < 0.05:
+    # Requires consecutive failure count + gas adaptation CV.
+    # SKIP on tokentx — failure and gas data not available.
+    if not is_tokentx and max_consec > 5 and tx_div_ratio < 0.03 and gas_cv < 0.05:
         modifier -= 10
         patterns.append({
             "name": "Stale Strategy",
             "detected": True,
             "severity": "warning",
+            "modifier": -10,
             "description": (
                 "Agent is repeatedly failing on the same contract interaction without "
                 "adapting. Possible causes: revoked approval, removed liquidity, "
@@ -2517,26 +2554,48 @@ def detect_cdp_patterns(
         })
 
     # Pattern 4: Healthy Operator
-    if (d1_score >= 80 and gas_cv > 0.15 and tx_div_ratio > 0.05 and
-            storm_events == 0 and (d3_score is None or d3_score >= 80)):
-        modifier += 5
-        patterns.append({
-            "name": "Healthy Operator",
-            "detected": True,
-            "severity": "info",
-            "description": (
-                "All dimensions performing well — clean wallet, adaptive gas "
-                "pricing, diverse interactions, and no retry storms."
-            ),
-        })
+    # txlist:  D1 healthy + gas adaptation + diverse txs + no storms + D3 ok
+    # tokentx: D1 healthy + diverse transfers + multiple counterparties + D3 ok
+    #          (gas_cv and storm_events unavailable — substitute breadth check)
+    if is_tokentx:
+        if (d1_score >= 80 and d2_score >= 70 and tx_div_ratio > 0.05 and
+                unique_contracts >= 3 and (d3_score is None or d3_score >= 80)):
+            modifier += 5
+            patterns.append({
+                "name": "Healthy Operator",
+                "detected": True,
+                "severity": "info",
+                "modifier": 5,
+                "description": (
+                    "Clean wallet with diverse token transfer activity across "
+                    "multiple counterparties. Agent appears well-maintained."
+                ),
+            })
+    else:
+        if (d1_score >= 80 and gas_cv > 0.15 and tx_div_ratio > 0.05 and
+                storm_events == 0 and (d3_score is None or d3_score >= 80)):
+            modifier += 5
+            patterns.append({
+                "name": "Healthy Operator",
+                "detected": True,
+                "severity": "info",
+                "modifier": 5,
+                "description": (
+                    "All dimensions performing well — clean wallet, adaptive gas "
+                    "pricing, diverse interactions, and no retry storms."
+                ),
+            })
 
     # Pattern 5: Gas War Casualty
-    if gas_cv > 0.40 and failed_pct > 15 and storm_events > 2 and gas_adapt_score < 60:
+    # Requires gas CV + retry storm count + gas adaptation score.
+    # SKIP on tokentx — gas dynamics not available.
+    if not is_tokentx and gas_cv > 0.40 and failed_pct > 15 and storm_events > 2 and gas_adapt_score < 60:
         modifier -= 10
         patterns.append({
             "name": "Gas War Casualty",
             "detected": True,
             "severity": "warning",
+            "modifier": -10,
             "description": (
                 "Agent is adapting gas prices but losing gas wars — high variance "
                 "with high failure rate and retry storms. Needs better MEV protection "
@@ -2551,6 +2610,7 @@ def detect_cdp_patterns(
             "name": "Phantom Activity",
             "detected": True,
             "severity": "warning",
+            "modifier": -8,
             "description": (
                 "Agent server is running and responding to health checks, but "
                 "near-zero on-chain activity in the last 7 days despite historical "
@@ -2559,25 +2619,29 @@ def detect_cdp_patterns(
         })
 
     # Pattern 7: Recovery in Progress
+    # Requires failure rate comparison from outgoing transactions.
+    # SKIP on tokentx — isError field not available in token transfers.
     twenty_four_hours_ago = now_ts - 86400
-    recent_24h = [tx for tx in transactions if int(tx.get("timeStamp", 0)) >= twenty_four_hours_ago]
-    older = [tx for tx in transactions if seven_days_ago <= int(tx.get("timeStamp", 0)) < twenty_four_hours_ago]
-    if len(recent_24h) > 5 and len(older) > 10:
-        recent_fail_rate = sum(1 for tx in recent_24h if tx.get("isError") == "1" or tx.get("txreceipt_status") == "0") / len(recent_24h)
-        older_fail_rate = sum(1 for tx in older if tx.get("isError") == "1" or tx.get("txreceipt_status") == "0") / len(older)
-        nonce_gaps_recent, _ = detect_nonce_issues(recent_24h)
-        nonce_gaps_older, _ = detect_nonce_issues(older)
-        if recent_fail_rate < older_fail_rate * 0.5 and nonce_gaps_recent <= nonce_gaps_older:
-            modifier += 3
-            patterns.append({
-                "name": "Recovery in Progress",
-                "detected": True,
-                "severity": "info",
-                "description": (
-                    "Recent failure rate has dropped significantly compared to the "
-                    "previous period. Agent appears to be recovering from a prior issue."
-                ),
-            })
+    if not is_tokentx:
+        recent_24h = [tx for tx in transactions if int(tx.get("timeStamp", 0)) >= twenty_four_hours_ago]
+        older = [tx for tx in transactions if seven_days_ago <= int(tx.get("timeStamp", 0)) < twenty_four_hours_ago]
+        if len(recent_24h) > 5 and len(older) > 10:
+            recent_fail_rate = sum(1 for tx in recent_24h if tx.get("isError") == "1" or tx.get("txreceipt_status") == "0") / len(recent_24h)
+            older_fail_rate = sum(1 for tx in older if tx.get("isError") == "1" or tx.get("txreceipt_status") == "0") / len(older)
+            nonce_gaps_recent, _ = detect_nonce_issues(recent_24h)
+            nonce_gaps_older, _ = detect_nonce_issues(older)
+            if recent_fail_rate < older_fail_rate * 0.5 and nonce_gaps_recent <= nonce_gaps_older:
+                modifier += 3
+                patterns.append({
+                    "name": "Recovery in Progress",
+                    "detected": True,
+                    "severity": "info",
+                    "modifier": 3,
+                    "description": (
+                        "Recent failure rate has dropped significantly compared to the "
+                        "previous period. Agent appears to be recovering from a prior issue."
+                    ),
+                })
 
     # Clamp modifier
     modifier = max(-15, min(5, modifier))
