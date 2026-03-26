@@ -81,8 +81,13 @@ class ACPAgent:
 # Phase 1: ACP Agent Discovery
 # ---------------------------------------------------------------------------
 
-def discover_agents(max_agents: int = 50, sort: str = "successfulJobCount:desc") -> tuple[list[ACPAgent], dict]:
+def discover_agents(max_agents: int = 50, sort: str = "successfulJobCount:desc",
+                     max_new: int = 0) -> tuple[list[ACPAgent], dict]:
     """Fetch agents from the ACP API.
+
+    When max_new > 0 the discovery keeps paginating past already-scanned
+    wallets until it finds at least max_new *new* (unscanned) agents,
+    rather than stopping after max_agents total.
 
     Returns (agents_list, api_stats).
     """
@@ -92,11 +97,27 @@ def discover_agents(max_agents: int = 50, sort: str = "successfulJobCount:desc")
     print(f"[*] API: {ACP_API_BASE}")
     print(f"[*] Sort: {sort} | Max agents: {max_agents}")
 
+    # Load already-scanned addresses so we know which are new
+    already_scanned: set[str] = set()
+    if max_new > 0:
+        already_scanned = get_already_scanned_addresses()
+        print(f"[+] Already scanned: {len(already_scanned)} wallets")
+        print(f"[+] Target: {max_new} new (unscanned) wallets")
+
     agents = []
+    new_count = 0
     page = 1
     total_available = None
+    # Hard ceiling: don't paginate forever (max 5000 agents or end of registry)
+    hard_max = max(max_agents, 5000)
 
-    while len(agents) < max_agents:
+    while len(agents) < hard_max:
+        # Stop early if we have enough
+        if max_new > 0 and new_count >= max_new and len(agents) >= max_agents:
+            break
+        if max_new == 0 and len(agents) >= max_agents:
+            break
+
         url = (
             f"{ACP_API_BASE}"
             f"?pagination[page]={page}"
@@ -128,18 +149,22 @@ def discover_agents(max_agents: int = 50, sort: str = "successfulJobCount:desc")
         if not items:
             break
 
+        page_new = 0
         for item in items:
-            if len(agents) >= max_agents:
+            if max_new > 0 and new_count >= max_new and len(agents) >= max_agents:
+                break
+            if max_new == 0 and len(agents) >= max_agents:
                 break
 
             wallet = (item.get("walletAddress") or "").strip()
             if not wallet or not wallet.startswith("0x") or len(wallet) != 42:
                 continue
 
+            addr = wallet.lower()
             agent = ACPAgent(
                 acp_id=item.get("id", 0),
                 name=(item.get("name") or "")[:80],
-                wallet_address=wallet.lower(),
+                wallet_address=addr,
                 owner_address=(item.get("ownerAddress") or "").lower(),
                 success_rate=float(item.get("successRate") or 0),
                 successful_job_count=int(item.get("successfulJobCount") or 0),
@@ -150,9 +175,21 @@ def discover_agents(max_agents: int = 50, sort: str = "successfulJobCount:desc")
                 is_high_risk=bool(item.get("isHighRisk")),
             )
             agents.append(agent)
+            if addr not in already_scanned:
+                new_count += 1
+                page_new += 1
 
-        print(f"  [page {page}] fetched {len(items)} agents ({len(agents)} total)")
+        if max_new > 0:
+            print(f"  [page {page}] fetched {len(items)} agents ({len(agents)} total, {new_count} new)")
+        else:
+            print(f"  [page {page}] fetched {len(items)} agents ({len(agents)} total)")
         page += 1
+
+        # Stop if we've exhausted the registry
+        total_pages = pagination.get("pageCount", 999)
+        if page > total_pages:
+            print(f"[+] Reached end of ACP registry ({total_pages} pages)")
+            break
 
         # Don't hammer the API
         time.sleep(0.5)
@@ -160,11 +197,12 @@ def discover_agents(max_agents: int = 50, sort: str = "successfulJobCount:desc")
     api_stats = {
         "total_available": total_available or 0,
         "fetched": len(agents),
+        "new_wallets": new_count,
         "pages_read": page - 1,
         "sort": sort,
     }
 
-    print(f"[+] Discovered {len(agents)} agents with valid wallet addresses")
+    print(f"[+] Discovered {len(agents)} agents ({new_count} new wallets)")
     return agents, api_stats
 
 
@@ -656,8 +694,11 @@ def main():
     if args.force_rescan:
         print("[*] Force rescan: ON (will rescan already-scanned wallets)")
 
-    # Phase 1: Discovery
-    agents, api_stats = discover_agents(max_agents=args.max_agents, sort=args.sort)
+    # Phase 1: Discovery — paginate past already-scanned when not force-rescanning
+    max_new = 0 if args.force_rescan else args.max_scans
+    agents, api_stats = discover_agents(
+        max_agents=args.max_agents, sort=args.sort, max_new=max_new,
+    )
 
     if not agents:
         print("[!] No agents discovered. Exiting.")

@@ -53,8 +53,10 @@ def main():
     try:
         from acp_proactive_scan import discover_agents, deduplicate_wallets, scan_wallets, generate_report
 
-        # Phase 1: Discovery
-        agents, api_stats = discover_agents(max_agents=args.max_agents, sort=args.sort)
+        # Phase 1: Discovery — paginate past already-scanned wallets to find new ones
+        agents, api_stats = discover_agents(
+            max_agents=args.max_agents, sort=args.sort, max_new=args.max_scans,
+        )
         if not agents:
             log("No agents discovered. Exiting cleanly.")
             sys.exit(0)
