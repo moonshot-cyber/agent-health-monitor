@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agent Health Monitor</title>
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+<link rel="icon" type="image/png" sizes="32x32" href="/static/ahm-favicon-32.png">
+<link rel="apple-touch-icon" sizes="180x180" href="/static/ahm-favicon-180.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@300;400;500;600;700&family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #030609;
+    --bg2: #070d12;
+    --bg3: #0a1520;
+    --panel: #0d1f2d;
+    --border: #0e3a52;
+    --border-bright: #0ff;
+    --cyan: #00f5ff;
+    --cyan-dim: #007a88;
+    --green: #00ff88;
+    --green-dim: #004d2a;
+    --amber: #ffaa00;
+    --red: #ff3355;
+    --text: #c8e8f0;
+    --text-dim: #4a7a8a;
+    --text-bright: #e8f8ff;
+    --mono: 'Share Tech Mono', monospace;
+    --display: 'Orbitron', sans-serif;
+    --body: 'Rajdhani', sans-serif;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--body);
+    font-size: 16px;
+    overflow-x: hidden;
+  }
+
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,245,255,0.015) 2px, rgba(0,245,255,0.015) 4px);
+    pointer-events: none; z-index: 9999;
+  }
+
+  body::after {
+    content: '';
+    position: fixed; inset: 0;
+    background-image:
+      linear-gradient(rgba(0,245,255,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,245,255,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none; z-index: 0;
+  }
+
+  /* ─── HEADER ─── */
+  header {
+    position: relative; z-index: 10;
+    padding: 0 2rem; height: 64px;
+    display: flex; align-items: center; justify-content: space-between;
+    border-bottom: 1px solid var(--border);
+    background: rgba(3,6,9,0.9); backdrop-filter: blur(10px);
+  }
+
+  .logo {
+    font-family: var(--display); font-size: 0.85rem; font-weight: 700;
+    letter-spacing: 0.15em; color: var(--cyan);
+    text-shadow: 0 0 20px var(--cyan);
+    text-decoration: none;
+  }
+
+  .nav-links {
+    display: flex; gap: 1.5rem; align-items: center;
+    font-family: var(--mono); font-size: 0.6rem; letter-spacing: 0.15em;
+  }
+
+  .nav-link {
+    color: var(--text-dim); text-decoration: none;
+    transition: color 0.2s;
+  }
+
+  .nav-link:hover { color: var(--cyan); }
+
+  /* ─── CONTAINER ─── */
+  .container {
+    position: relative; z-index: 10;
+    max-width: 800px; margin: 0 auto;
+    padding: 0 1.5rem 4rem;
+  }
+
+  /* ─── HERO ─── */
+  .ep-hero {
+    text-align: center;
+    padding: 3rem 1rem 2rem;
+  }
+
+  .ep-price-badge {
+    display: inline-block;
+    font-family: var(--mono); font-size: 0.7rem;
+    color: var(--green); border: 1px solid var(--green-dim);
+    padding: 0.3rem 0.9rem; margin-bottom: 1rem;
+    letter-spacing: 0.1em;
+  }
+
+  .ep-name {
+    font-family: var(--display);
+    font-size: clamp(1.4rem, 4vw, 2.4rem);
+    font-weight: 900; letter-spacing: 0.05em;
+    color: var(--text-bright);
+    text-shadow: 0 0 40px rgba(0,245,255,0.3);
+    margin-bottom: 0.5rem;
+  }
+
+  .ep-name span { color: var(--cyan); text-shadow: 0 0 30px var(--cyan); }
+
+  .ep-tagline {
+    font-family: var(--mono); font-size: 0.8rem;
+    color: var(--text-dim); margin-bottom: 0.75rem;
+  }
+
+  .ep-payment-note {
+    font-family: var(--mono); font-size: 0.55rem;
+    color: var(--cyan-dim); letter-spacing: 0.15em;
+  }
+
+  /* ─── PANEL ─── */
+  .panel {
+    background: var(--panel); border: 1px solid var(--border);
+    position: relative; margin-bottom: 1.5rem;
+  }
+
+  .panel::before {
+    content: '';
+    position: absolute; top: -1px; left: -1px; right: -1px;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--cyan), transparent);
+    opacity: 0.6;
+  }
+
+  .panel-header {
+    padding: 0.75rem 1.25rem;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .panel-title {
+    font-family: var(--mono); font-size: 0.65rem;
+    color: var(--cyan); letter-spacing: 0.2em;
+    text-transform: uppercase;
+  }
+
+  .panel-body { padding: 1.25rem; }
+
+  /* ─── DESCRIPTION ─── */
+  .ep-desc {
+    font-family: var(--body); font-size: 1.05rem;
+    color: var(--text); line-height: 1.7;
+  }
+
+  /* ─── WHAT YOU GET ─── */
+  .feature-list {
+    list-style: none; display: grid;
+    grid-template-columns: 1fr 1fr; gap: 0.6rem;
+  }
+
+  .feature-list li {
+    font-family: var(--mono); font-size: 0.7rem;
+    color: var(--text); padding: 0.5rem 0.75rem;
+    border-left: 2px solid var(--cyan-dim);
+    background: var(--bg3);
+  }
+
+  .feature-list li::before {
+    content: '\25B8 ';
+    color: var(--cyan);
+  }
+
+  /* ─── SAMPLE OUTPUT ─── */
+  .code-block {
+    background: var(--bg); border: 1px solid var(--border);
+    padding: 1rem 1.25rem; overflow-x: auto;
+    font-family: var(--mono); font-size: 0.7rem;
+    line-height: 1.7; color: var(--text-dim);
+  }
+
+  .code-block .key { color: var(--cyan); }
+  .code-block .str { color: var(--green); }
+  .code-block .num { color: var(--amber); }
+  .code-block .arr { color: var(--text); }
+
+  /* ─── WHO IT'S FOR ─── */
+  .pills {
+    display: flex; flex-wrap: wrap; gap: 0.5rem;
+  }
+
+  .pill {
+    font-family: var(--mono); font-size: 0.65rem;
+    color: var(--text); border: 1px solid var(--border);
+    padding: 0.35rem 0.75rem; background: var(--bg3);
+    letter-spacing: 0.05em;
+  }
+
+  /* ─── ECOSYSTEM STAT ─── */
+  .eco-stat {
+    text-align: center; padding: 1.5rem 1rem;
+    border: 1px solid var(--border); background: var(--bg3);
+    margin-bottom: 1.5rem;
+  }
+
+  .eco-value {
+    font-family: var(--display); font-size: 2rem;
+    font-weight: 900; color: var(--cyan);
+    text-shadow: 0 0 20px rgba(0,245,255,0.3);
+  }
+
+  .eco-label {
+    font-family: var(--mono); font-size: 0.65rem;
+    color: var(--text-dim); margin-top: 0.3rem;
+    letter-spacing: 0.1em;
+  }
+
+  /* ─── CTA ─── */
+  .cta-section {
+    text-align: center; padding: 2rem 1rem;
+  }
+
+  .cta-form {
+    display: flex; gap: 0.75rem;
+    max-width: 520px; margin: 0 auto 1rem;
+  }
+
+  .cta-input {
+    flex: 1; background: var(--bg);
+    border: 1px solid var(--border); color: var(--text);
+    font-family: var(--mono); font-size: 0.7rem;
+    padding: 0.8rem 1rem; outline: none;
+    transition: border-color 0.2s;
+  }
+
+  .cta-input::placeholder { color: var(--text-dim); }
+  .cta-input:focus { border-color: var(--cyan-dim); }
+
+  .cta-btn {
+    background: linear-gradient(135deg, rgba(0,245,255,0.2), rgba(0,245,255,0.05));
+    border: 1px solid var(--cyan); color: var(--cyan);
+    font-family: var(--mono); font-size: 0.7rem;
+    padding: 0.8rem 1.5rem; cursor: pointer;
+    white-space: nowrap; transition: all 0.2s;
+    letter-spacing: 0.05em; font-weight: bold;
+  }
+
+  .cta-btn:hover {
+    background: rgba(0,245,255,0.25);
+    box-shadow: 0 0 20px rgba(0,245,255,0.25);
+  }
+
+  .cta-powered {
+    font-family: var(--mono); font-size: 0.55rem;
+    color: var(--cyan-dim); letter-spacing: 0.15em;
+  }
+
+  /* ─── ENDPOINT NAV ─── */
+  .ep-nav {
+    display: flex; flex-wrap: wrap; gap: 0.5rem;
+    justify-content: center; margin-bottom: 1.5rem;
+  }
+
+  .ep-nav-link {
+    font-family: var(--mono); font-size: 0.6rem;
+    color: var(--text-dim); text-decoration: none;
+    border: 1px solid var(--border); padding: 0.3rem 0.75rem;
+    transition: all 0.2s; letter-spacing: 0.05em;
+  }
+
+  .ep-nav-link:hover { border-color: var(--cyan-dim); color: var(--cyan); }
+  .ep-nav-link.active { border-color: var(--cyan); color: var(--cyan); background: rgba(0,245,255,0.08); }
+
+  /* ─── FOOTER ─── */
+  footer {
+    position: relative; z-index: 10;
+    border-top: 1px solid var(--border);
+    padding: 1.5rem 2rem;
+    display: flex; align-items: center; justify-content: space-between;
+    background: rgba(3,6,9,0.9);
+  }
+
+  .footer-text {
+    font-family: var(--mono); font-size: 0.6rem;
+    color: var(--text-dim); letter-spacing: 0.15em;
+  }
+
+  .footer-links {
+    font-family: var(--mono); font-size: 0.6rem;
+    letter-spacing: 0.15em; display: flex; gap: 1.5rem;
+  }
+
+  .footer-link {
+    color: var(--cyan-dim); text-decoration: none;
+    opacity: 0.7; transition: opacity 0.2s;
+  }
+
+  .footer-link:hover { opacity: 1; color: var(--cyan); }
+
+  .footer-network {
+    font-family: var(--mono); font-size: 0.6rem;
+    color: var(--cyan-dim); display: flex;
+    align-items: center; gap: 0.5rem;
+  }
+
+  .status-dot {
+    width: 6px; height: 6px; background: var(--green);
+    border-radius: 50%; animation: blink 2s ease-in-out infinite;
+    box-shadow: 0 0 8px var(--green);
+  }
+
+  @keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+
+  /* ─── LOADING ─── */
+  .loading-state {
+    text-align: center; padding: 4rem 1rem;
+  }
+
+  .loading-spinner {
+    display: inline-block; width: 24px; height: 24px;
+    border: 2px solid var(--border); border-top-color: var(--cyan);
+    border-radius: 50%; animation: spin 0.8s linear infinite;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .loading-text {
+    font-family: var(--mono); font-size: 0.7rem;
+    color: var(--text-dim); margin-top: 0.75rem;
+    letter-spacing: 0.1em;
+  }
+
+  .error-state {
+    text-align: center; padding: 3rem 1rem;
+    font-family: var(--mono); font-size: 0.75rem; color: var(--red);
+  }
+
+  /* ─── RESPONSIVE ─── */
+  @media (max-width: 768px) {
+    .feature-list { grid-template-columns: 1fr; }
+    .cta-form { flex-direction: column; }
+    footer { flex-direction: column; gap: 0.75rem; text-align: center; }
+    header { padding: 0 1rem; }
+    .container { padding: 0 1rem 3rem; }
+  }
+
+  @media (max-width: 480px) {
+    .ep-name { font-size: 1.2rem; }
+    .nav-links { gap: 0.75rem; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <a href="/" class="logo">AGENT HEALTH MONITOR</a>
+  <div class="nav-links">
+    <a href="/dashboard" class="nav-link">DASHBOARD</a>
+    <a href="/" class="nav-link">HOME</a>
+  </div>
+</header>
+
+<div class="container">
+
+  <!-- LOADING -->
+  <div id="loading" class="loading-state">
+    <div class="loading-spinner"></div>
+    <div class="loading-text">LOADING ENDPOINT DATA...</div>
+  </div>
+
+  <!-- ERROR -->
+  <div id="error" class="error-state" style="display:none"></div>
+
+  <!-- CONTENT (hidden until loaded) -->
+  <div id="content" style="display:none">
+
+    <!-- HERO -->
+    <div class="ep-hero">
+      <div class="ep-price-badge" id="ep-price"></div>
+      <h1 class="ep-name" id="ep-name"></h1>
+      <div class="ep-tagline" id="ep-tagline"></div>
+      <div class="ep-payment-note">NO ACCOUNTS. NO SUBSCRIPTIONS. PAY PER CALL ON BASE MAINNET.</div>
+    </div>
+
+    <!-- ENDPOINT NAV -->
+    <div class="ep-nav" id="ep-nav"></div>
+
+    <!-- DESCRIPTION -->
+    <div class="panel">
+      <div class="panel-header"><div class="panel-title">// Overview</div></div>
+      <div class="panel-body">
+        <div class="ep-desc" id="ep-desc"></div>
+      </div>
+    </div>
+
+    <!-- WHAT YOU GET -->
+    <div class="panel">
+      <div class="panel-header"><div class="panel-title">// What You Get</div></div>
+      <div class="panel-body">
+        <ul class="feature-list" id="ep-features"></ul>
+      </div>
+    </div>
+
+    <!-- SAMPLE OUTPUT -->
+    <div class="panel">
+      <div class="panel-header"><div class="panel-title">// Sample Response</div></div>
+      <div class="panel-body">
+        <div class="code-block" id="ep-sample"></div>
+      </div>
+    </div>
+
+    <!-- WHO IT'S FOR -->
+    <div class="panel">
+      <div class="panel-header"><div class="panel-title">// Who It's For</div></div>
+      <div class="panel-body">
+        <div class="pills" id="ep-pills"></div>
+      </div>
+    </div>
+
+    <!-- ECOSYSTEM STAT -->
+    <div class="eco-stat">
+      <div class="eco-value" id="eco-value"></div>
+      <div class="eco-label" id="eco-label"></div>
+    </div>
+
+    <!-- CTA -->
+    <div class="panel">
+      <div class="panel-body cta-section">
+        <div class="cta-form">
+          <input type="text" class="cta-input" id="cta-address" placeholder="0x... agent wallet address" spellcheck="false" autocomplete="off">
+          <button class="cta-btn" id="cta-btn" onclick="goRun()"></button>
+        </div>
+        <div class="cta-powered">POWERED BY x402 &middot; USDC ON BASE &middot; NO ACCOUNT NEEDED</div>
+      </div>
+    </div>
+
+  </div><!-- /content -->
+</div><!-- /container -->
+
+<footer>
+  <div class="footer-text">AGENT HEALTH MONITOR // PAY-PER-CALL DIAGNOSTICS</div>
+  <div class="footer-links">
+    <a href="/dashboard" class="footer-link">DASHBOARD</a>
+    <a href="/" class="footer-link">HOME</a>
+    <a href="/roadmap" class="footer-link">ROADMAP</a>
+  </div>
+  <div class="footer-network">
+    <div class="status-dot"></div>
+    BASE MAINNET // x402
+  </div>
+</footer>
+
+<script>
+(function() {
+  // Extract slug from URL path: /endpoints/{slug}
+  var parts = window.location.pathname.split('/');
+  var slug = parts[parts.length - 1] || parts[parts.length - 2];
+
+  var API = window.location.origin + '/api/endpoint-info/' + encodeURIComponent(slug);
+
+  fetch(API)
+    .then(function(r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    })
+    .then(function(d) { render(d); })
+    .catch(function(e) {
+      document.getElementById('loading').style.display = 'none';
+      var el = document.getElementById('error');
+      el.style.display = 'block';
+      el.textContent = '// ERROR: ' + e.message;
+    });
+
+  function render(d) {
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('content').style.display = 'block';
+
+    // Update page title and meta
+    document.title = d.name + ' // Agent Health Monitor';
+
+    // Hero
+    document.getElementById('ep-price').textContent = d.price + ' USDC PER CALL';
+    var nameEl = document.getElementById('ep-name');
+    nameEl.innerHTML = '<span>' + escHtml(d.name) + '</span>';
+    document.getElementById('ep-tagline').textContent = d.tagline;
+
+    // Endpoint nav
+    var navEl = document.getElementById('ep-nav');
+    var slugs = d.all_slugs || [];
+    var navNames = {
+      'ahs': 'Agent Health Score',
+      'wash': 'Agent Wash',
+      'risk': 'Risk Score',
+      'report-card': 'Report Card'
+    };
+    for (var i = 0; i < slugs.length; i++) {
+      var a = document.createElement('a');
+      a.href = '/endpoints/' + slugs[i];
+      a.className = 'ep-nav-link' + (slugs[i] === d.slug ? ' active' : '');
+      a.textContent = navNames[slugs[i]] || slugs[i];
+      navEl.appendChild(a);
+    }
+
+    // Description
+    document.getElementById('ep-desc').textContent = d.description;
+
+    // Features
+    var featEl = document.getElementById('ep-features');
+    var features = d.what_you_get || [];
+    for (var i = 0; i < features.length; i++) {
+      var li = document.createElement('li');
+      li.textContent = features[i];
+      featEl.appendChild(li);
+    }
+
+    // Sample output
+    var sampleEl = document.getElementById('ep-sample');
+    sampleEl.innerHTML = formatJson(d.sample_output || {});
+
+    // Who it's for
+    var pillsEl = document.getElementById('ep-pills');
+    var whos = d.who_its_for || [];
+    for (var i = 0; i < whos.length; i++) {
+      var div = document.createElement('div');
+      div.className = 'pill';
+      div.textContent = whos[i];
+      pillsEl.appendChild(div);
+    }
+
+    // Ecosystem stat
+    document.getElementById('eco-value').textContent = d.ecosystem_value || '—';
+    document.getElementById('eco-label').textContent = d.ecosystem_label || '';
+
+    // CTA
+    document.getElementById('cta-btn').textContent = d.cta || 'Run Analysis';
+
+    // Store slug for CTA redirect
+    window._epSlug = d.slug;
+  }
+
+  function escHtml(s) {
+    var d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+  }
+
+  function formatJson(obj) {
+    var json = JSON.stringify(obj, null, 2);
+    // Syntax highlight
+    json = json.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    // Keys
+    json = json.replace(/"([^"]+)":/g, '<span class="key">"$1"</span>:');
+    // String values (after colon)
+    json = json.replace(/: "([^"]*?)"/g, ': <span class="str">"$1"</span>');
+    // Numbers
+    json = json.replace(/: (\d+\.?\d*)/g, ': <span class="num">$1</span>');
+    // Arrays of strings
+    json = json.replace(/"([^"]*?)"/g, function(match, p1) {
+      // Only highlight if not already wrapped in a span
+      if (match.indexOf('class=') >= 0) return match;
+      return '<span class="str">"' + p1 + '"</span>';
+    });
+    return json;
+  }
+})();
+
+function goRun() {
+  var addr = document.getElementById('cta-address').value.trim();
+  if (!addr) {
+    document.getElementById('cta-address').style.borderColor = 'var(--red)';
+    setTimeout(function() { document.getElementById('cta-address').style.borderColor = ''; }, 1500);
+    return;
+  }
+  var slug = window._epSlug || 'ahs';
+  window.location.href = '/?service=' + encodeURIComponent(slug) + '&address=' + encodeURIComponent(addr);
+}
+
+document.getElementById('cta-address').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') goRun();
+});
+</script>
+
+</body>
+</html>
