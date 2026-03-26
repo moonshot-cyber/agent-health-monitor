@@ -242,6 +242,22 @@
   .share-pill { font-family: var(--mono); font-size: 0.65rem; padding: 0.5rem 1.25rem; border: 1px solid var(--border); background: var(--panel); color: var(--text); display: flex; align-items: center; gap: 0.5rem; }
   .share-pill .icon { color: var(--cyan); }
 
+  /* ─── CHART CONTAINERS (Report Card) ─── */
+  .rc-charts-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+  .rc-chart-panel { background: var(--panel); border: 1px solid var(--border); padding: 1.5rem; position: relative; overflow: hidden; }
+  .rc-chart-panel::before { content: ''; position: absolute; top: -1px; left: -1px; right: -1px; height: 2px; background: linear-gradient(90deg, transparent, var(--cyan), transparent); opacity: 0.5; }
+  .rc-chart-title { font-family: var(--mono); font-size: 0.65rem; color: var(--cyan-dim); letter-spacing: 0.2em; text-transform: uppercase; text-align: center; margin-bottom: 1rem; }
+  .rc-chart-question { font-family: var(--display); font-size: clamp(0.85rem, 2vw, 1.05rem); font-weight: 700; color: var(--text-bright); text-align: center; margin-bottom: 1rem; }
+  .rc-chart-wrap { position: relative; max-width: 280px; margin: 0 auto; }
+  .rc-donut-centre { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; pointer-events: none; }
+  .rc-donut-centre-num { font-family: var(--display); font-size: 1.3rem; font-weight: 900; color: var(--text-bright); line-height: 1; }
+  .rc-donut-centre-lbl { font-family: var(--mono); font-size: 0.5rem; color: var(--text-dim); letter-spacing: 0.1em; margin-top: 0.2rem; }
+  .rc-donut-callout { text-align: center; margin-top: 1rem; font-family: var(--mono); font-size: 0.65rem; color: var(--amber); letter-spacing: 0.05em; }
+  .rc-bar-chart-wrap { max-width: 100%; padding-top: 0.5rem; }
+  @media (max-width: 768px) {
+    .rc-charts-row { grid-template-columns: 1fr; }
+  }
+
   /* ─── FOOTER ─── */
   footer { position: relative; z-index: 10; border-top: 1px solid var(--border); padding: 1.5rem 2rem; display: flex; align-items: center; justify-content: space-between; background: rgba(3,6,9,0.9); }
   .footer-text { font-family: var(--mono); font-size: 0.6rem; color: var(--text-dim); letter-spacing: 0.15em; }
@@ -586,6 +602,29 @@
   </div>
   <div class="divider"></div>
   <div class="section">
+    <div class="sect-header anim-in"><div class="sect-tag">// Visual Analytics</div><div class="sect-title">Ecosystem at a Glance</div></div>
+    <div class="rc-charts-row anim-in">
+      <div class="rc-chart-panel">
+        <div class="rc-chart-title">Grade Distribution</div>
+        <div class="rc-chart-wrap">
+          <canvas id="rc-donut-chart"></canvas>
+          <div class="rc-donut-centre">
+            <div class="rc-donut-centre-num" id="rc-donut-total">0</div>
+            <div class="rc-donut-centre-lbl">agents</div>
+          </div>
+        </div>
+        <div class="rc-donut-callout" id="rc-donut-callout"></div>
+      </div>
+      <div class="rc-chart-panel">
+        <div class="rc-chart-question">Which pattern will your agent show?</div>
+        <div class="rc-bar-chart-wrap">
+          <canvas id="rc-bar-chart"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="divider"></div>
+  <div class="section">
     <div class="sect-header anim-in"><div class="sect-tag">// Ecosystem Distribution</div><div class="sect-title">Where Will You Land?</div></div>
     <div class="anim-in">
       <div class="pct-wrap">
@@ -673,6 +712,7 @@
   <div class="footer-network"><div class="status-dot"></div> BASE MAINNET // x402</div>
 </footer>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <script>
 (function() {
   var parts = window.location.pathname.split('/');
@@ -834,9 +874,150 @@
   function renderRC(s) {
     document.getElementById('rc-page').style.display = 'block';
     document.title = 'Report Card // Agent Health Monitor';
-    var total = s.total_scanned||0;
+    var total = s.total_scanned || 0;
+    var grades = s.grade_distribution || {};
+    var patterns = s.pattern_distribution || {};
     animateInt(document.getElementById('rc-total'), 0, total, 1800);
     document.getElementById('rc-dist-total').textContent = total.toLocaleString();
+
+    /* ── Donut Chart: Grade Distribution ── */
+    var gradeOrder = ['A','B','C','D','E','F'];
+    var gradeColors = ['#00ff88','#88ff00','#ffaa00','#ff6600','#ff3355','#cc0033'];
+    var gradeCounts = [], gradePcts = [];
+    for (var gi = 0; gi < gradeOrder.length; gi++) {
+      var gc = grades[gradeOrder[gi]] || 0;
+      gradeCounts.push(gc);
+      gradePcts.push(total > 0 ? parseFloat((gc / total * 100).toFixed(1)) : 0);
+    }
+    document.getElementById('rc-donut-total').textContent = total.toLocaleString();
+
+    var donutCtx = document.getElementById('rc-donut-chart').getContext('2d');
+    new Chart(donutCtx, {
+      type: 'doughnut',
+      data: {
+        labels: gradeOrder.map(function(g, idx) { return g + ' (' + gradePcts[idx] + '%)'; }),
+        datasets: [{
+          data: gradeCounts,
+          backgroundColor: gradeColors,
+          borderColor: '#0d1f2d',
+          borderWidth: 2,
+          hoverBorderColor: '#0ff',
+          hoverBorderWidth: 2
+        }]
+      },
+      options: {
+        responsive: true,
+        cutout: '62%',
+        animation: { animateRotate: true, duration: 1500, easing: 'easeOutQuart' },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: 'rgba(13,31,45,0.95)',
+            borderColor: '#0e3a52',
+            borderWidth: 1,
+            titleFont: { family: "'Share Tech Mono', monospace", size: 11 },
+            bodyFont: { family: "'Share Tech Mono', monospace", size: 11 },
+            titleColor: '#00f5ff',
+            bodyColor: '#c8e8f0',
+            callbacks: {
+              label: function(ctx) {
+                var cnt = ctx.parsed;
+                var pct = total > 0 ? (cnt / total * 100).toFixed(1) : '0';
+                return ' ' + cnt.toLocaleString() + ' agents (' + pct + '%)';
+              }
+            }
+          }
+        }
+      },
+      plugins: [{
+        id: 'segmentLabels',
+        afterDraw: function(chart) {
+          var c2 = chart.ctx;
+          var meta = chart.getDatasetMeta(0);
+          c2.save();
+          meta.data.forEach(function(arc, idx) {
+            if (gradePcts[idx] < 3) return;
+            var mid = (arc.startAngle + arc.endAngle) / 2;
+            var r = (arc.innerRadius + arc.outerRadius) / 2;
+            var x = arc.x + Math.cos(mid) * r;
+            var y = arc.y + Math.sin(mid) * r;
+            var dark = (gradeOrder[idx] === 'A' || gradeOrder[idx] === 'B');
+            c2.fillStyle = dark ? '#030609' : '#ffffff';
+            c2.font = "bold 11px 'Orbitron', sans-serif";
+            c2.textAlign = 'center';
+            c2.textBaseline = 'middle';
+            c2.fillText(gradeOrder[idx], x, y - 6);
+            c2.font = "9px 'Share Tech Mono', monospace";
+            c2.fillText(gradePcts[idx] + '%', x, y + 7);
+          });
+          c2.restore();
+        }
+      }]
+    });
+
+    var cPct = total > 0 ? ((grades['C'] || 0) / total * 100) : 0;
+    var cPctStr = cPct < 1 && cPct > 0 ? cPct.toFixed(1) : Math.round(cPct);
+    document.getElementById('rc-donut-callout').innerHTML = '&#x25B6; Your mock score lands here &mdash; Grade C (' + cPctStr + '%)';
+
+    /* ── Horizontal Bar Chart: Pattern Prevalence ── */
+    var zombieCnt = patterns['Zombie Agent'] || 0;
+    var healthyCnt = patterns['Healthy Operator'] || 0;
+    var allPatCnt = 0;
+    for (var pk in patterns) { if (patterns.hasOwnProperty(pk)) allPatCnt += patterns[pk]; }
+    var noPatCnt = Math.max(0, total - allPatCnt);
+    var zombiePct = total > 0 ? Math.round(zombieCnt / total * 100) : 0;
+    var healthyPct = total > 0 ? Math.round(healthyCnt / total * 100) : 0;
+    var noPatPct = total > 0 ? Math.round(noPatCnt / total * 100) : 0;
+
+    var barCtx = document.getElementById('rc-bar-chart').getContext('2d');
+    new Chart(barCtx, {
+      type: 'bar',
+      data: {
+        labels: ['Zombie Agent', 'Healthy Operator', 'No pattern'],
+        datasets: [{
+          data: [zombiePct, healthyPct, noPatPct],
+          backgroundColor: ['rgba(255,51,85,0.7)', 'rgba(0,255,136,0.7)', 'rgba(74,122,138,0.5)'],
+          borderColor: ['#ff3355', '#00ff88', '#4a7a8a'],
+          borderWidth: 1,
+          borderRadius: 2,
+          barPercentage: 0.7
+        }]
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        maintainAspectRatio: true,
+        animation: { duration: 1500, easing: 'easeOutQuart' },
+        scales: {
+          x: {
+            max: 100,
+            grid: { color: 'rgba(14,58,82,0.4)', drawBorder: false },
+            ticks: { color: '#4a7a8a', font: { family: "'Share Tech Mono', monospace", size: 10 }, callback: function(v) { return v + '%'; } },
+            border: { display: false }
+          },
+          y: {
+            grid: { display: false },
+            ticks: { color: '#c8e8f0', font: { family: "'Share Tech Mono', monospace", size: 11, weight: 'bold' } },
+            border: { display: false }
+          }
+        },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: 'rgba(13,31,45,0.95)',
+            borderColor: '#0e3a52',
+            borderWidth: 1,
+            titleFont: { family: "'Share Tech Mono', monospace", size: 11 },
+            bodyFont: { family: "'Share Tech Mono', monospace", size: 11 },
+            titleColor: '#00f5ff',
+            bodyColor: '#c8e8f0',
+            callbacks: {
+              label: function(ctx) { return ' ' + ctx.parsed.x + '% of agents'; }
+            }
+          }
+        }
+      }
+    });
 
     buildCodeBlock('rc-code', {"status":"ok","report":{"address":"0xAbCd...EfGh","agent_health_score":72,"grade":"C — Needs Attention","percentile_rank":35,"dimensions":{"d1_wallet_hygiene":84,"d2_behavioural":52},"patterns_detected":["Zombie Agent"],"image_url":"/static/report-cards/0xabcd...efgh.png","share_url":"https://x.com/intent/tweet?text=..."}});
     initScrollAnims();
