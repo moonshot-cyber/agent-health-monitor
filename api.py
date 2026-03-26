@@ -2338,6 +2338,138 @@ async def dashboard():
     raise HTTPException(status_code=404, detail="Dashboard not found")
 
 
+# -- Endpoint Marketing Pages ------------------------------------------------
+
+ENDPOINT_PAGES = {
+    "ahs": {
+        "name": "Agent Health Score",
+        "slug": "ahs",
+        "price": "$1.00",
+        "tagline": "The definitive health score for autonomous agents",
+        "description": "A composite 0-100 score blending wallet hygiene, behavioural patterns, and infrastructure health. Detects anomalies including Zombie Agent, Cascading Failure, and Phantom Activity patterns.",
+        "who_its_for": ["Agent operators", "DeFi protocols", "Agent marketplaces", "x402 providers"],
+        "what_you_get": ["Composite AHS score 0-100", "Grade A-F with label", "D1 wallet hygiene score", "D2 behavioural score", "Cross-dimensional pattern detection", "JWT temporal token for trend tracking"],
+        "sample_output": {
+            "agent_health_score": 67,
+            "grade": "C",
+            "grade_label": "Needs Attention",
+            "d1_wallet_hygiene": 84,
+            "d2_behavioural": 52,
+            "patterns_detected": ["Healthy Operator"],
+            "confidence": "high",
+            "mode": "2D",
+        },
+        "ecosystem_stat": "avg_ahs",
+        "ecosystem_label": "avg AHS across {total} agents scanned",
+        "cta": "Score Your Agent — $1.00 USDC",
+    },
+    "wash": {
+        "name": "Agent Wash",
+        "slug": "wash",
+        "price": "$0.50",
+        "tagline": "Deep hygiene scan for agent wallets",
+        "description": "Scans for dust accumulation, spam token exposure, failed transaction patterns, and gas efficiency. Returns a cleanliness score 0-100 with actionable findings.",
+        "who_its_for": ["Agent operators", "Wallet managers", "Pre-deployment checks"],
+        "what_you_get": ["Cleanliness score 0-100", "Dust token count and value", "Spam exposure rating", "Failed tx pattern analysis", "Gas efficiency score", "Actionable recommendations"],
+        "sample_output": {
+            "cleanliness_score": 78,
+            "dust_tokens": 3,
+            "dust_value_usd": 0.42,
+            "spam_exposure": "low",
+            "failed_tx_rate_pct": 2.1,
+            "gas_efficiency": "good",
+        },
+        "ecosystem_stat": "avg_d1",
+        "ecosystem_label": "avg hygiene score across {total} agents",
+        "cta": "Scan Your Agent — $0.50 USDC",
+    },
+    "risk": {
+        "name": "Agent Risk Score",
+        "slug": "risk",
+        "price": "$0.01",
+        "tagline": "Instant risk assessment for any agent wallet",
+        "description": "A fast, lightweight risk score for autonomous agents. Perfect as a pre-transaction check before routing payments or approving interactions.",
+        "who_its_for": ["Payment routers", "Agent frameworks", "Pre-flight checks", "High-frequency workflows"],
+        "what_you_get": ["Risk score 0-100", "Risk level classification", "Key risk flags", "Sub-second response time"],
+        "sample_output": {
+            "risk_score": 23,
+            "risk_level": "low",
+            "flags": [],
+            "recommendation": "Safe to transact",
+        },
+        "ecosystem_stat": "zombie_pct",
+        "ecosystem_label": "of agents flagged with critical patterns",
+        "cta": "Check Risk — $0.01 USDC",
+    },
+    "report-card": {
+        "name": "Agent Report Card",
+        "slug": "report-card",
+        "price": "$2.00",
+        "tagline": "See how your agent ranks against the ecosystem",
+        "description": "A personalised visual report card showing your agent's AHS score, grade, dimension breakdown, and percentile ranking against all scanned agents. Includes a shareable PNG image.",
+        "who_its_for": ["Agent operators", "Builders shipping agents", "Anyone curious about their agent's health"],
+        "what_you_get": ["Personalised AHS score and grade", "Ecosystem percentile rank", "D1 + D2 dimension breakdown", "Pattern detection results", "Shareable 1200x675 PNG image", "One-click Share on X"],
+        "sample_output": {
+            "agent_health_score": 72,
+            "grade": "C — Needs Attention",
+            "percentile_rank": 16,
+            "patterns_detected": ["Zombie Agent"],
+            "image_url": "/static/report-cards/0xabcd...efgh.png",
+        },
+        "ecosystem_stat": "total",
+        "ecosystem_label": "agents scanned — see how you compare",
+        "cta": "Get Your Report Card — $2.00 USDC",
+    },
+}
+
+
+@app.get("/api/endpoint-info/{slug}")
+async def endpoint_info(slug: str):
+    """Public endpoint metadata for marketing pages. No auth required."""
+    page = ENDPOINT_PAGES.get(slug)
+    if not page:
+        raise HTTPException(status_code=404, detail=f"Unknown endpoint: {slug}")
+
+    # Attach live ecosystem stat
+    loop = asyncio.get_running_loop()
+    stats = await loop.run_in_executor(None, scan_db.get_ecosystem_dashboard_stats)
+    total = stats.get("total_scanned", 0)
+
+    stat_key = page.get("ecosystem_stat", "")
+    if stat_key == "avg_ahs":
+        stat_value = str(stats.get("avg_ahs", 0))
+    elif stat_key == "avg_d1":
+        stat_value = str(stats.get("avg_d1", 0))
+    elif stat_key == "zombie_pct":
+        zombie = (stats.get("pattern_distribution") or {}).get("Zombie Agent", 0)
+        pct = round(zombie / total * 100) if total > 0 else 0
+        stat_value = f"{pct}%"
+    elif stat_key == "total":
+        stat_value = f"{total:,}"
+    else:
+        stat_value = str(total)
+
+    label = page.get("ecosystem_label", "").replace("{total}", f"{total:,}")
+
+    return {
+        **page,
+        "ecosystem_value": stat_value,
+        "ecosystem_label": label,
+        "all_slugs": list(ENDPOINT_PAGES.keys()),
+    }
+
+
+@app.get("/endpoints/{slug}")
+async def endpoint_page(slug: str):
+    """Serve the endpoint marketing page for any valid slug."""
+    if slug not in ENDPOINT_PAGES:
+        raise HTTPException(status_code=404, detail=f"Unknown endpoint: {slug}")
+    ep_file = STATIC_DIR / "endpoints.html"
+    if ep_file.is_file():
+        return FileResponse(ep_file)
+    raise HTTPException(status_code=404, detail="Endpoint page not found")
+
+
 # Coupon validation rate limiting: 5 attempts per IP per minute
 _coupon_rate: dict[str, list[float]] = {}
 COUPON_RATE_LIMIT = 5
