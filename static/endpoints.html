@@ -3,13 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Agent Health Score // Agent Health Monitor</title>
+<title>Agent Health Monitor</title>
 <meta property="og:type" content="website">
-<meta property="og:title" content="Agent Health Score — The definitive health score for autonomous agents">
-<meta property="og:description" content="Composite 0-100 health score for autonomous agents on Base. Live ecosystem data from 1,000+ agents. Pay per call with USDC.">
+<meta property="og:title" content="Agent Health Monitor — Diagnostics for the agent economy">
+<meta property="og:description" content="Pay-per-call health diagnostics for autonomous agents on Base. USDC. No accounts.">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="Agent Health Score — Agent Health Monitor">
-<meta name="twitter:description" content="How healthy is your agent? Score it now for $1.00 USDC on Base.">
 <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
 <link rel="icon" type="image/png" sizes="32x32" href="/static/ahm-favicon-32.png">
 <link rel="apple-touch-icon" sizes="180x180" href="/static/ahm-favicon-180.png">
@@ -17,706 +15,260 @@
 <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@300;400;500;600;700&family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
 <style>
   :root {
-    --bg: #030609;
-    --bg2: #070d12;
-    --bg3: #0a1520;
-    --panel: #0d1f2d;
-    --border: #0e3a52;
-    --border-bright: #0ff;
-    --cyan: #00f5ff;
-    --cyan-dim: #007a88;
-    --green: #00ff88;
-    --green-dim: #004d2a;
-    --amber: #ffaa00;
-    --red: #ff3355;
-    --text: #c8e8f0;
-    --text-dim: #4a7a8a;
-    --text-bright: #e8f8ff;
+    --bg: #030609; --bg2: #070d12; --bg3: #0a1520;
+    --panel: #0d1f2d; --border: #0e3a52; --border-bright: #0ff;
+    --cyan: #00f5ff; --cyan-dim: #007a88;
+    --green: #00ff88; --green-dim: #004d2a;
+    --amber: #ffaa00; --red: #ff3355;
+    --text: #c8e8f0; --text-dim: #4a7a8a; --text-bright: #e8f8ff;
     --mono: 'Share Tech Mono', monospace;
     --display: 'Orbitron', sans-serif;
     --body: 'Rajdhani', sans-serif;
-    --grade-a: #00ff88;
-    --grade-b: #88ff00;
-    --grade-c: #ffaa00;
-    --grade-d: #ff6600;
-    --grade-e: #ff3355;
-    --grade-f: #cc0033;
+    --grade-a: #00ff88; --grade-b: #88ff00; --grade-c: #ffaa00;
+    --grade-d: #ff6600; --grade-e: #ff3355; --grade-f: #cc0033;
   }
-
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html { scroll-behavior: smooth; }
-
-  body {
-    background: var(--bg);
-    color: var(--text);
-    font-family: var(--body);
-    font-size: 16px;
-    overflow-x: hidden;
-  }
-
-  body::before {
-    content: '';
-    position: fixed; inset: 0;
-    background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,245,255,0.015) 2px, rgba(0,245,255,0.015) 4px);
-    pointer-events: none; z-index: 9999;
-  }
-
-  body::after {
-    content: '';
-    position: fixed; inset: 0;
-    background-image:
-      linear-gradient(rgba(0,245,255,0.03) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(0,245,255,0.03) 1px, transparent 1px);
-    background-size: 40px 40px;
-    pointer-events: none; z-index: 0;
-  }
+  body { background: var(--bg); color: var(--text); font-family: var(--body); font-size: 16px; overflow-x: hidden; }
+  body::before { content: ''; position: fixed; inset: 0; background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,245,255,0.015) 2px, rgba(0,245,255,0.015) 4px); pointer-events: none; z-index: 9999; }
+  body::after { content: ''; position: fixed; inset: 0; background-image: linear-gradient(rgba(0,245,255,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(0,245,255,0.03) 1px, transparent 1px); background-size: 40px 40px; pointer-events: none; z-index: 0; }
 
   /* ─── HEADER ─── */
-  header {
-    position: relative; z-index: 10;
-    padding: 0 2rem; height: 64px;
-    display: flex; align-items: center; justify-content: space-between;
-    border-bottom: 1px solid var(--border);
-    background: rgba(3,6,9,0.9); backdrop-filter: blur(10px);
-  }
-
-  .logo {
-    font-family: var(--display); font-size: 0.85rem; font-weight: 700;
-    letter-spacing: 0.15em; color: var(--cyan);
-    text-shadow: 0 0 20px var(--cyan);
-    text-decoration: none;
-  }
-
-  .nav-links {
-    display: flex; gap: 1.5rem; align-items: center;
-    font-family: var(--mono); font-size: 0.6rem; letter-spacing: 0.15em;
-  }
-
-  .nav-link {
-    color: var(--text-dim); text-decoration: none;
-    transition: color 0.2s;
-  }
-
+  header { position: relative; z-index: 10; padding: 0 2rem; height: 64px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border); background: rgba(3,6,9,0.9); backdrop-filter: blur(10px); }
+  .logo { font-family: var(--display); font-size: 0.85rem; font-weight: 700; letter-spacing: 0.15em; color: var(--cyan); text-shadow: 0 0 20px var(--cyan); text-decoration: none; }
+  .nav-links { display: flex; gap: 1.5rem; align-items: center; font-family: var(--mono); font-size: 0.6rem; letter-spacing: 0.15em; }
+  .nav-link { color: var(--text-dim); text-decoration: none; transition: color 0.2s; }
   .nav-link:hover { color: var(--cyan); }
 
   /* ─── ENDPOINT NAV ─── */
-  .ep-nav {
-    position: relative; z-index: 10;
-    display: flex; flex-wrap: wrap; gap: 0;
-    justify-content: center;
-    border-bottom: 1px solid var(--border);
-    background: rgba(3,6,9,0.7);
-  }
-
-  .ep-nav-link {
-    font-family: var(--mono); font-size: 0.6rem;
-    color: var(--text-dim); text-decoration: none;
-    padding: 0.75rem 1.25rem;
-    transition: all 0.2s; letter-spacing: 0.1em;
-    border-bottom: 2px solid transparent;
-  }
-
+  .ep-nav { position: relative; z-index: 10; display: flex; flex-wrap: wrap; gap: 0; justify-content: center; border-bottom: 1px solid var(--border); background: rgba(3,6,9,0.7); }
+  .ep-nav-link { font-family: var(--mono); font-size: 0.6rem; color: var(--text-dim); text-decoration: none; padding: 0.75rem 1.25rem; transition: all 0.2s; letter-spacing: 0.1em; border-bottom: 2px solid transparent; }
   .ep-nav-link:hover { color: var(--cyan); background: rgba(0,245,255,0.03); }
-  .ep-nav-link.active {
-    color: var(--cyan); border-bottom-color: var(--cyan);
-    background: rgba(0,245,255,0.05);
-  }
+  .ep-nav-link.active { color: var(--cyan); border-bottom-color: var(--cyan); background: rgba(0,245,255,0.05); }
 
-  /* ─── FULL-WIDTH SECTIONS ─── */
-  .section {
-    position: relative; z-index: 10;
-    max-width: 960px; margin: 0 auto;
-    padding: 0 1.5rem;
-  }
+  /* ─── SHARED LAYOUT ─── */
+  .section { position: relative; z-index: 10; max-width: 960px; margin: 0 auto; padding: 0 1.5rem; }
+  .section-full { position: relative; z-index: 10; width: 100%; }
+  .divider { height: 1px; background: linear-gradient(90deg, transparent, var(--border), transparent); margin: 0.5rem 0; }
 
-  .section-full {
-    position: relative; z-index: 10;
-    width: 100%;
-  }
-
-  /* ─── HERO ─── */
-  .hero {
-    position: relative;
-    text-align: center;
-    padding: 4rem 1.5rem 3rem;
-    overflow: hidden;
-  }
-
-  .hero-glow {
-    position: absolute;
-    top: 50%; left: 50%;
-    transform: translate(-50%, -50%);
-    width: 600px; height: 600px;
-    background: radial-gradient(circle, rgba(0,245,255,0.08) 0%, transparent 70%);
-    pointer-events: none;
-  }
-
-  .hero-heartbeat {
-    position: absolute;
-    top: 50%; left: 0; right: 0;
-    transform: translateY(-50%);
-    height: 120px;
-    opacity: 0.12;
-    overflow: hidden;
-    pointer-events: none;
-  }
-
-  .hero-heartbeat svg {
-    width: 200%; height: 100%;
-    animation: heartbeat-scroll 4s linear infinite;
-  }
-
-  @keyframes heartbeat-scroll {
-    from { transform: translateX(0); }
-    to { transform: translateX(-50%); }
-  }
-
-  .hero-score-label {
-    font-family: var(--mono); font-size: 0.65rem;
-    color: var(--cyan-dim); letter-spacing: 0.3em;
-    margin-bottom: 0.5rem;
-    text-transform: uppercase;
-  }
-
-  .hero-score {
-    font-family: var(--display);
-    font-size: clamp(4rem, 12vw, 8rem);
-    font-weight: 900;
-    color: var(--cyan);
-    text-shadow: 0 0 60px rgba(0,245,255,0.4), 0 0 120px rgba(0,245,255,0.15);
-    line-height: 1;
-    margin-bottom: 0.25rem;
-    position: relative;
-  }
-
-  .hero-subtitle {
-    font-family: var(--body); font-size: clamp(1rem, 2.5vw, 1.4rem);
-    font-weight: 300; color: var(--text);
-    margin-bottom: 2rem; letter-spacing: 0.02em;
-  }
-
-  .hero-stats {
-    display: flex; flex-wrap: wrap;
-    justify-content: center; gap: 0.75rem;
-    margin-bottom: 2.5rem;
-  }
-
-  .hero-stat-pill {
-    font-family: var(--mono); font-size: 0.65rem;
-    padding: 0.5rem 1rem; letter-spacing: 0.05em;
-    border: 1px solid var(--border);
-    background: rgba(13,31,45,0.8);
-  }
-
-  .hero-stat-pill .val {
-    font-weight: bold;
-  }
-
+  /* ─── HERO (shared) ─── */
+  .hero { position: relative; text-align: center; padding: 4rem 1.5rem 3rem; overflow: hidden; }
+  .hero-glow { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 600px; height: 600px; background: radial-gradient(circle, rgba(0,245,255,0.08) 0%, transparent 70%); pointer-events: none; }
+  .hero-glow.green { background: radial-gradient(circle, rgba(0,255,136,0.07) 0%, transparent 70%); }
+  .hero-glow.amber { background: radial-gradient(circle, rgba(255,170,0,0.06) 0%, transparent 70%); }
+  .hero-glow.red { background: radial-gradient(circle, rgba(255,51,85,0.06) 0%, transparent 70%); }
+  .hero-heartbeat { position: absolute; top: 50%; left: 0; right: 0; transform: translateY(-50%); height: 120px; opacity: 0.12; overflow: hidden; pointer-events: none; }
+  .hero-heartbeat svg { width: 200%; height: 100%; animation: heartbeat-scroll 4s linear infinite; }
+  @keyframes heartbeat-scroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+  .hero-score-label { font-family: var(--mono); font-size: 0.65rem; color: var(--cyan-dim); letter-spacing: 0.3em; margin-bottom: 0.5rem; text-transform: uppercase; }
+  .hero-score { font-family: var(--display); font-size: clamp(4rem, 12vw, 8rem); font-weight: 900; color: var(--cyan); text-shadow: 0 0 60px rgba(0,245,255,0.4), 0 0 120px rgba(0,245,255,0.15); line-height: 1; margin-bottom: 0.25rem; position: relative; }
+  .hero-score.green { color: var(--green); text-shadow: 0 0 60px rgba(0,255,136,0.4), 0 0 120px rgba(0,255,136,0.15); }
+  .hero-subtitle { font-family: var(--body); font-size: clamp(1rem, 2.5vw, 1.4rem); font-weight: 300; color: var(--text); margin-bottom: 2rem; letter-spacing: 0.02em; }
+  .hero-stats { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.75rem; margin-bottom: 2.5rem; }
+  .hero-stat-pill { font-family: var(--mono); font-size: 0.65rem; padding: 0.5rem 1rem; letter-spacing: 0.05em; border: 1px solid var(--border); background: rgba(13,31,45,0.8); }
+  .hero-stat-pill .val { font-weight: bold; }
   .hero-stat-pill .val.cyan { color: var(--cyan); }
   .hero-stat-pill .val.red { color: var(--red); }
   .hero-stat-pill .val.amber { color: var(--amber); }
-
-  .hero-cta {
-    display: inline-block;
-    background: linear-gradient(135deg, rgba(0,245,255,0.25), rgba(0,245,255,0.08));
-    border: 1px solid var(--cyan); color: var(--cyan);
-    font-family: var(--mono); font-size: 0.85rem;
-    padding: 1rem 2.5rem; cursor: pointer;
-    text-decoration: none;
-    transition: all 0.3s; letter-spacing: 0.08em;
-    font-weight: bold;
-  }
-
-  .hero-cta:hover {
-    background: rgba(0,245,255,0.3);
-    box-shadow: 0 0 30px rgba(0,245,255,0.3), 0 0 60px rgba(0,245,255,0.1);
-    transform: translateY(-1px);
-  }
+  .hero-stat-pill .val.green { color: var(--green); }
+  .hero-cta { display: inline-block; background: linear-gradient(135deg, rgba(0,245,255,0.25), rgba(0,245,255,0.08)); border: 1px solid var(--cyan); color: var(--cyan); font-family: var(--mono); font-size: 0.85rem; padding: 1rem 2.5rem; cursor: pointer; text-decoration: none; transition: all 0.3s; letter-spacing: 0.08em; font-weight: bold; }
+  .hero-cta:hover { background: rgba(0,245,255,0.3); box-shadow: 0 0 30px rgba(0,245,255,0.3), 0 0 60px rgba(0,245,255,0.1); transform: translateY(-1px); }
+  .hero-cta.green { border-color: var(--green); color: var(--green); background: linear-gradient(135deg, rgba(0,255,136,0.2), rgba(0,255,136,0.05)); }
+  .hero-cta.green:hover { background: rgba(0,255,136,0.25); box-shadow: 0 0 30px rgba(0,255,136,0.3); }
 
   /* ─── SECTION HEADERS ─── */
-  .sect-header {
-    text-align: center;
-    padding: 3.5rem 1rem 1.5rem;
-  }
+  .sect-header { text-align: center; padding: 3.5rem 1rem 1.5rem; }
+  .sect-tag { font-family: var(--mono); font-size: 0.55rem; color: var(--cyan-dim); letter-spacing: 0.3em; margin-bottom: 0.5rem; text-transform: uppercase; }
+  .sect-title { font-family: var(--display); font-size: clamp(1.1rem, 3vw, 1.6rem); font-weight: 700; color: var(--text-bright); letter-spacing: 0.04em; }
+  .sect-sub { font-family: var(--body); font-size: 1rem; color: var(--text-dim); margin-top: 0.5rem; }
 
-  .sect-tag {
-    font-family: var(--mono); font-size: 0.55rem;
-    color: var(--cyan-dim); letter-spacing: 0.3em;
-    margin-bottom: 0.5rem; text-transform: uppercase;
-  }
-
-  .sect-title {
-    font-family: var(--display); font-size: clamp(1.1rem, 3vw, 1.6rem);
-    font-weight: 700; color: var(--text-bright);
-    letter-spacing: 0.04em;
-  }
-
-  /* ─── DIMENSION CARDS ─── */
-  .dim-row {
-    display: grid; grid-template-columns: 1fr 1fr 1fr;
-    gap: 1rem; margin-bottom: 1.5rem;
-  }
-
-  .dim-card {
-    background: var(--panel); border: 1px solid var(--border);
-    padding: 1.5rem 1.25rem; text-align: center;
-    position: relative; overflow: hidden;
-  }
-
-  .dim-card::before {
-    content: '';
-    position: absolute; top: -1px; left: -1px; right: -1px;
-    height: 2px;
-    background: linear-gradient(90deg, transparent, var(--cyan), transparent);
-    opacity: 0.5;
-  }
-
-  .dim-tag {
-    font-family: var(--mono); font-size: 0.55rem;
-    color: var(--cyan-dim); letter-spacing: 0.2em;
-    margin-bottom: 0.75rem; text-transform: uppercase;
-  }
-
-  .dim-score {
-    font-family: var(--display); font-size: 2.2rem;
-    font-weight: 900; line-height: 1;
-    margin-bottom: 0.3rem;
-  }
-
-  .dim-label {
-    font-family: var(--mono); font-size: 0.6rem;
-    color: var(--text-dim); letter-spacing: 0.1em;
-    margin-bottom: 1rem;
-  }
-
-  .dim-bar-track {
-    height: 4px; background: var(--bg); border-radius: 2px;
-    overflow: hidden;
-  }
-
-  .dim-bar-fill {
-    height: 100%; border-radius: 2px;
-    width: 0; transition: width 1.5s cubic-bezier(0.22, 1, 0.36, 1);
-  }
-
-  .dim-desc {
-    font-family: var(--mono); font-size: 0.6rem;
-    color: var(--text-dim); margin-top: 0.75rem;
-    line-height: 1.5;
-  }
-
-  .dim-formula {
-    text-align: center; padding: 1rem 0 0.5rem;
-    font-family: var(--mono); font-size: 0.7rem;
-    color: var(--text-dim); letter-spacing: 0.1em;
-  }
-
+  /* ─── DIMENSION / FEATURE CARDS ─── */
+  .dim-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; margin-bottom: 1.5rem; }
+  .dim-row.two-col { grid-template-columns: 1fr 1fr; }
+  .dim-card { background: var(--panel); border: 1px solid var(--border); padding: 1.5rem 1.25rem; text-align: center; position: relative; overflow: hidden; }
+  .dim-card::before { content: ''; position: absolute; top: -1px; left: -1px; right: -1px; height: 2px; background: linear-gradient(90deg, transparent, var(--cyan), transparent); opacity: 0.5; }
+  .dim-tag { font-family: var(--mono); font-size: 0.55rem; color: var(--cyan-dim); letter-spacing: 0.2em; margin-bottom: 0.75rem; text-transform: uppercase; }
+  .dim-score { font-family: var(--display); font-size: 2.2rem; font-weight: 900; line-height: 1; margin-bottom: 0.3rem; }
+  .dim-label { font-family: var(--mono); font-size: 0.6rem; color: var(--text-dim); letter-spacing: 0.1em; margin-bottom: 1rem; }
+  .dim-bar-track { height: 4px; background: var(--bg); border-radius: 2px; overflow: hidden; }
+  .dim-bar-fill { height: 100%; border-radius: 2px; width: 0; transition: width 1.5s cubic-bezier(0.22, 1, 0.36, 1); }
+  .dim-desc { font-family: var(--mono); font-size: 0.6rem; color: var(--text-dim); margin-top: 0.75rem; line-height: 1.5; }
+  .dim-formula { text-align: center; padding: 1rem 0 0.5rem; font-family: var(--mono); font-size: 0.7rem; color: var(--text-dim); letter-spacing: 0.1em; }
   .dim-formula span { color: var(--cyan); font-weight: bold; }
 
   /* ─── GRADE DISTRIBUTION ─── */
-  .grade-section {
-    padding-bottom: 1rem;
-  }
-
-  .grade-headline {
-    font-family: var(--display); font-size: clamp(1rem, 2.5vw, 1.3rem);
-    font-weight: 700; color: var(--text-bright);
-    text-align: center; margin-bottom: 0.3rem;
-  }
-
-  .grade-subhead {
-    font-family: var(--mono); font-size: 0.7rem;
-    color: var(--text-dim); text-align: center;
-    margin-bottom: 2rem;
-  }
-
-  .grade-blocks {
-    display: flex; width: 100%;
-    height: 80px; margin-bottom: 1rem;
-    border: 1px solid var(--border);
-    overflow: hidden;
-  }
-
-  .grade-block {
-    display: flex; flex-direction: column;
-    align-items: center; justify-content: center;
-    transition: flex-basis 1.2s cubic-bezier(0.22, 1, 0.36, 1);
-    flex-basis: 0;
-    overflow: hidden;
-    min-width: 0;
-  }
-
-  .grade-block-letter {
-    font-family: var(--display); font-size: 1.1rem;
-    font-weight: 900; line-height: 1;
-    opacity: 0.9;
-  }
-
-  .grade-block-pct {
-    font-family: var(--mono); font-size: 0.6rem;
-    opacity: 0.8; margin-top: 0.15rem;
-  }
-
-  .grade-block-count {
-    font-family: var(--mono); font-size: 0.5rem;
-    opacity: 0.5;
-  }
-
-  .grade-legend {
-    display: flex; flex-wrap: wrap;
-    justify-content: center; gap: 1rem;
-    font-family: var(--mono); font-size: 0.55rem;
-    color: var(--text-dim);
-  }
-
-  .grade-legend-item {
-    display: flex; align-items: center; gap: 0.35rem;
-  }
-
-  .grade-legend-dot {
-    width: 8px; height: 8px; border-radius: 2px;
-  }
-
-  .grade-callout {
-    text-align: center; margin-top: 1.5rem;
-    font-family: var(--body); font-size: 1.05rem;
-    color: var(--text); line-height: 1.6;
-  }
-
+  .grade-section { padding-bottom: 1rem; }
+  .grade-headline { font-family: var(--display); font-size: clamp(1rem, 2.5vw, 1.3rem); font-weight: 700; color: var(--text-bright); text-align: center; margin-bottom: 0.3rem; }
+  .grade-subhead { font-family: var(--mono); font-size: 0.7rem; color: var(--text-dim); text-align: center; margin-bottom: 2rem; }
+  .grade-blocks { display: flex; width: 100%; height: 80px; margin-bottom: 1rem; border: 1px solid var(--border); overflow: hidden; }
+  .grade-block { display: flex; flex-direction: column; align-items: center; justify-content: center; transition: flex-basis 1.2s cubic-bezier(0.22, 1, 0.36, 1); flex-basis: 0; overflow: hidden; min-width: 0; }
+  .grade-block-letter { font-family: var(--display); font-size: 1.1rem; font-weight: 900; line-height: 1; opacity: 0.9; }
+  .grade-block-pct { font-family: var(--mono); font-size: 0.6rem; opacity: 0.8; margin-top: 0.15rem; }
+  .grade-block-count { font-family: var(--mono); font-size: 0.5rem; opacity: 0.5; }
+  .grade-legend { display: flex; flex-wrap: wrap; justify-content: center; gap: 1rem; font-family: var(--mono); font-size: 0.55rem; color: var(--text-dim); }
+  .grade-legend-item { display: flex; align-items: center; gap: 0.35rem; }
+  .grade-legend-dot { width: 8px; height: 8px; border-radius: 2px; }
+  .grade-callout { text-align: center; margin-top: 1.5rem; font-family: var(--body); font-size: 1.05rem; color: var(--text); line-height: 1.6; }
   .grade-callout strong { color: var(--amber); }
 
   /* ─── PATTERN CARDS ─── */
-  .pattern-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-    gap: 0.75rem;
-  }
-
-  .pattern-card {
-    background: var(--panel); border: 1px solid var(--border);
-    padding: 1rem 1.25rem; position: relative;
-    display: flex; flex-direction: column; gap: 0.4rem;
-  }
-
+  .pattern-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 0.75rem; }
+  .pattern-card { background: var(--panel); border: 1px solid var(--border); padding: 1rem 1.25rem; position: relative; display: flex; flex-direction: column; gap: 0.4rem; }
   .pattern-card.active { border-color: rgba(255,255,255,0.15); }
-
-  .pattern-card-top {
-    display: flex; align-items: center;
-    justify-content: space-between;
-  }
-
-  .pattern-name {
-    font-family: var(--mono); font-size: 0.75rem;
-    font-weight: bold; letter-spacing: 0.05em;
-  }
-
-  .pattern-badge {
-    font-family: var(--mono); font-size: 0.55rem;
-    padding: 0.2rem 0.5rem; letter-spacing: 0.08em;
-    border: 1px solid;
-  }
-
+  .pattern-card-top { display: flex; align-items: center; justify-content: space-between; }
+  .pattern-name { font-family: var(--mono); font-size: 0.75rem; font-weight: bold; letter-spacing: 0.05em; }
+  .pattern-badge { font-family: var(--mono); font-size: 0.55rem; padding: 0.2rem 0.5rem; letter-spacing: 0.08em; border: 1px solid; }
   .pattern-badge.critical { color: var(--red); border-color: rgba(255,51,85,0.3); background: rgba(255,51,85,0.08); }
   .pattern-badge.positive { color: var(--green); border-color: rgba(0,255,136,0.3); background: rgba(0,255,136,0.08); }
   .pattern-badge.warning { color: var(--amber); border-color: rgba(255,170,0,0.3); background: rgba(255,170,0,0.08); }
+  .pattern-desc { font-family: var(--mono); font-size: 0.6rem; color: var(--text-dim); line-height: 1.5; }
+  .pattern-stat { font-family: var(--mono); font-size: 0.6rem; margin-top: 0.25rem; }
+  .pattern-bar-track { height: 3px; background: var(--bg); border-radius: 2px; margin-top: 0.35rem; overflow: hidden; }
+  .pattern-bar-fill { height: 100%; border-radius: 2px; width: 0; transition: width 1.5s cubic-bezier(0.22, 1, 0.36, 1); }
+  .pattern-inactive { opacity: 0.4; }
 
-  .pattern-desc {
-    font-family: var(--mono); font-size: 0.6rem;
-    color: var(--text-dim); line-height: 1.5;
-  }
-
-  .pattern-stat {
-    font-family: var(--mono); font-size: 0.6rem;
-    margin-top: 0.25rem;
-  }
-
-  .pattern-bar-track {
-    height: 3px; background: var(--bg); border-radius: 2px;
-    margin-top: 0.35rem; overflow: hidden;
-  }
-
-  .pattern-bar-fill {
-    height: 100%; border-radius: 2px;
-    width: 0; transition: width 1.5s cubic-bezier(0.22, 1, 0.36, 1);
-  }
-
-  .pattern-inactive {
-    opacity: 0.4;
-  }
-
-  /* ─── SAMPLE OUTPUT ─── */
-  .sample-section { padding-bottom: 0.5rem; }
-
-  .code-block {
-    background: var(--bg); border: 1px solid var(--border);
-    padding: 1.5rem 1.5rem; overflow-x: auto;
-    font-family: var(--mono); font-size: 0.7rem;
-    line-height: 1.8; color: var(--text-dim);
-    position: relative;
-  }
-
-  .code-block::before {
-    content: 'RESPONSE';
-    position: absolute; top: 0.5rem; right: 0.75rem;
-    font-size: 0.5rem; color: var(--cyan-dim);
-    letter-spacing: 0.2em;
-  }
-
+  /* ─── CODE BLOCK ─── */
+  .code-block { background: var(--bg); border: 1px solid var(--border); padding: 1.5rem; overflow-x: auto; font-family: var(--mono); font-size: 0.7rem; line-height: 1.8; color: var(--text-dim); position: relative; }
+  .code-block::before { content: 'RESPONSE'; position: absolute; top: 0.5rem; right: 0.75rem; font-size: 0.5rem; color: var(--cyan-dim); letter-spacing: 0.2em; }
   .code-block .key { color: var(--cyan); }
   .code-block .str { color: var(--green); }
   .code-block .num { color: var(--amber); }
-
-  .code-line {
-    opacity: 0; transform: translateX(-8px);
-    transition: opacity 0.3s ease, transform 0.3s ease;
-  }
-
-  .code-line.visible {
-    opacity: 1; transform: translateX(0);
-  }
+  .code-line { opacity: 0; transform: translateX(-8px); transition: opacity 0.3s ease, transform 0.3s ease; }
+  .code-line.visible { opacity: 1; transform: translateX(0); }
 
   /* ─── CTA BOTTOM ─── */
-  .cta-bottom {
-    text-align: center;
-    padding: 4rem 1.5rem 3rem;
-    position: relative;
-  }
-
-  .cta-bottom-glow {
-    position: absolute;
-    bottom: 0; left: 50%;
-    transform: translateX(-50%);
-    width: 500px; height: 300px;
-    background: radial-gradient(ellipse, rgba(0,245,255,0.06) 0%, transparent 70%);
-    pointer-events: none;
-  }
-
-  .cta-question {
-    font-family: var(--display);
-    font-size: clamp(1.2rem, 3vw, 1.8rem);
-    font-weight: 700; color: var(--text-bright);
-    margin-bottom: 2rem;
-  }
-
-  .cta-form {
-    display: flex; gap: 0.75rem;
-    max-width: 560px; margin: 0 auto 1.25rem;
-  }
-
-  .cta-input {
-    flex: 1; background: var(--bg);
-    border: 1px solid var(--border); color: var(--text);
-    font-family: var(--mono); font-size: 0.75rem;
-    padding: 1rem 1.25rem; outline: none;
-    transition: border-color 0.2s;
-  }
-
+  .cta-bottom { text-align: center; padding: 4rem 1.5rem 3rem; position: relative; }
+  .cta-bottom-glow { position: absolute; bottom: 0; left: 50%; transform: translateX(-50%); width: 500px; height: 300px; background: radial-gradient(ellipse, rgba(0,245,255,0.06) 0%, transparent 70%); pointer-events: none; }
+  .cta-question { font-family: var(--display); font-size: clamp(1.2rem, 3vw, 1.8rem); font-weight: 700; color: var(--text-bright); margin-bottom: 2rem; }
+  .cta-form { display: flex; gap: 0.75rem; max-width: 560px; margin: 0 auto 1.25rem; }
+  .cta-input { flex: 1; background: var(--bg); border: 1px solid var(--border); color: var(--text); font-family: var(--mono); font-size: 0.75rem; padding: 1rem 1.25rem; outline: none; transition: border-color 0.2s; }
   .cta-input::placeholder { color: var(--text-dim); }
   .cta-input:focus { border-color: var(--cyan-dim); box-shadow: 0 0 15px rgba(0,245,255,0.1); }
+  .cta-btn { background: linear-gradient(135deg, rgba(0,245,255,0.25), rgba(0,245,255,0.08)); border: 1px solid var(--cyan); color: var(--cyan); font-family: var(--mono); font-size: 0.75rem; padding: 1rem 2rem; cursor: pointer; white-space: nowrap; transition: all 0.3s; letter-spacing: 0.06em; font-weight: bold; }
+  .cta-btn:hover { background: rgba(0,245,255,0.3); box-shadow: 0 0 25px rgba(0,245,255,0.3); transform: translateY(-1px); }
+  .cta-note { font-family: var(--body); font-size: 0.9rem; color: var(--text-dim); margin-bottom: 0.5rem; }
+  .cta-powered { font-family: var(--mono); font-size: 0.5rem; color: var(--cyan-dim); letter-spacing: 0.2em; }
 
-  .cta-btn {
-    background: linear-gradient(135deg, rgba(0,245,255,0.25), rgba(0,245,255,0.08));
-    border: 1px solid var(--cyan); color: var(--cyan);
-    font-family: var(--mono); font-size: 0.75rem;
-    padding: 1rem 2rem; cursor: pointer;
-    white-space: nowrap; transition: all 0.3s;
-    letter-spacing: 0.06em; font-weight: bold;
-  }
+  /* ═══════════════════════════════════════════════
+     WASH PAGE — Gauge + Before/After
+     ═══════════════════════════════════════════════ */
+  .gauge-wrap { position: relative; width: 260px; height: 140px; margin: 0 auto 0.5rem; }
+  .gauge-svg { width: 100%; height: 100%; }
+  .gauge-track { fill: none; stroke: var(--border); stroke-width: 10; stroke-linecap: round; }
+  .gauge-fill { fill: none; stroke-width: 10; stroke-linecap: round; transition: stroke-dashoffset 2s cubic-bezier(0.22, 1, 0.36, 1); }
+  .gauge-num { position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%); font-family: var(--display); font-size: 2.5rem; font-weight: 900; line-height: 1; }
+  .gauge-label { text-align: center; font-family: var(--mono); font-size: 0.6rem; color: var(--text-dim); letter-spacing: 0.15em; margin-bottom: 1.5rem; }
 
-  .cta-btn:hover {
-    background: rgba(0,245,255,0.3);
-    box-shadow: 0 0 25px rgba(0,245,255,0.3);
-    transform: translateY(-1px);
-  }
+  .ba-grid { display: grid; grid-template-columns: 1fr auto 1fr; gap: 0; margin-bottom: 1rem; }
+  .ba-col { padding: 1.25rem; }
+  .ba-col.dirty { background: rgba(255,51,85,0.04); border: 1px solid rgba(255,51,85,0.15); }
+  .ba-col.clean { background: rgba(0,255,136,0.04); border: 1px solid rgba(0,255,136,0.15); }
+  .ba-divider { display: flex; align-items: center; padding: 0 0.5rem; }
+  .ba-arrow { font-family: var(--mono); font-size: 1.5rem; color: var(--cyan); animation: pulse-arrow 2s ease-in-out infinite; }
+  @keyframes pulse-arrow { 0%,100% { opacity: 0.4; } 50% { opacity: 1; } }
+  .ba-title { font-family: var(--mono); font-size: 0.6rem; letter-spacing: 0.2em; margin-bottom: 0.75rem; text-transform: uppercase; }
+  .ba-title.red { color: var(--red); }
+  .ba-title.green { color: var(--green); }
+  .ba-item { font-family: var(--mono); font-size: 0.65rem; color: var(--text); padding: 0.35rem 0; display: flex; align-items: center; gap: 0.5rem; }
+  .ba-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+  .ba-dot.red { background: var(--red); box-shadow: 0 0 6px var(--red); }
+  .ba-dot.green { background: var(--green); box-shadow: 0 0 6px var(--green); }
 
-  .cta-note {
-    font-family: var(--body); font-size: 0.9rem;
-    color: var(--text-dim); margin-bottom: 0.5rem;
-  }
+  .scan-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 0.75rem; }
+  .scan-card { background: var(--panel); border: 1px solid var(--border); padding: 1rem; text-align: center; }
+  .scan-card-icon { font-size: 1.5rem; margin-bottom: 0.5rem; }
+  .scan-card-name { font-family: var(--mono); font-size: 0.65rem; color: var(--text-bright); letter-spacing: 0.08em; margin-bottom: 0.3rem; }
+  .scan-card-desc { font-family: var(--mono); font-size: 0.55rem; color: var(--text-dim); line-height: 1.4; }
 
-  .cta-powered {
-    font-family: var(--mono); font-size: 0.5rem;
-    color: var(--cyan-dim); letter-spacing: 0.2em;
-  }
+  /* ═══════════════════════════════════════════════
+     RISK PAGE — Traffic Light + Speed
+     ═══════════════════════════════════════════════ */
+  .traffic-light { display: flex; flex-direction: column; align-items: center; gap: 0.75rem; margin: 0 auto 1rem; width: 80px; padding: 1.25rem 0; background: var(--panel); border: 1px solid var(--border); border-radius: 40px; }
+  .tl-circle { width: 40px; height: 40px; border-radius: 50%; border: 2px solid; opacity: 0.15; transition: all 1s ease; }
+  .tl-circle.r { border-color: rgba(255,51,85,0.3); background: rgba(255,51,85,0.05); }
+  .tl-circle.a { border-color: rgba(255,170,0,0.3); background: rgba(255,170,0,0.05); }
+  .tl-circle.g { border-color: rgba(0,255,136,0.3); background: rgba(0,255,136,0.05); }
+  .tl-circle.lit { opacity: 1; }
+  .tl-circle.r.lit { background: var(--red); border-color: var(--red); box-shadow: 0 0 20px var(--red), 0 0 40px rgba(255,51,85,0.3); }
+  .tl-circle.a.lit { background: var(--amber); border-color: var(--amber); box-shadow: 0 0 20px var(--amber), 0 0 40px rgba(255,170,0,0.3); }
+  .tl-circle.g.lit { background: var(--green); border-color: var(--green); box-shadow: 0 0 20px var(--green), 0 0 40px rgba(0,255,136,0.3); }
 
-  /* ─── DIVIDER ─── */
-  .divider {
-    height: 1px;
-    background: linear-gradient(90deg, transparent, var(--border), transparent);
-    margin: 0.5rem 0;
-  }
+  .risk-levels { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; }
+  .risk-level-card { background: var(--panel); border: 1px solid var(--border); padding: 1.25rem; text-align: center; position: relative; overflow: hidden; }
+  .risk-level-card::before { content: ''; position: absolute; top: -1px; left: -1px; right: -1px; height: 3px; }
+  .risk-level-card.low::before { background: var(--green); }
+  .risk-level-card.med::before { background: var(--amber); }
+  .risk-level-card.high::before { background: var(--red); }
+  .rl-label { font-family: var(--display); font-size: 0.85rem; font-weight: 700; letter-spacing: 0.1em; margin-bottom: 0.4rem; }
+  .rl-label.low { color: var(--green); }
+  .rl-label.med { color: var(--amber); }
+  .rl-label.high { color: var(--red); }
+  .rl-range { font-family: var(--mono); font-size: 0.6rem; color: var(--text-dim); margin-bottom: 0.5rem; }
+  .rl-desc { font-family: var(--mono); font-size: 0.6rem; color: var(--text); line-height: 1.5; }
 
-  /* ─── GENERIC FALLBACK (non-AHS slugs) ─── */
-  .generic-container {
-    position: relative; z-index: 10;
-    max-width: 800px; margin: 0 auto;
-    padding: 0 1.5rem 4rem;
-  }
+  .speed-bar { display: flex; align-items: center; gap: 1rem; max-width: 500px; margin: 0 auto; padding: 1.5rem; background: var(--panel); border: 1px solid var(--border); }
+  .speed-label { font-family: var(--mono); font-size: 0.6rem; color: var(--text-dim); letter-spacing: 0.1em; white-space: nowrap; }
+  .speed-track { flex: 1; height: 6px; background: var(--bg); border-radius: 3px; overflow: hidden; position: relative; }
+  .speed-fill { height: 100%; border-radius: 3px; background: linear-gradient(90deg, var(--cyan), var(--green)); width: 0; transition: width 0.8s cubic-bezier(0.22, 1, 0.36, 1); }
+  .speed-time { font-family: var(--display); font-size: 1.4rem; font-weight: 900; color: var(--green); white-space: nowrap; }
 
-  .gen-hero {
-    text-align: center; padding: 3rem 1rem 2rem;
-  }
+  .usecase-callout { text-align: center; padding: 1.5rem; background: var(--panel); border: 1px solid var(--border); margin-bottom: 1.5rem; }
+  .usecase-callout .big { font-family: var(--body); font-size: 1.15rem; color: var(--text-bright); line-height: 1.6; }
+  .usecase-callout .big strong { color: var(--cyan); }
 
-  .gen-price-badge {
-    display: inline-block;
-    font-family: var(--mono); font-size: 0.7rem;
-    color: var(--green); border: 1px solid var(--green-dim);
-    padding: 0.3rem 0.9rem; margin-bottom: 1rem;
-    letter-spacing: 0.1em;
-  }
+  /* ═══════════════════════════════════════════════
+     REPORT CARD PAGE — Mock Card + Percentile
+     ═══════════════════════════════════════════════ */
+  .mock-card { max-width: 520px; margin: 0 auto 1rem; background: var(--bg); border: 1px solid var(--border); padding: 1.5rem 2rem; position: relative; overflow: hidden; }
+  .mock-card::before { content: ''; position: absolute; top: -1px; left: -1px; right: -1px; height: 2px; background: linear-gradient(90deg, var(--cyan), var(--green), var(--cyan)); }
+  .mc-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
+  .mc-title { font-family: var(--mono); font-size: 0.6rem; color: var(--cyan); letter-spacing: 0.2em; }
+  .mc-grade { font-family: var(--display); font-size: 1rem; font-weight: 900; padding: 0.2rem 0.75rem; border: 1px solid; }
+  .mc-score-row { text-align: center; margin-bottom: 1rem; }
+  .mc-score-big { font-family: var(--display); font-size: 3rem; font-weight: 900; color: var(--amber); line-height: 1; }
+  .mc-score-label { font-family: var(--mono); font-size: 0.55rem; color: var(--text-dim); letter-spacing: 0.15em; margin-top: 0.2rem; }
+  .mc-dims { display: flex; gap: 1rem; justify-content: center; margin-bottom: 0.75rem; }
+  .mc-dim { text-align: center; flex: 1; padding: 0.5rem; border: 1px solid var(--border); }
+  .mc-dim-val { font-family: var(--display); font-size: 1.1rem; font-weight: 900; }
+  .mc-dim-lbl { font-family: var(--mono); font-size: 0.5rem; color: var(--text-dim); letter-spacing: 0.1em; }
+  .mc-rank { text-align: center; font-family: var(--mono); font-size: 0.6rem; color: var(--cyan); letter-spacing: 0.1em; padding: 0.5rem; border-top: 1px solid var(--border); }
+  .mc-footer { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 0.5rem; color: var(--text-dim); margin-top: 0.75rem; padding-top: 0.5rem; border-top: 1px solid var(--border); }
 
-  .gen-name {
-    font-family: var(--display);
-    font-size: clamp(1.4rem, 4vw, 2.4rem);
-    font-weight: 900; letter-spacing: 0.05em;
-    color: var(--cyan);
-    text-shadow: 0 0 40px rgba(0,245,255,0.3);
-    margin-bottom: 0.5rem;
-  }
+  .pct-wrap { max-width: 600px; margin: 0 auto; }
+  .pct-svg { width: 100%; height: auto; }
+  .pct-label { text-align: center; font-family: var(--mono); font-size: 0.7rem; color: var(--text-dim); margin-top: 0.5rem; letter-spacing: 0.1em; }
 
-  .gen-tagline {
-    font-family: var(--mono); font-size: 0.8rem;
-    color: var(--text-dim); margin-bottom: 0.75rem;
-  }
-
-  .panel {
-    background: var(--panel); border: 1px solid var(--border);
-    position: relative; margin-bottom: 1.5rem;
-  }
-
-  .panel::before {
-    content: '';
-    position: absolute; top: -1px; left: -1px; right: -1px;
-    height: 2px;
-    background: linear-gradient(90deg, transparent, var(--cyan), transparent);
-    opacity: 0.6;
-  }
-
-  .panel-header {
-    padding: 0.75rem 1.25rem;
-    border-bottom: 1px solid var(--border);
-  }
-
-  .panel-title {
-    font-family: var(--mono); font-size: 0.65rem;
-    color: var(--cyan); letter-spacing: 0.2em;
-    text-transform: uppercase;
-  }
-
-  .panel-body { padding: 1.25rem; }
-
-  .feature-list {
-    list-style: none; display: grid;
-    grid-template-columns: 1fr 1fr; gap: 0.6rem;
-  }
-
-  .feature-list li {
-    font-family: var(--mono); font-size: 0.7rem;
-    color: var(--text); padding: 0.5rem 0.75rem;
-    border-left: 2px solid var(--cyan-dim);
-    background: var(--bg3);
-  }
-
-  .feature-list li::before {
-    content: '\25B8 ';
-    color: var(--cyan);
-  }
-
-  .pills {
-    display: flex; flex-wrap: wrap; gap: 0.5rem;
-  }
-
-  .pill {
-    font-family: var(--mono); font-size: 0.65rem;
-    color: var(--text); border: 1px solid var(--border);
-    padding: 0.35rem 0.75rem; background: var(--bg3);
-    letter-spacing: 0.05em;
-  }
+  .share-row { display: flex; gap: 1rem; justify-content: center; margin: 1.5rem 0; }
+  .share-pill { font-family: var(--mono); font-size: 0.65rem; padding: 0.5rem 1.25rem; border: 1px solid var(--border); background: var(--panel); color: var(--text); display: flex; align-items: center; gap: 0.5rem; }
+  .share-pill .icon { color: var(--cyan); }
 
   /* ─── FOOTER ─── */
-  footer {
-    position: relative; z-index: 10;
-    border-top: 1px solid var(--border);
-    padding: 1.5rem 2rem;
-    display: flex; align-items: center; justify-content: space-between;
-    background: rgba(3,6,9,0.9);
-  }
-
-  .footer-text {
-    font-family: var(--mono); font-size: 0.6rem;
-    color: var(--text-dim); letter-spacing: 0.15em;
-  }
-
-  .footer-links {
-    font-family: var(--mono); font-size: 0.6rem;
-    letter-spacing: 0.15em; display: flex; gap: 1.5rem;
-  }
-
-  .footer-link {
-    color: var(--cyan-dim); text-decoration: none;
-    opacity: 0.7; transition: opacity 0.2s;
-  }
-
+  footer { position: relative; z-index: 10; border-top: 1px solid var(--border); padding: 1.5rem 2rem; display: flex; align-items: center; justify-content: space-between; background: rgba(3,6,9,0.9); }
+  .footer-text { font-family: var(--mono); font-size: 0.6rem; color: var(--text-dim); letter-spacing: 0.15em; }
+  .footer-links { font-family: var(--mono); font-size: 0.6rem; letter-spacing: 0.15em; display: flex; gap: 1.5rem; }
+  .footer-link { color: var(--cyan-dim); text-decoration: none; opacity: 0.7; transition: opacity 0.2s; }
   .footer-link:hover { opacity: 1; color: var(--cyan); }
-
-  .footer-network {
-    font-family: var(--mono); font-size: 0.6rem;
-    color: var(--cyan-dim); display: flex;
-    align-items: center; gap: 0.5rem;
-  }
-
-  .status-dot {
-    width: 6px; height: 6px; background: var(--green);
-    border-radius: 50%; animation: blink 2s ease-in-out infinite;
-    box-shadow: 0 0 8px var(--green);
-  }
-
-  @keyframes blink {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.3; }
-  }
+  .footer-network { font-family: var(--mono); font-size: 0.6rem; color: var(--cyan-dim); display: flex; align-items: center; gap: 0.5rem; }
+  .status-dot { width: 6px; height: 6px; background: var(--green); border-radius: 50%; animation: blink 2s ease-in-out infinite; box-shadow: 0 0 8px var(--green); }
+  @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
 
   /* ─── SCROLL ANIMATIONS ─── */
-  .anim-in {
-    opacity: 0; transform: translateY(20px);
-    transition: opacity 0.6s ease, transform 0.6s ease;
-  }
-
-  .anim-in.visible {
-    opacity: 1; transform: translateY(0);
-  }
+  .anim-in { opacity: 0; transform: translateY(20px); transition: opacity 0.6s ease, transform 0.6s ease; }
+  .anim-in.visible { opacity: 1; transform: translateY(0); }
 
   /* ─── LOADING ─── */
-  .loading-state {
-    position: relative; z-index: 10;
-    text-align: center; padding: 6rem 1rem;
-  }
-
-  .loading-spinner {
-    display: inline-block; width: 28px; height: 28px;
-    border: 2px solid var(--border); border-top-color: var(--cyan);
-    border-radius: 50%; animation: spin 0.8s linear infinite;
-  }
-
+  .loading-state { position: relative; z-index: 10; text-align: center; padding: 6rem 1rem; }
+  .loading-spinner { display: inline-block; width: 28px; height: 28px; border: 2px solid var(--border); border-top-color: var(--cyan); border-radius: 50%; animation: spin 0.8s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
-
-  .loading-text {
-    font-family: var(--mono); font-size: 0.7rem;
-    color: var(--text-dim); margin-top: 0.75rem;
-    letter-spacing: 0.15em;
-  }
-
-  .error-state {
-    position: relative; z-index: 10;
-    text-align: center; padding: 4rem 1rem;
-    font-family: var(--mono); font-size: 0.75rem; color: var(--red);
-  }
+  .loading-text { font-family: var(--mono); font-size: 0.7rem; color: var(--text-dim); margin-top: 0.75rem; letter-spacing: 0.15em; }
+  .error-state { position: relative; z-index: 10; text-align: center; padding: 4rem 1rem; font-family: var(--mono); font-size: 0.75rem; color: var(--red); }
 
   /* ─── RESPONSIVE ─── */
   @media (max-width: 768px) {
-    .dim-row { grid-template-columns: 1fr; }
+    .dim-row, .risk-levels { grid-template-columns: 1fr; }
+    .dim-row.two-col { grid-template-columns: 1fr; }
     .pattern-grid { grid-template-columns: 1fr; }
-    .feature-list { grid-template-columns: 1fr; }
+    .scan-cards { grid-template-columns: 1fr 1fr; }
     .cta-form { flex-direction: column; }
     .hero-stats { flex-direction: column; align-items: center; }
     .hero-stat-pill { width: 100%; max-width: 280px; text-align: center; }
@@ -727,12 +279,18 @@
     .grade-block-letter { font-size: 0.85rem; }
     .grade-block-pct { font-size: 0.5rem; }
     .grade-block-count { display: none; }
+    .ba-grid { grid-template-columns: 1fr; }
+    .ba-divider { justify-content: center; padding: 0.5rem 0; }
+    .ba-arrow { transform: rotate(90deg); }
+    .speed-bar { flex-direction: column; text-align: center; }
+    .mc-dims { flex-direction: column; }
+    .share-row { flex-direction: column; align-items: center; }
   }
-
   @media (max-width: 480px) {
     .hero-score { font-size: 4rem; }
     .nav-links { gap: 0.75rem; }
     .ep-nav-link { padding: 0.6rem 0.75rem; font-size: 0.5rem; }
+    .scan-cards { grid-template-columns: 1fr; }
   }
 </style>
 </head>
@@ -746,99 +304,66 @@
   </div>
 </header>
 
-<!-- ENDPOINT NAV -->
 <div class="ep-nav" id="ep-nav"></div>
 
-<!-- LOADING -->
 <div id="loading" class="loading-state">
   <div class="loading-spinner"></div>
   <div class="loading-text">LOADING ENDPOINT DATA...</div>
 </div>
-
-<!-- ERROR -->
 <div id="error" class="error-state" style="display:none"></div>
 
-<!-- ═══════════════════════════════════════════════════════════════════
-     AHS PREMIUM PAGE (hidden until loaded for slug=ahs)
-     ═══════════════════════════════════════════════════════════════════ -->
+<!-- ═══════════════════════════════════════════════════════════
+     AHS PAGE
+     ═══════════════════════════════════════════════════════════ -->
 <div id="ahs-page" style="display:none">
-
-  <!-- 1. HERO -->
   <div class="section-full hero">
     <div class="hero-glow"></div>
     <div class="hero-heartbeat" id="heartbeat-container"></div>
-
     <div class="hero-score-label">ECOSYSTEM AVERAGE AGENT HEALTH SCORE</div>
     <div class="hero-score" id="hero-score-num">0</div>
     <div class="hero-subtitle">The definitive health score for autonomous agents</div>
-
     <div class="hero-stats">
       <div class="hero-stat-pill"><span class="val cyan" id="hs-total">0</span> agents scored</div>
       <div class="hero-stat-pill"><span class="val red" id="hs-zombie">0%</span> Zombie Agent patterns</div>
       <div class="hero-stat-pill"><span class="val amber" id="hs-agrade">0%</span> reach A grade</div>
     </div>
-
-    <a href="#cta-section" class="hero-cta">SCORE YOUR AGENT &mdash; $1.00 USDC</a>
+    <a href="#cta-ahs" class="hero-cta">SCORE YOUR AGENT &mdash; $1.00 USDC</a>
   </div>
-
   <div class="divider"></div>
-
-  <!-- 2. DIMENSIONS -->
   <div class="section">
-    <div class="sect-header anim-in">
-      <div class="sect-tag">// How It Works</div>
-      <div class="sect-title">Three Dimensions of Agent Health</div>
-    </div>
-
+    <div class="sect-header anim-in"><div class="sect-tag">// How It Works</div><div class="sect-title">Three Dimensions of Agent Health</div></div>
     <div class="dim-row anim-in" id="dim-row">
       <div class="dim-card">
         <div class="dim-tag">D1 // Wallet Hygiene</div>
         <div class="dim-score" id="dim-d1-score" style="color:var(--green)">0</div>
         <div class="dim-label">ECOSYSTEM AVG</div>
-        <div class="dim-bar-track">
-          <div class="dim-bar-fill" id="dim-d1-bar" style="background:var(--green)"></div>
-        </div>
+        <div class="dim-bar-track"><div class="dim-bar-fill" id="dim-d1-bar" style="background:var(--green)"></div></div>
         <div class="dim-desc">Dust accumulation, spam exposure, gas efficiency, failed tx rate</div>
       </div>
       <div class="dim-card">
         <div class="dim-tag">D2 // Behavioural</div>
         <div class="dim-score" id="dim-d2-score" style="color:var(--red)">0</div>
         <div class="dim-label">ECOSYSTEM AVG</div>
-        <div class="dim-bar-track">
-          <div class="dim-bar-fill" id="dim-d2-bar" style="background:var(--red)"></div>
-        </div>
+        <div class="dim-bar-track"><div class="dim-bar-fill" id="dim-d2-bar" style="background:var(--red)"></div></div>
         <div class="dim-desc">Timing patterns, counterparty diversity, transfer breadth, activity gaps</div>
       </div>
       <div class="dim-card">
         <div class="dim-tag">D3 // Infrastructure</div>
         <div class="dim-score" style="color:var(--text-dim)">&mdash;</div>
         <div class="dim-label">COMING SOON</div>
-        <div class="dim-bar-track">
-          <div class="dim-bar-fill" style="width:0;background:var(--cyan-dim)"></div>
-        </div>
+        <div class="dim-bar-track"><div class="dim-bar-fill" style="width:0;background:var(--cyan-dim)"></div></div>
         <div class="dim-desc">API reliability, uptime monitoring, RPC health, response latency</div>
       </div>
     </div>
-
-    <div class="dim-formula anim-in">
-      <span>D1</span> + <span>D2</span> + <span>D3</span> = <span>AGENT HEALTH SCORE</span>
-    </div>
+    <div class="dim-formula anim-in"><span>D1</span> + <span>D2</span> + <span>D3</span> = <span>AGENT HEALTH SCORE</span></div>
   </div>
-
   <div class="divider"></div>
-
-  <!-- 3. GRADE DISTRIBUTION -->
   <div class="section">
-    <div class="sect-header anim-in">
-      <div class="sect-tag">// Ecosystem Health</div>
-    </div>
-
+    <div class="sect-header anim-in"><div class="sect-tag">// Ecosystem Health</div></div>
     <div class="grade-section anim-in">
       <div class="grade-headline">Most agents are not healthy</div>
       <div class="grade-subhead">Grade distribution across all scanned agents</div>
-
       <div class="grade-blocks" id="grade-blocks"></div>
-
       <div class="grade-legend">
         <div class="grade-legend-item"><div class="grade-legend-dot" style="background:var(--grade-a)"></div> A (90-100)</div>
         <div class="grade-legend-item"><div class="grade-legend-dot" style="background:var(--grade-b)"></div> B (80-89)</div>
@@ -847,98 +372,293 @@
         <div class="grade-legend-item"><div class="grade-legend-dot" style="background:var(--grade-e)"></div> E (50-59)</div>
         <div class="grade-legend-item"><div class="grade-legend-dot" style="background:var(--grade-f)"></div> F (&lt;50)</div>
       </div>
-
       <div class="grade-callout" id="grade-callout"></div>
     </div>
   </div>
-
   <div class="divider"></div>
-
-  <!-- 4. PATTERN DETECTION -->
   <div class="section">
-    <div class="sect-header anim-in">
-      <div class="sect-tag">// Cross-Dimensional Pattern Detection</div>
-      <div class="sect-title">7 Behavioural Patterns</div>
-    </div>
-
+    <div class="sect-header anim-in"><div class="sect-tag">// Cross-Dimensional Pattern Detection</div><div class="sect-title">7 Behavioural Patterns</div></div>
     <div class="pattern-grid anim-in" id="pattern-grid"></div>
   </div>
-
   <div class="divider"></div>
-
-  <!-- 5. SAMPLE OUTPUT -->
   <div class="section">
-    <div class="sect-header anim-in">
-      <div class="sect-tag">// Sample Response</div>
-      <div class="sect-title">What You Get Back</div>
-    </div>
-
-    <div class="sample-section anim-in">
-      <div class="code-block" id="code-block"></div>
-    </div>
+    <div class="sect-header anim-in"><div class="sect-tag">// Sample Response</div><div class="sect-title">What You Get Back</div></div>
+    <div class="anim-in"><div class="code-block" id="ahs-code"></div></div>
   </div>
-
   <div class="divider"></div>
-
-  <!-- 6. CTA BOTTOM -->
-  <div class="section-full cta-bottom" id="cta-section">
+  <div class="section-full cta-bottom" id="cta-ahs">
     <div class="cta-bottom-glow"></div>
     <div class="cta-question">How healthy is your agent?</div>
     <div class="cta-form">
-      <input type="text" class="cta-input" id="cta-address" placeholder="0x... agent wallet address" spellcheck="false" autocomplete="off">
-      <button class="cta-btn" onclick="goRun()">GET MY AHS SCORE</button>
+      <input type="text" class="cta-input" id="cta-ahs-addr" placeholder="0x... agent wallet address" spellcheck="false" autocomplete="off">
+      <button class="cta-btn" onclick="goCTA('ahs')">GET MY AHS SCORE</button>
     </div>
     <div class="cta-note">No account. No subscription. Pay once on Base mainnet.</div>
     <div class="cta-powered">POWERED BY x402 &middot; USDC &middot; BASE MAINNET</div>
   </div>
 </div>
 
-<!-- ═══════════════════════════════════════════════════════════════════
-     GENERIC PAGE (non-AHS slugs)
-     ═══════════════════════════════════════════════════════════════════ -->
-<div id="generic-page" style="display:none">
-  <div class="generic-container">
-    <div class="gen-hero">
-      <div class="gen-price-badge" id="gen-price"></div>
-      <h1 class="gen-name" id="gen-name"></h1>
-      <div class="gen-tagline" id="gen-tagline"></div>
+<!-- ═══════════════════════════════════════════════════════════
+     WASH PAGE
+     ═══════════════════════════════════════════════════════════ -->
+<div id="wash-page" style="display:none">
+  <div class="section-full hero">
+    <div class="hero-glow green"></div>
+    <div class="hero-score-label">ECOSYSTEM AVERAGE WALLET HYGIENE</div>
+    <div class="gauge-wrap">
+      <svg class="gauge-svg" viewBox="0 0 260 140">
+        <path class="gauge-track" d="M 20 130 A 110 110 0 0 1 240 130" />
+        <path class="gauge-fill" id="wash-gauge-fill" d="M 20 130 A 110 110 0 0 1 240 130" stroke="var(--green)" stroke-dasharray="345.6" stroke-dashoffset="345.6" />
+      </svg>
+      <div class="gauge-num" id="wash-gauge-num" style="color:var(--green)">0</div>
     </div>
-
-    <div class="panel">
-      <div class="panel-header"><div class="panel-title">// Overview</div></div>
-      <div class="panel-body">
-        <div style="font-family:var(--body);font-size:1.05rem;color:var(--text);line-height:1.7" id="gen-desc"></div>
+    <div class="gauge-label">OUT OF 100</div>
+    <div class="hero-subtitle">Is your agent clean?</div>
+    <div class="hero-stats">
+      <div class="hero-stat-pill"><span class="val cyan" id="ws-total">0</span> agents scanned</div>
+      <div class="hero-stat-pill">avg hygiene <span class="val green" id="ws-avg">0</span></div>
+      <div class="hero-stat-pill"><span class="val red" id="ws-zombie">0%</span> have critical patterns</div>
+    </div>
+    <a href="#cta-wash" class="hero-cta green">SCAN YOUR AGENT &mdash; $0.50 USDC</a>
+  </div>
+  <div class="divider"></div>
+  <div class="section">
+    <div class="sect-header anim-in"><div class="sect-tag">// Before &amp; After</div><div class="sect-title">What a Wash Scan Reveals</div></div>
+    <div class="ba-grid anim-in">
+      <div class="ba-col dirty">
+        <div class="ba-title red">// DIRTY SIGNALS</div>
+        <div class="ba-item"><div class="ba-dot red"></div> Dust tokens accumulating</div>
+        <div class="ba-item"><div class="ba-dot red"></div> Spam token interactions</div>
+        <div class="ba-item"><div class="ba-dot red"></div> Failed transactions piling up</div>
+        <div class="ba-item"><div class="ba-dot red"></div> Gas overpayment patterns</div>
+        <div class="ba-item"><div class="ba-dot red"></div> Stale approvals lingering</div>
+      </div>
+      <div class="ba-divider"><div class="ba-arrow">&#x25B6;</div></div>
+      <div class="ba-col clean">
+        <div class="ba-title green">// CLEAN REPORT</div>
+        <div class="ba-item"><div class="ba-dot green"></div> Dust token count &amp; value</div>
+        <div class="ba-item"><div class="ba-dot green"></div> Spam exposure rating</div>
+        <div class="ba-item"><div class="ba-dot green"></div> Failed tx rate analysis</div>
+        <div class="ba-item"><div class="ba-dot green"></div> Gas efficiency score</div>
+        <div class="ba-item"><div class="ba-dot green"></div> Actionable recommendations</div>
       </div>
     </div>
+  </div>
+  <div class="divider"></div>
+  <div class="section">
+    <div class="sect-header anim-in"><div class="sect-tag">// 5 Scan Categories</div><div class="sect-title">What Gets Checked</div></div>
+    <div class="scan-cards anim-in">
+      <div class="scan-card"><div class="scan-card-icon" style="color:var(--red)">&#x2B22;</div><div class="scan-card-name">DUST ACCUMULATION</div><div class="scan-card-desc">Low-value tokens clogging the wallet</div></div>
+      <div class="scan-card"><div class="scan-card-icon" style="color:var(--amber)">&#x26A0;</div><div class="scan-card-name">SPAM EXPOSURE</div><div class="scan-card-desc">Airdrop spam and phishing tokens</div></div>
+      <div class="scan-card"><div class="scan-card-icon" style="color:var(--red)">&#x2717;</div><div class="scan-card-name">FAILED TX PATTERNS</div><div class="scan-card-desc">Reverts, out-of-gas, and retry storms</div></div>
+      <div class="scan-card"><div class="scan-card-icon" style="color:var(--green)">&#x26A1;</div><div class="scan-card-name">GAS EFFICIENCY</div><div class="scan-card-desc">Overpayment and batching analysis</div></div>
+      <div class="scan-card"><div class="scan-card-icon" style="color:var(--cyan)">&#x2605;</div><div class="scan-card-name">CLEANLINESS SCORE</div><div class="scan-card-desc">Composite 0-100 hygiene rating</div></div>
+    </div>
+  </div>
+  <div class="divider"></div>
+  <div class="section">
+    <div class="sect-header anim-in"><div class="sect-tag">// Sample Response</div><div class="sect-title">What You Get Back</div></div>
+    <div class="anim-in"><div class="code-block" id="wash-code"></div></div>
+  </div>
+  <div class="divider"></div>
+  <div class="section-full cta-bottom" id="cta-wash">
+    <div class="cta-bottom-glow"></div>
+    <div class="cta-question">Is your agent clean?</div>
+    <div class="cta-form">
+      <input type="text" class="cta-input" id="cta-wash-addr" placeholder="0x... agent wallet address" spellcheck="false" autocomplete="off">
+      <button class="cta-btn" onclick="goCTA('wash')">SCAN MY AGENT &mdash; $0.50</button>
+    </div>
+    <div class="cta-note">No account. No subscription. Pay once on Base mainnet.</div>
+    <div class="cta-powered">POWERED BY x402 &middot; USDC &middot; BASE MAINNET</div>
+  </div>
+</div>
 
-    <div class="panel">
-      <div class="panel-header"><div class="panel-title">// What You Get</div></div>
-      <div class="panel-body">
-        <ul class="feature-list" id="gen-features"></ul>
+<!-- ═══════════════════════════════════════════════════════════
+     RISK PAGE
+     ═══════════════════════════════════════════════════════════ -->
+<div id="risk-page" style="display:none">
+  <div class="section-full hero">
+    <div class="hero-glow amber"></div>
+    <div class="hero-score-label">INSTANT AGENT RISK ASSESSMENT</div>
+    <div class="traffic-light" id="traffic-light">
+      <div class="tl-circle r"></div>
+      <div class="tl-circle a"></div>
+      <div class="tl-circle g"></div>
+    </div>
+    <div class="hero-subtitle">Know before you pay</div>
+    <div class="hero-stats">
+      <div class="hero-stat-pill"><span class="val cyan" id="rs-total">0</span> agents assessed</div>
+      <div class="hero-stat-pill"><span class="val green">$0.01</span> per check</div>
+      <div class="hero-stat-pill"><span class="val cyan">~500ms</span> response</div>
+    </div>
+    <a href="#cta-risk" class="hero-cta">CHECK RISK &mdash; $0.01 USDC</a>
+  </div>
+  <div class="divider"></div>
+  <div class="section">
+    <div class="sect-header anim-in"><div class="sect-tag">// Risk Levels</div><div class="sect-title">What Each Level Means</div></div>
+    <div class="risk-levels anim-in">
+      <div class="risk-level-card low">
+        <div class="rl-label low">LOW</div>
+        <div class="rl-range">Score 0-30</div>
+        <div class="rl-desc">Safe to transact. No red flags detected. Normal agent behaviour.</div>
+      </div>
+      <div class="risk-level-card med">
+        <div class="rl-label med">MEDIUM</div>
+        <div class="rl-range">Score 31-60</div>
+        <div class="rl-desc">Proceed with caution. Some anomalies detected. Review before large transfers.</div>
+      </div>
+      <div class="risk-level-card high">
+        <div class="rl-label high">HIGH</div>
+        <div class="rl-range">Score 61-100</div>
+        <div class="rl-desc">Do not transact. Critical patterns detected. Possible compromised or zombie agent.</div>
       </div>
     </div>
-
-    <div class="panel">
-      <div class="panel-header"><div class="panel-title">// Sample Response</div></div>
-      <div class="panel-body">
-        <div class="code-block" id="gen-sample"></div>
+  </div>
+  <div class="divider"></div>
+  <div class="section">
+    <div class="sect-header anim-in"><div class="sect-tag">// Speed</div><div class="sect-title">Built for Pre-Flight Checks</div></div>
+    <div class="anim-in">
+      <div class="speed-bar" id="speed-bar">
+        <div class="speed-label">RESPONSE TIME</div>
+        <div class="speed-track"><div class="speed-fill" id="speed-fill"></div></div>
+        <div class="speed-time" id="speed-time">0ms</div>
       </div>
     </div>
-
-    <div class="panel">
-      <div class="panel-header"><div class="panel-title">// Who It's For</div></div>
-      <div class="panel-body">
-        <div class="pills" id="gen-pills"></div>
+    <div class="anim-in" style="margin-top:1.5rem">
+      <div class="usecase-callout">
+        <div class="big">The cheapest pre-flight check in the agent economy.<br><strong>Run it before every transaction.</strong></div>
       </div>
     </div>
-
-    <div class="section-full cta-bottom" style="padding-top:2rem">
-      <div class="cta-form">
-        <input type="text" class="cta-input" id="gen-cta-address" placeholder="0x... agent wallet address" spellcheck="false" autocomplete="off">
-        <button class="cta-btn" id="gen-cta-btn" onclick="goRunGeneric()"></button>
-      </div>
-      <div class="cta-powered">POWERED BY x402 &middot; USDC ON BASE &middot; NO ACCOUNT NEEDED</div>
+  </div>
+  <div class="divider"></div>
+  <div class="section">
+    <div class="sect-header anim-in"><div class="sect-tag">// Sample Response</div><div class="sect-title">What You Get Back</div></div>
+    <div class="anim-in"><div class="code-block" id="risk-code"></div></div>
+  </div>
+  <div class="divider"></div>
+  <div class="section-full cta-bottom" id="cta-risk">
+    <div class="cta-bottom-glow"></div>
+    <div class="cta-question">Is this agent safe to pay?</div>
+    <div class="cta-form">
+      <input type="text" class="cta-input" id="cta-risk-addr" placeholder="0x... agent wallet address" spellcheck="false" autocomplete="off">
+      <button class="cta-btn" onclick="goCTA('risk')">CHECK RISK &mdash; $0.01</button>
     </div>
+    <div class="cta-note">No account. No subscription. Pay once on Base mainnet.</div>
+    <div class="cta-powered">POWERED BY x402 &middot; USDC &middot; BASE MAINNET</div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     REPORT CARD PAGE
+     ═══════════════════════════════════════════════════════════ -->
+<div id="rc-page" style="display:none">
+  <div class="section-full hero">
+    <div class="hero-glow"></div>
+    <div class="hero-score-label">PERSONALISED AGENT REPORT CARD</div>
+    <div class="mock-card" id="mock-card">
+      <div class="mc-header">
+        <div class="mc-title">// AGENT REPORT CARD</div>
+        <div class="mc-grade" id="mc-grade" style="color:var(--amber);border-color:var(--amber)">C</div>
+      </div>
+      <div class="mc-score-row">
+        <div class="mc-score-big" id="mc-score">72</div>
+        <div class="mc-score-label">AGENT HEALTH SCORE</div>
+      </div>
+      <div class="mc-dims">
+        <div class="mc-dim"><div class="mc-dim-val" style="color:var(--green)">84</div><div class="mc-dim-lbl">D1 HYGIENE</div></div>
+        <div class="mc-dim"><div class="mc-dim-val" style="color:var(--red)">52</div><div class="mc-dim-lbl">D2 BEHAVIOUR</div></div>
+        <div class="mc-dim"><div class="mc-dim-val" style="color:var(--text-dim)">&mdash;</div><div class="mc-dim-lbl">D3 INFRA</div></div>
+      </div>
+      <div class="mc-rank" id="mc-rank">PERCENTILE: TOP 35% OF ALL SCANNED AGENTS</div>
+      <div class="mc-footer">
+        <span>0xAbCd...EfGh</span>
+        <span>Base Mainnet</span>
+        <span>agenthealthmonitor.xyz</span>
+      </div>
+    </div>
+    <div class="hero-subtitle">See where you rank against the ecosystem</div>
+    <div class="hero-stats">
+      <div class="hero-stat-pill"><span class="val cyan" id="rc-total">0</span> agents in the benchmark</div>
+      <div class="hero-stat-pill"><span class="val amber">Percentile</span> ranking included</div>
+      <div class="hero-stat-pill"><span class="val green">Shareable</span> 1200x675 PNG</div>
+    </div>
+    <a href="#cta-rc" class="hero-cta">GET YOUR REPORT CARD &mdash; $2.00 USDC</a>
+  </div>
+  <div class="divider"></div>
+  <div class="section">
+    <div class="sect-header anim-in"><div class="sect-tag">// Ecosystem Distribution</div><div class="sect-title">Where Will You Land?</div></div>
+    <div class="anim-in">
+      <div class="pct-wrap">
+        <svg class="pct-svg" viewBox="0 0 600 200" preserveAspectRatio="xMidYMid meet">
+          <defs>
+            <linearGradient id="curve-grad" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0%" stop-color="var(--grade-f)" />
+              <stop offset="25%" stop-color="var(--grade-e)" />
+              <stop offset="45%" stop-color="var(--grade-d)" />
+              <stop offset="65%" stop-color="var(--grade-c)" />
+              <stop offset="85%" stop-color="var(--grade-b)" />
+              <stop offset="100%" stop-color="var(--grade-a)" />
+            </linearGradient>
+          </defs>
+          <path d="M 20 180 Q 60 180, 100 170 Q 160 155, 200 100 Q 240 50, 300 30 Q 360 50, 400 100 Q 440 155, 500 170 Q 540 180, 580 180" fill="none" stroke="url(#curve-grad)" stroke-width="3" opacity="0.6" />
+          <path d="M 20 180 Q 60 180, 100 170 Q 160 155, 200 100 Q 240 50, 300 30 Q 360 50, 400 100 Q 440 155, 500 170 Q 540 180, 580 180 L 580 180 L 20 180 Z" fill="url(#curve-grad)" opacity="0.08" />
+          <line id="pct-marker" x1="300" y1="20" x2="300" y2="185" stroke="var(--cyan)" stroke-width="1.5" stroke-dasharray="4,3" opacity="0.8" />
+          <text x="300" y="15" text-anchor="middle" fill="var(--cyan)" font-family="Share Tech Mono, monospace" font-size="11">YOU?</text>
+          <text x="30" y="195" fill="var(--text-dim)" font-family="Share Tech Mono, monospace" font-size="9">F</text>
+          <text x="135" y="195" fill="var(--text-dim)" font-family="Share Tech Mono, monospace" font-size="9">E</text>
+          <text x="240" y="195" fill="var(--text-dim)" font-family="Share Tech Mono, monospace" font-size="9">D</text>
+          <text x="345" y="195" fill="var(--text-dim)" font-family="Share Tech Mono, monospace" font-size="9">C</text>
+          <text x="460" y="195" fill="var(--text-dim)" font-family="Share Tech Mono, monospace" font-size="9">B</text>
+          <text x="560" y="195" fill="var(--text-dim)" font-family="Share Tech Mono, monospace" font-size="9">A</text>
+        </svg>
+        <div class="pct-label">Score distribution across <span id="rc-dist-total">0</span> agents</div>
+      </div>
+    </div>
+  </div>
+  <div class="divider"></div>
+  <div class="section">
+    <div class="sect-header anim-in"><div class="sect-tag">// What's Included</div><div class="sect-title">Your Report Card Contains</div></div>
+    <div class="dim-row two-col anim-in">
+      <div class="dim-card">
+        <div class="dim-tag">Personalised Score</div>
+        <div class="dim-desc" style="margin-top:0">AHS score, grade, D1 + D2 breakdown, and pattern detection results tailored to your agent's wallet</div>
+      </div>
+      <div class="dim-card">
+        <div class="dim-tag">Ecosystem Benchmark</div>
+        <div class="dim-desc" style="margin-top:0">Your percentile rank against all scanned agents. See exactly where you stand vs the ecosystem average</div>
+      </div>
+      <div class="dim-card">
+        <div class="dim-tag">Shareable PNG</div>
+        <div class="dim-desc" style="margin-top:0">Beautiful 1200x675 dark terminal aesthetic image. One-click share to X with pre-filled tweet text</div>
+      </div>
+      <div class="dim-card">
+        <div class="dim-tag">Full JSON Data</div>
+        <div class="dim-desc" style="margin-top:0">Complete structured response with scores, patterns, recommendations, and the image URL for programmatic use</div>
+      </div>
+    </div>
+    <div class="anim-in">
+      <div class="share-row">
+        <div class="share-pill"><span class="icon">&#x1F4F7;</span> Download PNG</div>
+        <div class="share-pill"><span class="icon">&#x1F426;</span> Share on X</div>
+        <div class="share-pill"><span class="icon">&#x1F517;</span> Direct image URL</div>
+      </div>
+    </div>
+  </div>
+  <div class="divider"></div>
+  <div class="section">
+    <div class="sect-header anim-in"><div class="sect-tag">// Sample Response</div><div class="sect-title">What You Get Back</div></div>
+    <div class="anim-in"><div class="code-block" id="rc-code"></div></div>
+  </div>
+  <div class="divider"></div>
+  <div class="section-full cta-bottom" id="cta-rc">
+    <div class="cta-bottom-glow"></div>
+    <div class="cta-question">Ready to see your rank?</div>
+    <div class="cta-form">
+      <input type="text" class="cta-input" id="cta-rc-addr" placeholder="0x... agent wallet address" spellcheck="false" autocomplete="off">
+      <button class="cta-btn" onclick="goCTA('report-card')">GET MY REPORT CARD &mdash; $2.00</button>
+    </div>
+    <div class="cta-note">No account. No subscription. Pay once on Base mainnet.</div>
+    <div class="cta-powered">POWERED BY x402 &middot; USDC &middot; BASE MAINNET</div>
   </div>
 </div>
 
@@ -950,23 +670,18 @@
     <a href="/endpoints/ahs" class="footer-link">ENDPOINTS</a>
     <a href="/roadmap" class="footer-link">ROADMAP</a>
   </div>
-  <div class="footer-network">
-    <div class="status-dot"></div>
-    BASE MAINNET // x402
-  </div>
+  <div class="footer-network"><div class="status-dot"></div> BASE MAINNET // x402</div>
 </footer>
 
 <script>
 (function() {
-
-  /* ── Slug detection ── */
   var parts = window.location.pathname.split('/');
   var slug = parts[parts.length - 1] || parts[parts.length - 2];
-  var isAHS = (slug === 'ahs');
+  var PAGES = {'ahs':1,'wash':1,'risk':1,'report-card':1};
 
-  /* ── Endpoint nav (render immediately) ── */
+  /* ── Nav ── */
   var navEl = document.getElementById('ep-nav');
-  var navSlugs = ['ahs', 'wash', 'risk', 'report-card'];
+  var navSlugs = ['ahs','wash','risk','report-card'];
   var navNames = {'ahs':'Agent Health Score','wash':'Agent Wash','risk':'Risk Score','report-card':'Report Card'};
   for (var i = 0; i < navSlugs.length; i++) {
     var a = document.createElement('a');
@@ -976,20 +691,18 @@
     navEl.appendChild(a);
   }
 
-  /* ── Data fetch ── */
-  if (isAHS) {
-    // AHS page: fetch ecosystem stats (has everything we need)
-    fetch(window.location.origin + '/api/ecosystem-stats')
-      .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
-      .then(function(d) { renderAHS(d); })
-      .catch(function(e) { showError(e.message); });
-  } else {
-    // Generic page: fetch endpoint info
-    fetch(window.location.origin + '/api/endpoint-info/' + encodeURIComponent(slug))
-      .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
-      .then(function(d) { renderGeneric(d); })
-      .catch(function(e) { showError(e.message); });
-  }
+  /* ── Fetch live data ── */
+  if (!PAGES[slug]) { showError('Unknown endpoint: ' + slug); return; }
+  fetch(window.location.origin + '/api/ecosystem-stats')
+    .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+    .then(function(s) {
+      document.getElementById('loading').style.display = 'none';
+      if (slug === 'ahs') renderAHS(s);
+      else if (slug === 'wash') renderWash(s);
+      else if (slug === 'risk') renderRisk(s);
+      else if (slug === 'report-card') renderRC(s);
+    })
+    .catch(function(e) { showError(e.message); });
 
   function showError(msg) {
     document.getElementById('loading').style.display = 'none';
@@ -998,363 +711,217 @@
     el.textContent = '// ERROR: ' + msg;
   }
 
-  /* ═══════════════════════════════════════════════
-     AHS PREMIUM RENDER
-     ═══════════════════════════════════════════════ */
-  function renderAHS(stats) {
-    document.getElementById('loading').style.display = 'none';
+  /* ═══════════════════ AHS ═══════════════════ */
+  function renderAHS(s) {
     document.getElementById('ahs-page').style.display = 'block';
     document.title = 'Agent Health Score // Agent Health Monitor';
+    var total = s.total_scanned || 0, avgAHS = s.avg_ahs || 0, avgD1 = s.avg_d1 || 0, avgD2 = s.avg_d2 || 0;
+    var grades = s.grade_distribution || {}, patterns = s.pattern_distribution || {};
 
-    var total = stats.total_scanned || 0;
-    var avgAHS = stats.avg_ahs || 0;
-    var avgD1 = stats.avg_d1 || 0;
-    var avgD2 = stats.avg_d2 || 0;
-    var grades = stats.grade_distribution || {};
-    var patterns = stats.pattern_distribution || {};
-
-    // ── Heartbeat SVG ──
     buildHeartbeat();
+    animateVal(document.getElementById('hero-score-num'), 0, avgAHS, 2000, 1);
+    animateInt(document.getElementById('hs-total'), 0, total, 1800);
+    var zombiePct = total > 0 ? Math.round((patterns['Zombie Agent']||0) / total * 100) : 0;
+    animateSfx(document.getElementById('hs-zombie'), 0, zombiePct, 1600, '%');
+    var aPct = total > 0 ? ((grades['A']||0) / total * 100) : 0;
+    var aPctD = aPct < 1 && aPct > 0 ? parseFloat(aPct.toFixed(1)) : Math.round(aPct);
+    animateSfx(document.getElementById('hs-agrade'), 0, aPctD, 1400, '%');
 
-    // ── Hero animated numbers ──
-    animateValue(document.getElementById('hero-score-num'), 0, avgAHS, 2000, 1);
-    animateInt(document.getElementById('hs-total'), 0, total, 1800, true);
-
-    var zombieCount = patterns['Zombie Agent'] || 0;
-    var zombiePct = total > 0 ? Math.round(zombieCount / total * 100) : 0;
-    animateSuffix(document.getElementById('hs-zombie'), 0, zombiePct, 1600, '%');
-
-    var aCount = grades['A'] || 0;
-    var aPct = total > 0 ? (aCount / total * 100) : 0;
-    var aPctDisplay = aPct < 1 && aPct > 0 ? aPct.toFixed(1) : Math.round(aPct);
-    animateSuffix(document.getElementById('hs-agrade'), 0, parseFloat(aPctDisplay), 1400, '%');
-
-    // ── Dimension bars (animate after delay) ──
     setTimeout(function() {
-      animateValue(document.getElementById('dim-d1-score'), 0, avgD1, 1200, 1);
-      animateValue(document.getElementById('dim-d2-score'), 0, avgD2, 1200, 1);
+      animateVal(document.getElementById('dim-d1-score'), 0, avgD1, 1200, 1);
+      animateVal(document.getElementById('dim-d2-score'), 0, avgD2, 1200, 1);
       document.getElementById('dim-d1-bar').style.width = avgD1 + '%';
       document.getElementById('dim-d2-bar').style.width = avgD2 + '%';
     }, 600);
 
-    // ── Grade distribution blocks ──
+    // Grade blocks
     var gradeOrder = ['F','E','D','C','B','A'];
-    var gradeColors = {A:'var(--grade-a)',B:'var(--grade-b)',C:'var(--grade-c)',D:'var(--grade-d)',E:'var(--grade-e)',F:'var(--grade-f)'};
-    var blocksEl = document.getElementById('grade-blocks');
-
-    // Build blocks at 0 width first
-    var blockEls = [];
+    var gc = {A:'var(--grade-a)',B:'var(--grade-b)',C:'var(--grade-c)',D:'var(--grade-d)',E:'var(--grade-e)',F:'var(--grade-f)'};
+    var blocksEl = document.getElementById('grade-blocks'), bEls = [];
     for (var i = 0; i < gradeOrder.length; i++) {
-      var g = gradeOrder[i];
-      var count = grades[g] || 0;
-      var pct = total > 0 ? (count / total * 100) : 0;
-
-      var block = document.createElement('div');
-      block.className = 'grade-block';
-      block.style.background = gradeColors[g];
-      block.style.color = (g === 'A' || g === 'B') ? '#030609' : '#fff';
-      block.dataset.pct = pct;
-
-      // Only show label if block is wide enough
-      if (pct >= 3) {
-        block.innerHTML =
-          '<div class="grade-block-letter">' + g + '</div>' +
-          '<div class="grade-block-pct">' + (pct < 1 ? pct.toFixed(1) : Math.round(pct)) + '%</div>' +
-          '<div class="grade-block-count">' + count + '</div>';
-      } else if (pct > 0) {
-        block.innerHTML = '<div class="grade-block-letter" style="font-size:0.7rem">' + g + '</div>';
-      }
-
-      blocksEl.appendChild(block);
-      blockEls.push(block);
+      var g = gradeOrder[i], cnt = grades[g]||0, pct = total > 0 ? (cnt/total*100) : 0;
+      var b = document.createElement('div'); b.className = 'grade-block';
+      b.style.background = gc[g]; b.style.color = (g==='A'||g==='B') ? '#030609' : '#fff'; b.dataset.pct = pct;
+      if (pct >= 3) b.innerHTML = '<div class="grade-block-letter">'+g+'</div><div class="grade-block-pct">'+(pct<1?pct.toFixed(1):Math.round(pct))+'%</div><div class="grade-block-count">'+cnt+'</div>';
+      else if (pct > 0) b.innerHTML = '<div class="grade-block-letter" style="font-size:0.7rem">'+g+'</div>';
+      blocksEl.appendChild(b); bEls.push(b);
     }
+    setTimeout(function() { for (var j=0;j<bEls.length;j++) bEls[j].style.flexBasis = bEls[j].dataset.pct+'%'; }, 300);
+    document.getElementById('grade-callout').innerHTML = 'Only <strong>'+(aPct<1&&aPct>0?aPct.toFixed(1):Math.round(aPct))+'%</strong> of agents reach A grade. Where does yours sit?';
 
-    // Animate blocks expanding
-    setTimeout(function() {
-      for (var j = 0; j < blockEls.length; j++) {
-        blockEls[j].style.flexBasis = blockEls[j].dataset.pct + '%';
-      }
-    }, 300);
-
-    // Callout text
-    var callout = document.getElementById('grade-callout');
-    var aPctStr = aPct < 1 && aPct > 0 ? aPct.toFixed(1) : Math.round(aPct);
-    callout.innerHTML = 'Only <strong>' + aPctStr + '%</strong> of agents reach A grade. Where does yours sit?';
-
-    // ── Pattern cards ──
-    var patternDefs = [
-      {name:'Zombie Agent', severity:'critical', desc:'Running but producing no meaningful output. Crashed strategy or abandoned agent still receiving payments.'},
-      {name:'Healthy Operator', severity:'positive', desc:'Normal, healthy agent behaviour. Diverse counterparties, regular timing, good gas efficiency.'},
-      {name:'Cascading Failure', severity:'critical', desc:'Multiple interdependent systems failing together. Chain reaction of errors across agent subsystems.'},
-      {name:'Phantom Activity', severity:'warning', desc:'Transactions with no economic purpose. Gas spent on calls that produce no value transfer.'},
-      {name:'Stale Strategy', severity:'warning', desc:'Executing outdated logic in a changed environment. Repetitive actions with diminishing returns.'},
-      {name:'Gas Hemorrhage', severity:'warning', desc:'Excessive gas spending relative to transaction value. Poor batching or inefficient contract interactions.'},
-      {name:'Shadow Wallet', severity:'critical', desc:'Hidden value flows through unlinked wallets. Potential fund siphoning or obfuscated transaction chains.'}
+    // Patterns
+    var pDefs = [
+      {n:'Zombie Agent',s:'critical',d:'Running but producing no meaningful output. Crashed strategy or abandoned agent.'},
+      {n:'Healthy Operator',s:'positive',d:'Normal, healthy agent behaviour. Diverse counterparties, regular timing.'},
+      {n:'Cascading Failure',s:'critical',d:'Multiple interdependent systems failing together.'},
+      {n:'Phantom Activity',s:'warning',d:'Transactions with no economic purpose or result.'},
+      {n:'Stale Strategy',s:'warning',d:'Executing outdated logic in a changed environment.'},
+      {n:'Gas Hemorrhage',s:'warning',d:'Excessive gas spending relative to transaction value.'},
+      {n:'Shadow Wallet',s:'critical',d:'Hidden value flows through unlinked wallets.'}
     ];
-
     var gridEl = document.getElementById('pattern-grid');
-    for (var i = 0; i < patternDefs.length; i++) {
-      var p = patternDefs[i];
-      var pCount = patterns[p.name] || 0;
-      var pPct = total > 0 ? (pCount / total * 100) : 0;
-      var isActive = pCount > 0;
-
-      var card = document.createElement('div');
-      card.className = 'pattern-card' + (isActive ? ' active' : ' pattern-inactive');
-
-      var badgeClass = p.severity;
-      var badgeLabel = p.severity === 'critical' ? 'CRITICAL' : p.severity === 'positive' ? 'HEALTHY' : 'WARNING';
-
-      var barColor = p.severity === 'critical' ? 'var(--red)' : p.severity === 'positive' ? 'var(--green)' : 'var(--amber)';
-      var statColor = barColor;
-
-      var html = '<div class="pattern-card-top">' +
-        '<div class="pattern-name" style="color:' + (isActive ? 'var(--text-bright)' : 'var(--text-dim)') + '">' + p.name + '</div>' +
-        '<div class="pattern-badge ' + badgeClass + '">' + badgeLabel + '</div>' +
-        '</div>' +
-        '<div class="pattern-desc">' + p.desc + '</div>';
-
-      if (isActive) {
-        var pPctStr = pPct < 1 ? pPct.toFixed(1) : Math.round(pPct);
-        html += '<div class="pattern-stat" style="color:' + statColor + '">' + pPctStr + '% of agents &middot; ' + pCount + ' detected</div>';
-        html += '<div class="pattern-bar-track"><div class="pattern-bar-fill" data-width="' + Math.min(pPct, 100) + '" style="background:' + barColor + '"></div></div>';
-      } else {
-        html += '<div class="pattern-stat" style="color:var(--text-dim)">Not yet detected at scale</div>';
-        html += '<div class="pattern-bar-track"><div class="pattern-bar-fill" style="width:0"></div></div>';
-      }
-
-      card.innerHTML = html;
-      gridEl.appendChild(card);
+    for (var i=0;i<pDefs.length;i++) {
+      var p=pDefs[i], pc=patterns[p.n]||0, pp=total>0?(pc/total*100):0, act=pc>0;
+      var c = document.createElement('div'); c.className = 'pattern-card'+(act?' active':' pattern-inactive');
+      var bl = p.s==='critical'?'CRITICAL':p.s==='positive'?'HEALTHY':'WARNING';
+      var bc = p.s==='critical'?'var(--red)':p.s==='positive'?'var(--green)':'var(--amber)';
+      var h = '<div class="pattern-card-top"><div class="pattern-name" style="color:'+(act?'var(--text-bright)':'var(--text-dim)')+'">'+p.n+'</div><div class="pattern-badge '+p.s+'">'+bl+'</div></div><div class="pattern-desc">'+p.d+'</div>';
+      if (act) { var ps=pp<1?pp.toFixed(1):Math.round(pp); h+='<div class="pattern-stat" style="color:'+bc+'">'+ps+'% of agents &middot; '+pc+' detected</div><div class="pattern-bar-track"><div class="pattern-bar-fill" data-width="'+Math.min(pp,100)+'" style="background:'+bc+'"></div></div>'; }
+      else h+='<div class="pattern-stat" style="color:var(--text-dim)">Not yet detected at scale</div>';
+      c.innerHTML = h; gridEl.appendChild(c);
     }
 
-    // ── Sample output (line-by-line reveal) ──
-    var sampleJSON = {
-      "status": "ok",
-      "agent_health_score": 67,
-      "grade": "C",
-      "grade_label": "Needs Attention",
-      "mode": "2D",
-      "dimensions": {
-        "d1_wallet_hygiene": 84,
-        "d2_behavioural": 52
-      },
-      "patterns_detected": [
-        {"name": "Healthy Operator", "severity": "positive", "modifier": 5}
-      ],
-      "confidence": "high",
-      "temporal_token": "eyJhbGciOi..."
-    };
-
-    var codeEl = document.getElementById('code-block');
-    var jsonStr = JSON.stringify(sampleJSON, null, 2);
-    var lines = jsonStr.split('\n');
-    var html = '';
-    for (var i = 0; i < lines.length; i++) {
-      var line = escHtml(lines[i]);
-      // Syntax highlight
-      line = line.replace(/"([^"]+)":/g, '<span class="key">"$1"</span>:');
-      line = line.replace(/: "([^"]*?)"/g, ': <span class="str">"$1"</span>');
-      line = line.replace(/: (\d+\.?\d*)/g, ': <span class="num">$1</span>');
-      // Remaining strings in arrays
-      line = line.replace(/"([^"<][^"]*?)"/g, '<span class="str">"$1"</span>');
-      html += '<div class="code-line" style="transition-delay:' + (i * 0.06) + 's">' + line + '</div>';
-    }
-    codeEl.innerHTML = html;
-
-    // ── Scroll animations ──
-    initScrollAnimations();
+    buildCodeBlock('ahs-code', {"status":"ok","agent_health_score":67,"grade":"C","grade_label":"Needs Attention","mode":"2D","dimensions":{"d1_wallet_hygiene":84,"d2_behavioural":52},"patterns_detected":[{"name":"Healthy Operator","severity":"positive","modifier":5}],"confidence":"high","temporal_token":"eyJhbGciOi..."});
+    initScrollAnims();
   }
 
-  /* ═══════════════════════════════════════════════
-     GENERIC RENDER (wash, risk, report-card)
-     ═══════════════════════════════════════════════ */
-  function renderGeneric(d) {
-    document.getElementById('loading').style.display = 'none';
-    document.getElementById('generic-page').style.display = 'block';
-    document.title = d.name + ' // Agent Health Monitor';
-    window._genSlug = d.slug;
+  /* ═══════════════════ WASH ═══════════════════ */
+  function renderWash(s) {
+    document.getElementById('wash-page').style.display = 'block';
+    document.title = 'Agent Wash // Agent Health Monitor';
+    var total = s.total_scanned||0, avgD1 = s.avg_d1||0;
+    var zombiePct = total > 0 ? Math.round((s.pattern_distribution||{})['Zombie Agent']||0)/total*100 : 0;
+    if (total > 0) zombiePct = Math.round(((s.pattern_distribution||{})['Zombie Agent']||0) / total * 100);
 
-    document.getElementById('gen-price').textContent = d.price + ' USDC PER CALL';
-    document.getElementById('gen-name').textContent = d.name;
-    document.getElementById('gen-tagline').textContent = d.tagline;
-    document.getElementById('gen-desc').textContent = d.description;
+    animateInt(document.getElementById('ws-total'), 0, total, 1800);
+    animateVal(document.getElementById('ws-avg'), 0, avgD1, 1600, 1);
+    animateSfx(document.getElementById('ws-zombie'), 0, zombiePct, 1400, '%');
 
-    var featEl = document.getElementById('gen-features');
-    var features = d.what_you_get || [];
-    for (var i = 0; i < features.length; i++) {
-      var li = document.createElement('li');
-      li.textContent = features[i];
-      featEl.appendChild(li);
-    }
+    // Gauge animation
+    var gaugeNum = document.getElementById('wash-gauge-num');
+    var gaugeFill = document.getElementById('wash-gauge-fill');
+    var arcLen = 345.6; // approx semi-circle arc length
+    animateVal(gaugeNum, 0, avgD1, 2000, 1);
+    setTimeout(function() {
+      gaugeFill.style.strokeDashoffset = arcLen * (1 - avgD1 / 100);
+    }, 200);
 
-    var sampleEl = document.getElementById('gen-sample');
-    sampleEl.innerHTML = formatJson(d.sample_output || {});
-
-    var pillsEl = document.getElementById('gen-pills');
-    var whos = d.who_its_for || [];
-    for (var i = 0; i < whos.length; i++) {
-      var div = document.createElement('div');
-      div.className = 'pill';
-      div.textContent = whos[i];
-      pillsEl.appendChild(div);
-    }
-
-    document.getElementById('gen-cta-btn').textContent = d.cta || 'Run Analysis';
+    buildCodeBlock('wash-code', {"status":"ok","cleanliness_score":78,"dust_tokens":3,"dust_value_usd":0.42,"spam_exposure":"low","failed_tx_rate_pct":2.1,"gas_efficiency":"good","recommendations":["Revoke stale token approvals","Consolidate dust tokens"]});
+    initScrollAnims();
   }
 
-  /* ═══════════════════════════════════════════════
-     UTILITIES
-     ═══════════════════════════════════════════════ */
+  /* ═══════════════════ RISK ═══════════════════ */
+  function renderRisk(s) {
+    document.getElementById('risk-page').style.display = 'block';
+    document.title = 'Risk Score // Agent Health Monitor';
+    var total = s.total_scanned||0;
+    animateInt(document.getElementById('rs-total'), 0, total, 1800);
 
-  function animateValue(el, start, end, duration, decimals) {
-    var startTime = null;
-    function step(ts) {
-      if (!startTime) startTime = ts;
-      var progress = Math.min((ts - startTime) / duration, 1);
-      var eased = 1 - Math.pow(1 - progress, 3);
-      var current = start + (end - start) * eased;
-      el.textContent = current.toFixed(decimals);
-      if (progress < 1) requestAnimationFrame(step);
-    }
+    // Traffic light animation
+    setTimeout(function() {
+      document.querySelector('#traffic-light .tl-circle.r').classList.add('lit');
+      setTimeout(function() {
+        document.querySelector('#traffic-light .tl-circle.r').classList.remove('lit');
+        document.querySelector('#traffic-light .tl-circle.a').classList.add('lit');
+        setTimeout(function() {
+          document.querySelector('#traffic-light .tl-circle.a').classList.remove('lit');
+          document.querySelector('#traffic-light .tl-circle.g').classList.add('lit');
+        }, 600);
+      }, 600);
+    }, 400);
+
+    // Speed animation
+    setTimeout(function() {
+      document.getElementById('speed-fill').style.width = '95%';
+      animateInt(document.getElementById('speed-time'), 0, 487, 800, false, 'ms');
+    }, 800);
+
+    buildCodeBlock('risk-code', {"status":"ok","risk_score":23,"risk_level":"low","flags":[],"recommendation":"Safe to transact","response_time_ms":487});
+    initScrollAnims();
+  }
+
+  /* ═══════════════════ REPORT CARD ═══════════════════ */
+  function renderRC(s) {
+    document.getElementById('rc-page').style.display = 'block';
+    document.title = 'Report Card // Agent Health Monitor';
+    var total = s.total_scanned||0;
+    animateInt(document.getElementById('rc-total'), 0, total, 1800);
+    document.getElementById('rc-dist-total').textContent = total.toLocaleString();
+
+    buildCodeBlock('rc-code', {"status":"ok","report":{"address":"0xAbCd...EfGh","agent_health_score":72,"grade":"C — Needs Attention","percentile_rank":35,"dimensions":{"d1_wallet_hygiene":84,"d2_behavioural":52},"patterns_detected":["Zombie Agent"],"image_url":"/static/report-cards/0xabcd...efgh.png","share_url":"https://x.com/intent/tweet?text=..."}});
+    initScrollAnims();
+  }
+
+  /* ═══════════════════ UTILITIES ═══════════════════ */
+  function animateVal(el, start, end, dur, dec) {
+    var t0 = null;
+    function step(ts) { if(!t0)t0=ts; var p=Math.min((ts-t0)/dur,1), e=1-Math.pow(1-p,3); el.textContent=(start+(end-start)*e).toFixed(dec); if(p<1)requestAnimationFrame(step); }
     requestAnimationFrame(step);
   }
-
-  function animateInt(el, start, end, duration, comma) {
-    var startTime = null;
-    function step(ts) {
-      if (!startTime) startTime = ts;
-      var progress = Math.min((ts - startTime) / duration, 1);
-      var eased = 1 - Math.pow(1 - progress, 3);
-      var current = Math.round(start + (end - start) * eased);
-      el.textContent = comma ? current.toLocaleString() : current;
-      if (progress < 1) requestAnimationFrame(step);
-    }
+  function animateInt(el, start, end, dur, comma, sfx) {
+    var t0 = null;
+    function step(ts) { if(!t0)t0=ts; var p=Math.min((ts-t0)/dur,1), e=1-Math.pow(1-p,3), v=Math.round(start+(end-start)*e); el.textContent=(comma!==false?v.toLocaleString():v)+(sfx||''); if(p<1)requestAnimationFrame(step); }
     requestAnimationFrame(step);
   }
-
-  function animateSuffix(el, start, end, duration, suffix) {
-    var startTime = null;
-    var isFloat = end % 1 !== 0;
-    function step(ts) {
-      if (!startTime) startTime = ts;
-      var progress = Math.min((ts - startTime) / duration, 1);
-      var eased = 1 - Math.pow(1 - progress, 3);
-      var current = start + (end - start) * eased;
-      el.textContent = (isFloat ? current.toFixed(1) : Math.round(current)) + suffix;
-      if (progress < 1) requestAnimationFrame(step);
-    }
+  function animateSfx(el, start, end, dur, sfx) {
+    var t0=null, isF=end%1!==0;
+    function step(ts) { if(!t0)t0=ts; var p=Math.min((ts-t0)/dur,1), e=1-Math.pow(1-p,3), v=start+(end-start)*e; el.textContent=(isF?v.toFixed(1):Math.round(v))+sfx; if(p<1)requestAnimationFrame(step); }
     requestAnimationFrame(step);
   }
 
   function buildHeartbeat() {
-    var container = document.getElementById('heartbeat-container');
-    var svgNS = 'http://www.w3.org/2000/svg';
-    var svg = document.createElementNS(svgNS, 'svg');
-    svg.setAttribute('viewBox', '0 0 1200 120');
-    svg.setAttribute('preserveAspectRatio', 'none');
-
-    // Build a heartbeat waveform that tiles
-    var seg = 'M0,60 L80,60 L100,60 L110,30 L120,90 L130,15 L140,100 L150,45 L160,60 L240,60 ' +
-              'L280,60 L300,60 L310,35 L320,85 L330,20 L340,95 L350,50 L360,60 L440,60 ' +
-              'L480,60 L500,60 L510,32 L520,88 L530,18 L540,98 L550,48 L560,60 L600,60';
-    var path = document.createElementNS(svgNS, 'path');
-    path.setAttribute('d', seg + ' L600,60 L680,60 L700,60 L710,30 L720,90 L730,15 L740,100 L750,45 L760,60 L840,60 L880,60 L900,60 L910,35 L920,85 L930,20 L940,95 L950,50 L960,60 L1040,60 L1080,60 L1100,60 L1110,32 L1120,88 L1130,18 L1140,98 L1150,48 L1160,60 L1200,60');
-    path.setAttribute('fill', 'none');
-    path.setAttribute('stroke', '#00f5ff');
-    path.setAttribute('stroke-width', '2');
-
-    svg.appendChild(path);
-    container.appendChild(svg);
+    var c = document.getElementById('heartbeat-container'), ns = 'http://www.w3.org/2000/svg';
+    var svg = document.createElementNS(ns,'svg'); svg.setAttribute('viewBox','0 0 1200 120'); svg.setAttribute('preserveAspectRatio','none');
+    var d = 'M0,60 L80,60 L100,60 L110,30 L120,90 L130,15 L140,100 L150,45 L160,60 L240,60 L280,60 L300,60 L310,35 L320,85 L330,20 L340,95 L350,50 L360,60 L440,60 L480,60 L500,60 L510,32 L520,88 L530,18 L540,98 L550,48 L560,60 L600,60 L680,60 L700,60 L710,30 L720,90 L730,15 L740,100 L750,45 L760,60 L840,60 L880,60 L900,60 L910,35 L920,85 L930,20 L940,95 L950,50 L960,60 L1040,60 L1080,60 L1100,60 L1110,32 L1120,88 L1130,18 L1140,98 L1150,48 L1160,60 L1200,60';
+    var path = document.createElementNS(ns,'path'); path.setAttribute('d',d); path.setAttribute('fill','none'); path.setAttribute('stroke','#00f5ff'); path.setAttribute('stroke-width','2');
+    svg.appendChild(path); c.appendChild(svg);
   }
 
-  function initScrollAnimations() {
-    var observer = new IntersectionObserver(function(entries) {
-      entries.forEach(function(entry) {
-        if (entry.isIntersecting) {
-          entry.target.classList.add('visible');
+  function buildCodeBlock(elId, obj) {
+    var el = document.getElementById(elId);
+    var lines = JSON.stringify(obj,null,2).split('\n'), html = '';
+    for (var i=0;i<lines.length;i++) {
+      var l = esc(lines[i]);
+      l = l.replace(/"([^"]+)":/g,'<span class="key">"$1"</span>:');
+      l = l.replace(/: "([^"]*?)"/g,': <span class="str">"$1"</span>');
+      l = l.replace(/: (\d+\.?\d*)/g,': <span class="num">$1</span>');
+      l = l.replace(/"([^"<][^"]*?)"/g,'<span class="str">"$1"</span>');
+      html += '<div class="code-line" style="transition-delay:'+(i*0.06)+'s">'+l+'</div>';
+    }
+    el.innerHTML = html;
+  }
 
-          // Trigger pattern bar fills
-          var bars = entry.target.querySelectorAll('.pattern-bar-fill[data-width]');
-          for (var i = 0; i < bars.length; i++) {
-            bars[i].style.width = bars[i].dataset.width + '%';
-          }
-
-          // Trigger code line reveals
-          var codeLines = entry.target.querySelectorAll('.code-line');
-          if (codeLines.length) {
-            for (var j = 0; j < codeLines.length; j++) {
-              codeLines[j].classList.add('visible');
-            }
-          }
-
-          observer.unobserve(entry.target);
+  function initScrollAnims() {
+    var obs = new IntersectionObserver(function(entries) {
+      entries.forEach(function(e) {
+        if (e.isIntersecting) {
+          e.target.classList.add('visible');
+          var bars = e.target.querySelectorAll('.pattern-bar-fill[data-width]');
+          for (var i=0;i<bars.length;i++) bars[i].style.width = bars[i].dataset.width+'%';
+          var cls = e.target.querySelectorAll('.code-line');
+          for (var j=0;j<cls.length;j++) cls[j].classList.add('visible');
+          obs.unobserve(e.target);
         }
       });
-    }, { threshold: 0.1 });
-
-    var animEls = document.querySelectorAll('.anim-in');
-    for (var i = 0; i < animEls.length; i++) {
-      observer.observe(animEls[i]);
-    }
-
-    // Also observe the code block and pattern grid directly
-    var codeBlock = document.getElementById('code-block');
-    if (codeBlock) observer.observe(codeBlock);
-    var patternGrid = document.getElementById('pattern-grid');
-    if (patternGrid) observer.observe(patternGrid);
-  }
-
-  function escHtml(s) {
-    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-  }
-
-  function formatJson(obj) {
-    var json = JSON.stringify(obj, null, 2);
-    json = json.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    json = json.replace(/"([^"]+)":/g, '<span class="key">"$1"</span>:');
-    json = json.replace(/: "([^"]*?)"/g, ': <span class="str">"$1"</span>');
-    json = json.replace(/: (\d+\.?\d*)/g, ': <span class="num">$1</span>');
-    json = json.replace(/"([^"]*?)"/g, function(match, p1) {
-      if (match.indexOf('class=') >= 0) return match;
-      return '<span class="str">"' + p1 + '"</span>';
+    }, {threshold:0.1});
+    var els = document.querySelectorAll('.anim-in');
+    for (var i=0;i<els.length;i++) obs.observe(els[i]);
+    // Observe code blocks directly for line reveals
+    ['ahs-code','wash-code','risk-code','rc-code'].forEach(function(id) {
+      var el = document.getElementById(id); if(el) obs.observe(el);
     });
-    return json;
+    var pg = document.getElementById('pattern-grid'); if(pg) obs.observe(pg);
   }
 
+  function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 })();
 
-/* ── CTA handlers ── */
-function goRun() {
-  var addr = document.getElementById('cta-address').value.trim();
-  if (!addr) {
-    var el = document.getElementById('cta-address');
-    el.style.borderColor = 'var(--red)';
-    el.style.boxShadow = '0 0 15px rgba(255,51,85,0.2)';
-    setTimeout(function() { el.style.borderColor = ''; el.style.boxShadow = ''; }, 1500);
-    return;
-  }
-  window.location.href = '/?service=ahs&address=' + encodeURIComponent(addr);
+/* ── CTA handler ── */
+function goCTA(slug) {
+  var idMap = {'ahs':'cta-ahs-addr','wash':'cta-wash-addr','risk':'cta-risk-addr','report-card':'cta-rc-addr'};
+  var el = document.getElementById(idMap[slug]);
+  if (!el) return;
+  var addr = el.value.trim();
+  if (!addr) { el.style.borderColor='var(--red)'; el.style.boxShadow='0 0 15px rgba(255,51,85,0.2)'; setTimeout(function(){el.style.borderColor='';el.style.boxShadow='';},1500); return; }
+  window.location.href = '/?service='+encodeURIComponent(slug)+'&address='+encodeURIComponent(addr);
 }
 
-function goRunGeneric() {
-  var addr = document.getElementById('gen-cta-address').value.trim();
-  if (!addr) {
-    var el = document.getElementById('gen-cta-address');
-    el.style.borderColor = 'var(--red)';
-    setTimeout(function() { el.style.borderColor = ''; }, 1500);
-    return;
-  }
-  var slug = window._genSlug || 'ahs';
-  window.location.href = '/?service=' + encodeURIComponent(slug) + '&address=' + encodeURIComponent(addr);
-}
-
-document.getElementById('cta-address').addEventListener('keydown', function(e) {
-  if (e.key === 'Enter') goRun();
-});
-document.getElementById('gen-cta-address').addEventListener('keydown', function(e) {
-  if (e.key === 'Enter') goRunGeneric();
+/* Enter key on all CTA inputs */
+document.querySelectorAll('.cta-input').forEach(function(el) {
+  el.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') { var btn = el.parentElement.querySelector('.cta-btn'); if(btn) btn.click(); }
+  });
 });
 </script>
-
 </body>
 </html>
