@@ -3,9 +3,13 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Agent Health Monitor</title>
+<title>Agent Health Score // Agent Health Monitor</title>
 <meta property="og:type" content="website">
+<meta property="og:title" content="Agent Health Score — The definitive health score for autonomous agents">
+<meta property="og:description" content="Composite 0-100 health score for autonomous agents on Base. Live ecosystem data from 1,000+ agents. Pay per call with USDC.">
 <meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Agent Health Score — Agent Health Monitor">
+<meta name="twitter:description" content="How healthy is your agent? Score it now for $1.00 USDC on Base.">
 <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
 <link rel="icon" type="image/png" sizes="32x32" href="/static/ahm-favicon-32.png">
 <link rel="apple-touch-icon" sizes="180x180" href="/static/ahm-favicon-180.png">
@@ -31,6 +35,12 @@
     --mono: 'Share Tech Mono', monospace;
     --display: 'Orbitron', sans-serif;
     --body: 'Rajdhani', sans-serif;
+    --grade-a: #00ff88;
+    --grade-b: #88ff00;
+    --grade-c: #ffaa00;
+    --grade-d: #ff6600;
+    --grade-e: #ff3355;
+    --grade-f: #cc0033;
   }
 
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -89,20 +99,465 @@
 
   .nav-link:hover { color: var(--cyan); }
 
-  /* ─── CONTAINER ─── */
-  .container {
+  /* ─── ENDPOINT NAV ─── */
+  .ep-nav {
+    position: relative; z-index: 10;
+    display: flex; flex-wrap: wrap; gap: 0;
+    justify-content: center;
+    border-bottom: 1px solid var(--border);
+    background: rgba(3,6,9,0.7);
+  }
+
+  .ep-nav-link {
+    font-family: var(--mono); font-size: 0.6rem;
+    color: var(--text-dim); text-decoration: none;
+    padding: 0.75rem 1.25rem;
+    transition: all 0.2s; letter-spacing: 0.1em;
+    border-bottom: 2px solid transparent;
+  }
+
+  .ep-nav-link:hover { color: var(--cyan); background: rgba(0,245,255,0.03); }
+  .ep-nav-link.active {
+    color: var(--cyan); border-bottom-color: var(--cyan);
+    background: rgba(0,245,255,0.05);
+  }
+
+  /* ─── FULL-WIDTH SECTIONS ─── */
+  .section {
+    position: relative; z-index: 10;
+    max-width: 960px; margin: 0 auto;
+    padding: 0 1.5rem;
+  }
+
+  .section-full {
+    position: relative; z-index: 10;
+    width: 100%;
+  }
+
+  /* ─── HERO ─── */
+  .hero {
+    position: relative;
+    text-align: center;
+    padding: 4rem 1.5rem 3rem;
+    overflow: hidden;
+  }
+
+  .hero-glow {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 600px; height: 600px;
+    background: radial-gradient(circle, rgba(0,245,255,0.08) 0%, transparent 70%);
+    pointer-events: none;
+  }
+
+  .hero-heartbeat {
+    position: absolute;
+    top: 50%; left: 0; right: 0;
+    transform: translateY(-50%);
+    height: 120px;
+    opacity: 0.12;
+    overflow: hidden;
+    pointer-events: none;
+  }
+
+  .hero-heartbeat svg {
+    width: 200%; height: 100%;
+    animation: heartbeat-scroll 4s linear infinite;
+  }
+
+  @keyframes heartbeat-scroll {
+    from { transform: translateX(0); }
+    to { transform: translateX(-50%); }
+  }
+
+  .hero-score-label {
+    font-family: var(--mono); font-size: 0.65rem;
+    color: var(--cyan-dim); letter-spacing: 0.3em;
+    margin-bottom: 0.5rem;
+    text-transform: uppercase;
+  }
+
+  .hero-score {
+    font-family: var(--display);
+    font-size: clamp(4rem, 12vw, 8rem);
+    font-weight: 900;
+    color: var(--cyan);
+    text-shadow: 0 0 60px rgba(0,245,255,0.4), 0 0 120px rgba(0,245,255,0.15);
+    line-height: 1;
+    margin-bottom: 0.25rem;
+    position: relative;
+  }
+
+  .hero-subtitle {
+    font-family: var(--body); font-size: clamp(1rem, 2.5vw, 1.4rem);
+    font-weight: 300; color: var(--text);
+    margin-bottom: 2rem; letter-spacing: 0.02em;
+  }
+
+  .hero-stats {
+    display: flex; flex-wrap: wrap;
+    justify-content: center; gap: 0.75rem;
+    margin-bottom: 2.5rem;
+  }
+
+  .hero-stat-pill {
+    font-family: var(--mono); font-size: 0.65rem;
+    padding: 0.5rem 1rem; letter-spacing: 0.05em;
+    border: 1px solid var(--border);
+    background: rgba(13,31,45,0.8);
+  }
+
+  .hero-stat-pill .val {
+    font-weight: bold;
+  }
+
+  .hero-stat-pill .val.cyan { color: var(--cyan); }
+  .hero-stat-pill .val.red { color: var(--red); }
+  .hero-stat-pill .val.amber { color: var(--amber); }
+
+  .hero-cta {
+    display: inline-block;
+    background: linear-gradient(135deg, rgba(0,245,255,0.25), rgba(0,245,255,0.08));
+    border: 1px solid var(--cyan); color: var(--cyan);
+    font-family: var(--mono); font-size: 0.85rem;
+    padding: 1rem 2.5rem; cursor: pointer;
+    text-decoration: none;
+    transition: all 0.3s; letter-spacing: 0.08em;
+    font-weight: bold;
+  }
+
+  .hero-cta:hover {
+    background: rgba(0,245,255,0.3);
+    box-shadow: 0 0 30px rgba(0,245,255,0.3), 0 0 60px rgba(0,245,255,0.1);
+    transform: translateY(-1px);
+  }
+
+  /* ─── SECTION HEADERS ─── */
+  .sect-header {
+    text-align: center;
+    padding: 3.5rem 1rem 1.5rem;
+  }
+
+  .sect-tag {
+    font-family: var(--mono); font-size: 0.55rem;
+    color: var(--cyan-dim); letter-spacing: 0.3em;
+    margin-bottom: 0.5rem; text-transform: uppercase;
+  }
+
+  .sect-title {
+    font-family: var(--display); font-size: clamp(1.1rem, 3vw, 1.6rem);
+    font-weight: 700; color: var(--text-bright);
+    letter-spacing: 0.04em;
+  }
+
+  /* ─── DIMENSION CARDS ─── */
+  .dim-row {
+    display: grid; grid-template-columns: 1fr 1fr 1fr;
+    gap: 1rem; margin-bottom: 1.5rem;
+  }
+
+  .dim-card {
+    background: var(--panel); border: 1px solid var(--border);
+    padding: 1.5rem 1.25rem; text-align: center;
+    position: relative; overflow: hidden;
+  }
+
+  .dim-card::before {
+    content: '';
+    position: absolute; top: -1px; left: -1px; right: -1px;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--cyan), transparent);
+    opacity: 0.5;
+  }
+
+  .dim-tag {
+    font-family: var(--mono); font-size: 0.55rem;
+    color: var(--cyan-dim); letter-spacing: 0.2em;
+    margin-bottom: 0.75rem; text-transform: uppercase;
+  }
+
+  .dim-score {
+    font-family: var(--display); font-size: 2.2rem;
+    font-weight: 900; line-height: 1;
+    margin-bottom: 0.3rem;
+  }
+
+  .dim-label {
+    font-family: var(--mono); font-size: 0.6rem;
+    color: var(--text-dim); letter-spacing: 0.1em;
+    margin-bottom: 1rem;
+  }
+
+  .dim-bar-track {
+    height: 4px; background: var(--bg); border-radius: 2px;
+    overflow: hidden;
+  }
+
+  .dim-bar-fill {
+    height: 100%; border-radius: 2px;
+    width: 0; transition: width 1.5s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .dim-desc {
+    font-family: var(--mono); font-size: 0.6rem;
+    color: var(--text-dim); margin-top: 0.75rem;
+    line-height: 1.5;
+  }
+
+  .dim-formula {
+    text-align: center; padding: 1rem 0 0.5rem;
+    font-family: var(--mono); font-size: 0.7rem;
+    color: var(--text-dim); letter-spacing: 0.1em;
+  }
+
+  .dim-formula span { color: var(--cyan); font-weight: bold; }
+
+  /* ─── GRADE DISTRIBUTION ─── */
+  .grade-section {
+    padding-bottom: 1rem;
+  }
+
+  .grade-headline {
+    font-family: var(--display); font-size: clamp(1rem, 2.5vw, 1.3rem);
+    font-weight: 700; color: var(--text-bright);
+    text-align: center; margin-bottom: 0.3rem;
+  }
+
+  .grade-subhead {
+    font-family: var(--mono); font-size: 0.7rem;
+    color: var(--text-dim); text-align: center;
+    margin-bottom: 2rem;
+  }
+
+  .grade-blocks {
+    display: flex; width: 100%;
+    height: 80px; margin-bottom: 1rem;
+    border: 1px solid var(--border);
+    overflow: hidden;
+  }
+
+  .grade-block {
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    transition: flex-basis 1.2s cubic-bezier(0.22, 1, 0.36, 1);
+    flex-basis: 0;
+    overflow: hidden;
+    min-width: 0;
+  }
+
+  .grade-block-letter {
+    font-family: var(--display); font-size: 1.1rem;
+    font-weight: 900; line-height: 1;
+    opacity: 0.9;
+  }
+
+  .grade-block-pct {
+    font-family: var(--mono); font-size: 0.6rem;
+    opacity: 0.8; margin-top: 0.15rem;
+  }
+
+  .grade-block-count {
+    font-family: var(--mono); font-size: 0.5rem;
+    opacity: 0.5;
+  }
+
+  .grade-legend {
+    display: flex; flex-wrap: wrap;
+    justify-content: center; gap: 1rem;
+    font-family: var(--mono); font-size: 0.55rem;
+    color: var(--text-dim);
+  }
+
+  .grade-legend-item {
+    display: flex; align-items: center; gap: 0.35rem;
+  }
+
+  .grade-legend-dot {
+    width: 8px; height: 8px; border-radius: 2px;
+  }
+
+  .grade-callout {
+    text-align: center; margin-top: 1.5rem;
+    font-family: var(--body); font-size: 1.05rem;
+    color: var(--text); line-height: 1.6;
+  }
+
+  .grade-callout strong { color: var(--amber); }
+
+  /* ─── PATTERN CARDS ─── */
+  .pattern-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 0.75rem;
+  }
+
+  .pattern-card {
+    background: var(--panel); border: 1px solid var(--border);
+    padding: 1rem 1.25rem; position: relative;
+    display: flex; flex-direction: column; gap: 0.4rem;
+  }
+
+  .pattern-card.active { border-color: rgba(255,255,255,0.15); }
+
+  .pattern-card-top {
+    display: flex; align-items: center;
+    justify-content: space-between;
+  }
+
+  .pattern-name {
+    font-family: var(--mono); font-size: 0.75rem;
+    font-weight: bold; letter-spacing: 0.05em;
+  }
+
+  .pattern-badge {
+    font-family: var(--mono); font-size: 0.55rem;
+    padding: 0.2rem 0.5rem; letter-spacing: 0.08em;
+    border: 1px solid;
+  }
+
+  .pattern-badge.critical { color: var(--red); border-color: rgba(255,51,85,0.3); background: rgba(255,51,85,0.08); }
+  .pattern-badge.positive { color: var(--green); border-color: rgba(0,255,136,0.3); background: rgba(0,255,136,0.08); }
+  .pattern-badge.warning { color: var(--amber); border-color: rgba(255,170,0,0.3); background: rgba(255,170,0,0.08); }
+
+  .pattern-desc {
+    font-family: var(--mono); font-size: 0.6rem;
+    color: var(--text-dim); line-height: 1.5;
+  }
+
+  .pattern-stat {
+    font-family: var(--mono); font-size: 0.6rem;
+    margin-top: 0.25rem;
+  }
+
+  .pattern-bar-track {
+    height: 3px; background: var(--bg); border-radius: 2px;
+    margin-top: 0.35rem; overflow: hidden;
+  }
+
+  .pattern-bar-fill {
+    height: 100%; border-radius: 2px;
+    width: 0; transition: width 1.5s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .pattern-inactive {
+    opacity: 0.4;
+  }
+
+  /* ─── SAMPLE OUTPUT ─── */
+  .sample-section { padding-bottom: 0.5rem; }
+
+  .code-block {
+    background: var(--bg); border: 1px solid var(--border);
+    padding: 1.5rem 1.5rem; overflow-x: auto;
+    font-family: var(--mono); font-size: 0.7rem;
+    line-height: 1.8; color: var(--text-dim);
+    position: relative;
+  }
+
+  .code-block::before {
+    content: 'RESPONSE';
+    position: absolute; top: 0.5rem; right: 0.75rem;
+    font-size: 0.5rem; color: var(--cyan-dim);
+    letter-spacing: 0.2em;
+  }
+
+  .code-block .key { color: var(--cyan); }
+  .code-block .str { color: var(--green); }
+  .code-block .num { color: var(--amber); }
+
+  .code-line {
+    opacity: 0; transform: translateX(-8px);
+    transition: opacity 0.3s ease, transform 0.3s ease;
+  }
+
+  .code-line.visible {
+    opacity: 1; transform: translateX(0);
+  }
+
+  /* ─── CTA BOTTOM ─── */
+  .cta-bottom {
+    text-align: center;
+    padding: 4rem 1.5rem 3rem;
+    position: relative;
+  }
+
+  .cta-bottom-glow {
+    position: absolute;
+    bottom: 0; left: 50%;
+    transform: translateX(-50%);
+    width: 500px; height: 300px;
+    background: radial-gradient(ellipse, rgba(0,245,255,0.06) 0%, transparent 70%);
+    pointer-events: none;
+  }
+
+  .cta-question {
+    font-family: var(--display);
+    font-size: clamp(1.2rem, 3vw, 1.8rem);
+    font-weight: 700; color: var(--text-bright);
+    margin-bottom: 2rem;
+  }
+
+  .cta-form {
+    display: flex; gap: 0.75rem;
+    max-width: 560px; margin: 0 auto 1.25rem;
+  }
+
+  .cta-input {
+    flex: 1; background: var(--bg);
+    border: 1px solid var(--border); color: var(--text);
+    font-family: var(--mono); font-size: 0.75rem;
+    padding: 1rem 1.25rem; outline: none;
+    transition: border-color 0.2s;
+  }
+
+  .cta-input::placeholder { color: var(--text-dim); }
+  .cta-input:focus { border-color: var(--cyan-dim); box-shadow: 0 0 15px rgba(0,245,255,0.1); }
+
+  .cta-btn {
+    background: linear-gradient(135deg, rgba(0,245,255,0.25), rgba(0,245,255,0.08));
+    border: 1px solid var(--cyan); color: var(--cyan);
+    font-family: var(--mono); font-size: 0.75rem;
+    padding: 1rem 2rem; cursor: pointer;
+    white-space: nowrap; transition: all 0.3s;
+    letter-spacing: 0.06em; font-weight: bold;
+  }
+
+  .cta-btn:hover {
+    background: rgba(0,245,255,0.3);
+    box-shadow: 0 0 25px rgba(0,245,255,0.3);
+    transform: translateY(-1px);
+  }
+
+  .cta-note {
+    font-family: var(--body); font-size: 0.9rem;
+    color: var(--text-dim); margin-bottom: 0.5rem;
+  }
+
+  .cta-powered {
+    font-family: var(--mono); font-size: 0.5rem;
+    color: var(--cyan-dim); letter-spacing: 0.2em;
+  }
+
+  /* ─── DIVIDER ─── */
+  .divider {
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--border), transparent);
+    margin: 0.5rem 0;
+  }
+
+  /* ─── GENERIC FALLBACK (non-AHS slugs) ─── */
+  .generic-container {
     position: relative; z-index: 10;
     max-width: 800px; margin: 0 auto;
     padding: 0 1.5rem 4rem;
   }
 
-  /* ─── HERO ─── */
-  .ep-hero {
-    text-align: center;
-    padding: 3rem 1rem 2rem;
+  .gen-hero {
+    text-align: center; padding: 3rem 1rem 2rem;
   }
 
-  .ep-price-badge {
+  .gen-price-badge {
     display: inline-block;
     font-family: var(--mono); font-size: 0.7rem;
     color: var(--green); border: 1px solid var(--green-dim);
@@ -110,28 +565,20 @@
     letter-spacing: 0.1em;
   }
 
-  .ep-name {
+  .gen-name {
     font-family: var(--display);
     font-size: clamp(1.4rem, 4vw, 2.4rem);
     font-weight: 900; letter-spacing: 0.05em;
-    color: var(--text-bright);
+    color: var(--cyan);
     text-shadow: 0 0 40px rgba(0,245,255,0.3);
     margin-bottom: 0.5rem;
   }
 
-  .ep-name span { color: var(--cyan); text-shadow: 0 0 30px var(--cyan); }
-
-  .ep-tagline {
+  .gen-tagline {
     font-family: var(--mono); font-size: 0.8rem;
     color: var(--text-dim); margin-bottom: 0.75rem;
   }
 
-  .ep-payment-note {
-    font-family: var(--mono); font-size: 0.55rem;
-    color: var(--cyan-dim); letter-spacing: 0.15em;
-  }
-
-  /* ─── PANEL ─── */
   .panel {
     background: var(--panel); border: 1px solid var(--border);
     position: relative; margin-bottom: 1.5rem;
@@ -158,13 +605,6 @@
 
   .panel-body { padding: 1.25rem; }
 
-  /* ─── DESCRIPTION ─── */
-  .ep-desc {
-    font-family: var(--body); font-size: 1.05rem;
-    color: var(--text); line-height: 1.7;
-  }
-
-  /* ─── WHAT YOU GET ─── */
   .feature-list {
     list-style: none; display: grid;
     grid-template-columns: 1fr 1fr; gap: 0.6rem;
@@ -182,20 +622,6 @@
     color: var(--cyan);
   }
 
-  /* ─── SAMPLE OUTPUT ─── */
-  .code-block {
-    background: var(--bg); border: 1px solid var(--border);
-    padding: 1rem 1.25rem; overflow-x: auto;
-    font-family: var(--mono); font-size: 0.7rem;
-    line-height: 1.7; color: var(--text-dim);
-  }
-
-  .code-block .key { color: var(--cyan); }
-  .code-block .str { color: var(--green); }
-  .code-block .num { color: var(--amber); }
-  .code-block .arr { color: var(--text); }
-
-  /* ─── WHO IT'S FOR ─── */
   .pills {
     display: flex; flex-wrap: wrap; gap: 0.5rem;
   }
@@ -206,81 +632,6 @@
     padding: 0.35rem 0.75rem; background: var(--bg3);
     letter-spacing: 0.05em;
   }
-
-  /* ─── ECOSYSTEM STAT ─── */
-  .eco-stat {
-    text-align: center; padding: 1.5rem 1rem;
-    border: 1px solid var(--border); background: var(--bg3);
-    margin-bottom: 1.5rem;
-  }
-
-  .eco-value {
-    font-family: var(--display); font-size: 2rem;
-    font-weight: 900; color: var(--cyan);
-    text-shadow: 0 0 20px rgba(0,245,255,0.3);
-  }
-
-  .eco-label {
-    font-family: var(--mono); font-size: 0.65rem;
-    color: var(--text-dim); margin-top: 0.3rem;
-    letter-spacing: 0.1em;
-  }
-
-  /* ─── CTA ─── */
-  .cta-section {
-    text-align: center; padding: 2rem 1rem;
-  }
-
-  .cta-form {
-    display: flex; gap: 0.75rem;
-    max-width: 520px; margin: 0 auto 1rem;
-  }
-
-  .cta-input {
-    flex: 1; background: var(--bg);
-    border: 1px solid var(--border); color: var(--text);
-    font-family: var(--mono); font-size: 0.7rem;
-    padding: 0.8rem 1rem; outline: none;
-    transition: border-color 0.2s;
-  }
-
-  .cta-input::placeholder { color: var(--text-dim); }
-  .cta-input:focus { border-color: var(--cyan-dim); }
-
-  .cta-btn {
-    background: linear-gradient(135deg, rgba(0,245,255,0.2), rgba(0,245,255,0.05));
-    border: 1px solid var(--cyan); color: var(--cyan);
-    font-family: var(--mono); font-size: 0.7rem;
-    padding: 0.8rem 1.5rem; cursor: pointer;
-    white-space: nowrap; transition: all 0.2s;
-    letter-spacing: 0.05em; font-weight: bold;
-  }
-
-  .cta-btn:hover {
-    background: rgba(0,245,255,0.25);
-    box-shadow: 0 0 20px rgba(0,245,255,0.25);
-  }
-
-  .cta-powered {
-    font-family: var(--mono); font-size: 0.55rem;
-    color: var(--cyan-dim); letter-spacing: 0.15em;
-  }
-
-  /* ─── ENDPOINT NAV ─── */
-  .ep-nav {
-    display: flex; flex-wrap: wrap; gap: 0.5rem;
-    justify-content: center; margin-bottom: 1.5rem;
-  }
-
-  .ep-nav-link {
-    font-family: var(--mono); font-size: 0.6rem;
-    color: var(--text-dim); text-decoration: none;
-    border: 1px solid var(--border); padding: 0.3rem 0.75rem;
-    transition: all 0.2s; letter-spacing: 0.05em;
-  }
-
-  .ep-nav-link:hover { border-color: var(--cyan-dim); color: var(--cyan); }
-  .ep-nav-link.active { border-color: var(--cyan); color: var(--cyan); background: rgba(0,245,255,0.08); }
 
   /* ─── FOOTER ─── */
   footer {
@@ -325,13 +676,24 @@
     50% { opacity: 0.3; }
   }
 
+  /* ─── SCROLL ANIMATIONS ─── */
+  .anim-in {
+    opacity: 0; transform: translateY(20px);
+    transition: opacity 0.6s ease, transform 0.6s ease;
+  }
+
+  .anim-in.visible {
+    opacity: 1; transform: translateY(0);
+  }
+
   /* ─── LOADING ─── */
   .loading-state {
-    text-align: center; padding: 4rem 1rem;
+    position: relative; z-index: 10;
+    text-align: center; padding: 6rem 1rem;
   }
 
   .loading-spinner {
-    display: inline-block; width: 24px; height: 24px;
+    display: inline-block; width: 28px; height: 28px;
     border: 2px solid var(--border); border-top-color: var(--cyan);
     border-radius: 50%; animation: spin 0.8s linear infinite;
   }
@@ -341,26 +703,36 @@
   .loading-text {
     font-family: var(--mono); font-size: 0.7rem;
     color: var(--text-dim); margin-top: 0.75rem;
-    letter-spacing: 0.1em;
+    letter-spacing: 0.15em;
   }
 
   .error-state {
-    text-align: center; padding: 3rem 1rem;
+    position: relative; z-index: 10;
+    text-align: center; padding: 4rem 1rem;
     font-family: var(--mono); font-size: 0.75rem; color: var(--red);
   }
 
   /* ─── RESPONSIVE ─── */
   @media (max-width: 768px) {
+    .dim-row { grid-template-columns: 1fr; }
+    .pattern-grid { grid-template-columns: 1fr; }
     .feature-list { grid-template-columns: 1fr; }
     .cta-form { flex-direction: column; }
+    .hero-stats { flex-direction: column; align-items: center; }
+    .hero-stat-pill { width: 100%; max-width: 280px; text-align: center; }
     footer { flex-direction: column; gap: 0.75rem; text-align: center; }
     header { padding: 0 1rem; }
-    .container { padding: 0 1rem 3rem; }
+    .section { padding: 0 1rem; }
+    .grade-blocks { height: 65px; }
+    .grade-block-letter { font-size: 0.85rem; }
+    .grade-block-pct { font-size: 0.5rem; }
+    .grade-block-count { display: none; }
   }
 
   @media (max-width: 480px) {
-    .ep-name { font-size: 1.2rem; }
+    .hero-score { font-size: 4rem; }
     .nav-links { gap: 0.75rem; }
+    .ep-nav-link { padding: 0.6rem 0.75rem; font-size: 0.5rem; }
   }
 </style>
 </head>
@@ -374,88 +746,208 @@
   </div>
 </header>
 
-<div class="container">
+<!-- ENDPOINT NAV -->
+<div class="ep-nav" id="ep-nav"></div>
 
-  <!-- LOADING -->
-  <div id="loading" class="loading-state">
-    <div class="loading-spinner"></div>
-    <div class="loading-text">LOADING ENDPOINT DATA...</div>
-  </div>
+<!-- LOADING -->
+<div id="loading" class="loading-state">
+  <div class="loading-spinner"></div>
+  <div class="loading-text">LOADING ENDPOINT DATA...</div>
+</div>
 
-  <!-- ERROR -->
-  <div id="error" class="error-state" style="display:none"></div>
+<!-- ERROR -->
+<div id="error" class="error-state" style="display:none"></div>
 
-  <!-- CONTENT (hidden until loaded) -->
-  <div id="content" style="display:none">
+<!-- ═══════════════════════════════════════════════════════════════════
+     AHS PREMIUM PAGE (hidden until loaded for slug=ahs)
+     ═══════════════════════════════════════════════════════════════════ -->
+<div id="ahs-page" style="display:none">
 
-    <!-- HERO -->
-    <div class="ep-hero">
-      <div class="ep-price-badge" id="ep-price"></div>
-      <h1 class="ep-name" id="ep-name"></h1>
-      <div class="ep-tagline" id="ep-tagline"></div>
-      <div class="ep-payment-note">NO ACCOUNTS. NO SUBSCRIPTIONS. PAY PER CALL ON BASE MAINNET.</div>
+  <!-- 1. HERO -->
+  <div class="section-full hero">
+    <div class="hero-glow"></div>
+    <div class="hero-heartbeat" id="heartbeat-container"></div>
+
+    <div class="hero-score-label">ECOSYSTEM AVERAGE AGENT HEALTH SCORE</div>
+    <div class="hero-score" id="hero-score-num">0</div>
+    <div class="hero-subtitle">The definitive health score for autonomous agents</div>
+
+    <div class="hero-stats">
+      <div class="hero-stat-pill"><span class="val cyan" id="hs-total">0</span> agents scored</div>
+      <div class="hero-stat-pill"><span class="val red" id="hs-zombie">0%</span> Zombie Agent patterns</div>
+      <div class="hero-stat-pill"><span class="val amber" id="hs-agrade">0%</span> reach A grade</div>
     </div>
 
-    <!-- ENDPOINT NAV -->
-    <div class="ep-nav" id="ep-nav"></div>
+    <a href="#cta-section" class="hero-cta">SCORE YOUR AGENT &mdash; $1.00 USDC</a>
+  </div>
 
-    <!-- DESCRIPTION -->
+  <div class="divider"></div>
+
+  <!-- 2. DIMENSIONS -->
+  <div class="section">
+    <div class="sect-header anim-in">
+      <div class="sect-tag">// How It Works</div>
+      <div class="sect-title">Three Dimensions of Agent Health</div>
+    </div>
+
+    <div class="dim-row anim-in" id="dim-row">
+      <div class="dim-card">
+        <div class="dim-tag">D1 // Wallet Hygiene</div>
+        <div class="dim-score" id="dim-d1-score" style="color:var(--green)">0</div>
+        <div class="dim-label">ECOSYSTEM AVG</div>
+        <div class="dim-bar-track">
+          <div class="dim-bar-fill" id="dim-d1-bar" style="background:var(--green)"></div>
+        </div>
+        <div class="dim-desc">Dust accumulation, spam exposure, gas efficiency, failed tx rate</div>
+      </div>
+      <div class="dim-card">
+        <div class="dim-tag">D2 // Behavioural</div>
+        <div class="dim-score" id="dim-d2-score" style="color:var(--red)">0</div>
+        <div class="dim-label">ECOSYSTEM AVG</div>
+        <div class="dim-bar-track">
+          <div class="dim-bar-fill" id="dim-d2-bar" style="background:var(--red)"></div>
+        </div>
+        <div class="dim-desc">Timing patterns, counterparty diversity, transfer breadth, activity gaps</div>
+      </div>
+      <div class="dim-card">
+        <div class="dim-tag">D3 // Infrastructure</div>
+        <div class="dim-score" style="color:var(--text-dim)">&mdash;</div>
+        <div class="dim-label">COMING SOON</div>
+        <div class="dim-bar-track">
+          <div class="dim-bar-fill" style="width:0;background:var(--cyan-dim)"></div>
+        </div>
+        <div class="dim-desc">API reliability, uptime monitoring, RPC health, response latency</div>
+      </div>
+    </div>
+
+    <div class="dim-formula anim-in">
+      <span>D1</span> + <span>D2</span> + <span>D3</span> = <span>AGENT HEALTH SCORE</span>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- 3. GRADE DISTRIBUTION -->
+  <div class="section">
+    <div class="sect-header anim-in">
+      <div class="sect-tag">// Ecosystem Health</div>
+    </div>
+
+    <div class="grade-section anim-in">
+      <div class="grade-headline">Most agents are not healthy</div>
+      <div class="grade-subhead">Grade distribution across all scanned agents</div>
+
+      <div class="grade-blocks" id="grade-blocks"></div>
+
+      <div class="grade-legend">
+        <div class="grade-legend-item"><div class="grade-legend-dot" style="background:var(--grade-a)"></div> A (90-100)</div>
+        <div class="grade-legend-item"><div class="grade-legend-dot" style="background:var(--grade-b)"></div> B (80-89)</div>
+        <div class="grade-legend-item"><div class="grade-legend-dot" style="background:var(--grade-c)"></div> C (70-79)</div>
+        <div class="grade-legend-item"><div class="grade-legend-dot" style="background:var(--grade-d)"></div> D (60-69)</div>
+        <div class="grade-legend-item"><div class="grade-legend-dot" style="background:var(--grade-e)"></div> E (50-59)</div>
+        <div class="grade-legend-item"><div class="grade-legend-dot" style="background:var(--grade-f)"></div> F (&lt;50)</div>
+      </div>
+
+      <div class="grade-callout" id="grade-callout"></div>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- 4. PATTERN DETECTION -->
+  <div class="section">
+    <div class="sect-header anim-in">
+      <div class="sect-tag">// Cross-Dimensional Pattern Detection</div>
+      <div class="sect-title">7 Behavioural Patterns</div>
+    </div>
+
+    <div class="pattern-grid anim-in" id="pattern-grid"></div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- 5. SAMPLE OUTPUT -->
+  <div class="section">
+    <div class="sect-header anim-in">
+      <div class="sect-tag">// Sample Response</div>
+      <div class="sect-title">What You Get Back</div>
+    </div>
+
+    <div class="sample-section anim-in">
+      <div class="code-block" id="code-block"></div>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- 6. CTA BOTTOM -->
+  <div class="section-full cta-bottom" id="cta-section">
+    <div class="cta-bottom-glow"></div>
+    <div class="cta-question">How healthy is your agent?</div>
+    <div class="cta-form">
+      <input type="text" class="cta-input" id="cta-address" placeholder="0x... agent wallet address" spellcheck="false" autocomplete="off">
+      <button class="cta-btn" onclick="goRun()">GET MY AHS SCORE</button>
+    </div>
+    <div class="cta-note">No account. No subscription. Pay once on Base mainnet.</div>
+    <div class="cta-powered">POWERED BY x402 &middot; USDC &middot; BASE MAINNET</div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════
+     GENERIC PAGE (non-AHS slugs)
+     ═══════════════════════════════════════════════════════════════════ -->
+<div id="generic-page" style="display:none">
+  <div class="generic-container">
+    <div class="gen-hero">
+      <div class="gen-price-badge" id="gen-price"></div>
+      <h1 class="gen-name" id="gen-name"></h1>
+      <div class="gen-tagline" id="gen-tagline"></div>
+    </div>
+
     <div class="panel">
       <div class="panel-header"><div class="panel-title">// Overview</div></div>
       <div class="panel-body">
-        <div class="ep-desc" id="ep-desc"></div>
+        <div style="font-family:var(--body);font-size:1.05rem;color:var(--text);line-height:1.7" id="gen-desc"></div>
       </div>
     </div>
 
-    <!-- WHAT YOU GET -->
     <div class="panel">
       <div class="panel-header"><div class="panel-title">// What You Get</div></div>
       <div class="panel-body">
-        <ul class="feature-list" id="ep-features"></ul>
+        <ul class="feature-list" id="gen-features"></ul>
       </div>
     </div>
 
-    <!-- SAMPLE OUTPUT -->
     <div class="panel">
       <div class="panel-header"><div class="panel-title">// Sample Response</div></div>
       <div class="panel-body">
-        <div class="code-block" id="ep-sample"></div>
+        <div class="code-block" id="gen-sample"></div>
       </div>
     </div>
 
-    <!-- WHO IT'S FOR -->
     <div class="panel">
       <div class="panel-header"><div class="panel-title">// Who It's For</div></div>
       <div class="panel-body">
-        <div class="pills" id="ep-pills"></div>
+        <div class="pills" id="gen-pills"></div>
       </div>
     </div>
 
-    <!-- ECOSYSTEM STAT -->
-    <div class="eco-stat">
-      <div class="eco-value" id="eco-value"></div>
-      <div class="eco-label" id="eco-label"></div>
-    </div>
-
-    <!-- CTA -->
-    <div class="panel">
-      <div class="panel-body cta-section">
-        <div class="cta-form">
-          <input type="text" class="cta-input" id="cta-address" placeholder="0x... agent wallet address" spellcheck="false" autocomplete="off">
-          <button class="cta-btn" id="cta-btn" onclick="goRun()"></button>
-        </div>
-        <div class="cta-powered">POWERED BY x402 &middot; USDC ON BASE &middot; NO ACCOUNT NEEDED</div>
+    <div class="section-full cta-bottom" style="padding-top:2rem">
+      <div class="cta-form">
+        <input type="text" class="cta-input" id="gen-cta-address" placeholder="0x... agent wallet address" spellcheck="false" autocomplete="off">
+        <button class="cta-btn" id="gen-cta-btn" onclick="goRunGeneric()"></button>
       </div>
+      <div class="cta-powered">POWERED BY x402 &middot; USDC ON BASE &middot; NO ACCOUNT NEEDED</div>
     </div>
-
-  </div><!-- /content -->
-</div><!-- /container -->
+  </div>
+</div>
 
 <footer>
   <div class="footer-text">AGENT HEALTH MONITOR // PAY-PER-CALL DIAGNOSTICS</div>
   <div class="footer-links">
     <a href="/dashboard" class="footer-link">DASHBOARD</a>
     <a href="/" class="footer-link">HOME</a>
+    <a href="/endpoints/ahs" class="footer-link">ENDPOINTS</a>
     <a href="/roadmap" class="footer-link">ROADMAP</a>
   </div>
   <div class="footer-network">
@@ -466,60 +958,228 @@
 
 <script>
 (function() {
-  // Extract slug from URL path: /endpoints/{slug}
+
+  /* ── Slug detection ── */
   var parts = window.location.pathname.split('/');
   var slug = parts[parts.length - 1] || parts[parts.length - 2];
+  var isAHS = (slug === 'ahs');
 
-  var API = window.location.origin + '/api/endpoint-info/' + encodeURIComponent(slug);
+  /* ── Endpoint nav (render immediately) ── */
+  var navEl = document.getElementById('ep-nav');
+  var navSlugs = ['ahs', 'wash', 'risk', 'report-card'];
+  var navNames = {'ahs':'Agent Health Score','wash':'Agent Wash','risk':'Risk Score','report-card':'Report Card'};
+  for (var i = 0; i < navSlugs.length; i++) {
+    var a = document.createElement('a');
+    a.href = '/endpoints/' + navSlugs[i];
+    a.className = 'ep-nav-link' + (navSlugs[i] === slug ? ' active' : '');
+    a.textContent = navNames[navSlugs[i]];
+    navEl.appendChild(a);
+  }
 
-  fetch(API)
-    .then(function(r) {
-      if (!r.ok) throw new Error('HTTP ' + r.status);
-      return r.json();
-    })
-    .then(function(d) { render(d); })
-    .catch(function(e) {
-      document.getElementById('loading').style.display = 'none';
-      var el = document.getElementById('error');
-      el.style.display = 'block';
-      el.textContent = '// ERROR: ' + e.message;
-    });
+  /* ── Data fetch ── */
+  if (isAHS) {
+    // AHS page: fetch ecosystem stats (has everything we need)
+    fetch(window.location.origin + '/api/ecosystem-stats')
+      .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+      .then(function(d) { renderAHS(d); })
+      .catch(function(e) { showError(e.message); });
+  } else {
+    // Generic page: fetch endpoint info
+    fetch(window.location.origin + '/api/endpoint-info/' + encodeURIComponent(slug))
+      .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+      .then(function(d) { renderGeneric(d); })
+      .catch(function(e) { showError(e.message); });
+  }
 
-  function render(d) {
+  function showError(msg) {
     document.getElementById('loading').style.display = 'none';
-    document.getElementById('content').style.display = 'block';
+    var el = document.getElementById('error');
+    el.style.display = 'block';
+    el.textContent = '// ERROR: ' + msg;
+  }
 
-    // Update page title and meta
-    document.title = d.name + ' // Agent Health Monitor';
+  /* ═══════════════════════════════════════════════
+     AHS PREMIUM RENDER
+     ═══════════════════════════════════════════════ */
+  function renderAHS(stats) {
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('ahs-page').style.display = 'block';
+    document.title = 'Agent Health Score // Agent Health Monitor';
 
-    // Hero
-    document.getElementById('ep-price').textContent = d.price + ' USDC PER CALL';
-    var nameEl = document.getElementById('ep-name');
-    nameEl.innerHTML = '<span>' + escHtml(d.name) + '</span>';
-    document.getElementById('ep-tagline').textContent = d.tagline;
+    var total = stats.total_scanned || 0;
+    var avgAHS = stats.avg_ahs || 0;
+    var avgD1 = stats.avg_d1 || 0;
+    var avgD2 = stats.avg_d2 || 0;
+    var grades = stats.grade_distribution || {};
+    var patterns = stats.pattern_distribution || {};
 
-    // Endpoint nav
-    var navEl = document.getElementById('ep-nav');
-    var slugs = d.all_slugs || [];
-    var navNames = {
-      'ahs': 'Agent Health Score',
-      'wash': 'Agent Wash',
-      'risk': 'Risk Score',
-      'report-card': 'Report Card'
-    };
-    for (var i = 0; i < slugs.length; i++) {
-      var a = document.createElement('a');
-      a.href = '/endpoints/' + slugs[i];
-      a.className = 'ep-nav-link' + (slugs[i] === d.slug ? ' active' : '');
-      a.textContent = navNames[slugs[i]] || slugs[i];
-      navEl.appendChild(a);
+    // ── Heartbeat SVG ──
+    buildHeartbeat();
+
+    // ── Hero animated numbers ──
+    animateValue(document.getElementById('hero-score-num'), 0, avgAHS, 2000, 1);
+    animateInt(document.getElementById('hs-total'), 0, total, 1800, true);
+
+    var zombieCount = patterns['Zombie Agent'] || 0;
+    var zombiePct = total > 0 ? Math.round(zombieCount / total * 100) : 0;
+    animateSuffix(document.getElementById('hs-zombie'), 0, zombiePct, 1600, '%');
+
+    var aCount = grades['A'] || 0;
+    var aPct = total > 0 ? (aCount / total * 100) : 0;
+    var aPctDisplay = aPct < 1 && aPct > 0 ? aPct.toFixed(1) : Math.round(aPct);
+    animateSuffix(document.getElementById('hs-agrade'), 0, parseFloat(aPctDisplay), 1400, '%');
+
+    // ── Dimension bars (animate after delay) ──
+    setTimeout(function() {
+      animateValue(document.getElementById('dim-d1-score'), 0, avgD1, 1200, 1);
+      animateValue(document.getElementById('dim-d2-score'), 0, avgD2, 1200, 1);
+      document.getElementById('dim-d1-bar').style.width = avgD1 + '%';
+      document.getElementById('dim-d2-bar').style.width = avgD2 + '%';
+    }, 600);
+
+    // ── Grade distribution blocks ──
+    var gradeOrder = ['F','E','D','C','B','A'];
+    var gradeColors = {A:'var(--grade-a)',B:'var(--grade-b)',C:'var(--grade-c)',D:'var(--grade-d)',E:'var(--grade-e)',F:'var(--grade-f)'};
+    var blocksEl = document.getElementById('grade-blocks');
+
+    // Build blocks at 0 width first
+    var blockEls = [];
+    for (var i = 0; i < gradeOrder.length; i++) {
+      var g = gradeOrder[i];
+      var count = grades[g] || 0;
+      var pct = total > 0 ? (count / total * 100) : 0;
+
+      var block = document.createElement('div');
+      block.className = 'grade-block';
+      block.style.background = gradeColors[g];
+      block.style.color = (g === 'A' || g === 'B') ? '#030609' : '#fff';
+      block.dataset.pct = pct;
+
+      // Only show label if block is wide enough
+      if (pct >= 3) {
+        block.innerHTML =
+          '<div class="grade-block-letter">' + g + '</div>' +
+          '<div class="grade-block-pct">' + (pct < 1 ? pct.toFixed(1) : Math.round(pct)) + '%</div>' +
+          '<div class="grade-block-count">' + count + '</div>';
+      } else if (pct > 0) {
+        block.innerHTML = '<div class="grade-block-letter" style="font-size:0.7rem">' + g + '</div>';
+      }
+
+      blocksEl.appendChild(block);
+      blockEls.push(block);
     }
 
-    // Description
-    document.getElementById('ep-desc').textContent = d.description;
+    // Animate blocks expanding
+    setTimeout(function() {
+      for (var j = 0; j < blockEls.length; j++) {
+        blockEls[j].style.flexBasis = blockEls[j].dataset.pct + '%';
+      }
+    }, 300);
 
-    // Features
-    var featEl = document.getElementById('ep-features');
+    // Callout text
+    var callout = document.getElementById('grade-callout');
+    var aPctStr = aPct < 1 && aPct > 0 ? aPct.toFixed(1) : Math.round(aPct);
+    callout.innerHTML = 'Only <strong>' + aPctStr + '%</strong> of agents reach A grade. Where does yours sit?';
+
+    // ── Pattern cards ──
+    var patternDefs = [
+      {name:'Zombie Agent', severity:'critical', desc:'Running but producing no meaningful output. Crashed strategy or abandoned agent still receiving payments.'},
+      {name:'Healthy Operator', severity:'positive', desc:'Normal, healthy agent behaviour. Diverse counterparties, regular timing, good gas efficiency.'},
+      {name:'Cascading Failure', severity:'critical', desc:'Multiple interdependent systems failing together. Chain reaction of errors across agent subsystems.'},
+      {name:'Phantom Activity', severity:'warning', desc:'Transactions with no economic purpose. Gas spent on calls that produce no value transfer.'},
+      {name:'Stale Strategy', severity:'warning', desc:'Executing outdated logic in a changed environment. Repetitive actions with diminishing returns.'},
+      {name:'Gas Hemorrhage', severity:'warning', desc:'Excessive gas spending relative to transaction value. Poor batching or inefficient contract interactions.'},
+      {name:'Shadow Wallet', severity:'critical', desc:'Hidden value flows through unlinked wallets. Potential fund siphoning or obfuscated transaction chains.'}
+    ];
+
+    var gridEl = document.getElementById('pattern-grid');
+    for (var i = 0; i < patternDefs.length; i++) {
+      var p = patternDefs[i];
+      var pCount = patterns[p.name] || 0;
+      var pPct = total > 0 ? (pCount / total * 100) : 0;
+      var isActive = pCount > 0;
+
+      var card = document.createElement('div');
+      card.className = 'pattern-card' + (isActive ? ' active' : ' pattern-inactive');
+
+      var badgeClass = p.severity;
+      var badgeLabel = p.severity === 'critical' ? 'CRITICAL' : p.severity === 'positive' ? 'HEALTHY' : 'WARNING';
+
+      var barColor = p.severity === 'critical' ? 'var(--red)' : p.severity === 'positive' ? 'var(--green)' : 'var(--amber)';
+      var statColor = barColor;
+
+      var html = '<div class="pattern-card-top">' +
+        '<div class="pattern-name" style="color:' + (isActive ? 'var(--text-bright)' : 'var(--text-dim)') + '">' + p.name + '</div>' +
+        '<div class="pattern-badge ' + badgeClass + '">' + badgeLabel + '</div>' +
+        '</div>' +
+        '<div class="pattern-desc">' + p.desc + '</div>';
+
+      if (isActive) {
+        var pPctStr = pPct < 1 ? pPct.toFixed(1) : Math.round(pPct);
+        html += '<div class="pattern-stat" style="color:' + statColor + '">' + pPctStr + '% of agents &middot; ' + pCount + ' detected</div>';
+        html += '<div class="pattern-bar-track"><div class="pattern-bar-fill" data-width="' + Math.min(pPct, 100) + '" style="background:' + barColor + '"></div></div>';
+      } else {
+        html += '<div class="pattern-stat" style="color:var(--text-dim)">Not yet detected at scale</div>';
+        html += '<div class="pattern-bar-track"><div class="pattern-bar-fill" style="width:0"></div></div>';
+      }
+
+      card.innerHTML = html;
+      gridEl.appendChild(card);
+    }
+
+    // ── Sample output (line-by-line reveal) ──
+    var sampleJSON = {
+      "status": "ok",
+      "agent_health_score": 67,
+      "grade": "C",
+      "grade_label": "Needs Attention",
+      "mode": "2D",
+      "dimensions": {
+        "d1_wallet_hygiene": 84,
+        "d2_behavioural": 52
+      },
+      "patterns_detected": [
+        {"name": "Healthy Operator", "severity": "positive", "modifier": 5}
+      ],
+      "confidence": "high",
+      "temporal_token": "eyJhbGciOi..."
+    };
+
+    var codeEl = document.getElementById('code-block');
+    var jsonStr = JSON.stringify(sampleJSON, null, 2);
+    var lines = jsonStr.split('\n');
+    var html = '';
+    for (var i = 0; i < lines.length; i++) {
+      var line = escHtml(lines[i]);
+      // Syntax highlight
+      line = line.replace(/"([^"]+)":/g, '<span class="key">"$1"</span>:');
+      line = line.replace(/: "([^"]*?)"/g, ': <span class="str">"$1"</span>');
+      line = line.replace(/: (\d+\.?\d*)/g, ': <span class="num">$1</span>');
+      // Remaining strings in arrays
+      line = line.replace(/"([^"<][^"]*?)"/g, '<span class="str">"$1"</span>');
+      html += '<div class="code-line" style="transition-delay:' + (i * 0.06) + 's">' + line + '</div>';
+    }
+    codeEl.innerHTML = html;
+
+    // ── Scroll animations ──
+    initScrollAnimations();
+  }
+
+  /* ═══════════════════════════════════════════════
+     GENERIC RENDER (wash, risk, report-card)
+     ═══════════════════════════════════════════════ */
+  function renderGeneric(d) {
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('generic-page').style.display = 'block';
+    document.title = d.name + ' // Agent Health Monitor';
+    window._genSlug = d.slug;
+
+    document.getElementById('gen-price').textContent = d.price + ' USDC PER CALL';
+    document.getElementById('gen-name').textContent = d.name;
+    document.getElementById('gen-tagline').textContent = d.tagline;
+    document.getElementById('gen-desc').textContent = d.description;
+
+    var featEl = document.getElementById('gen-features');
     var features = d.what_you_get || [];
     for (var i = 0; i < features.length; i++) {
       var li = document.createElement('li');
@@ -527,12 +1187,10 @@
       featEl.appendChild(li);
     }
 
-    // Sample output
-    var sampleEl = document.getElementById('ep-sample');
+    var sampleEl = document.getElementById('gen-sample');
     sampleEl.innerHTML = formatJson(d.sample_output || {});
 
-    // Who it's for
-    var pillsEl = document.getElementById('ep-pills');
+    var pillsEl = document.getElementById('gen-pills');
     var whos = d.who_its_for || [];
     for (var i = 0; i < whos.length; i++) {
       var div = document.createElement('div');
@@ -541,56 +1199,160 @@
       pillsEl.appendChild(div);
     }
 
-    // Ecosystem stat
-    document.getElementById('eco-value').textContent = d.ecosystem_value || '—';
-    document.getElementById('eco-label').textContent = d.ecosystem_label || '';
+    document.getElementById('gen-cta-btn').textContent = d.cta || 'Run Analysis';
+  }
 
-    // CTA
-    document.getElementById('cta-btn').textContent = d.cta || 'Run Analysis';
+  /* ═══════════════════════════════════════════════
+     UTILITIES
+     ═══════════════════════════════════════════════ */
 
-    // Store slug for CTA redirect
-    window._epSlug = d.slug;
+  function animateValue(el, start, end, duration, decimals) {
+    var startTime = null;
+    function step(ts) {
+      if (!startTime) startTime = ts;
+      var progress = Math.min((ts - startTime) / duration, 1);
+      var eased = 1 - Math.pow(1 - progress, 3);
+      var current = start + (end - start) * eased;
+      el.textContent = current.toFixed(decimals);
+      if (progress < 1) requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+  }
+
+  function animateInt(el, start, end, duration, comma) {
+    var startTime = null;
+    function step(ts) {
+      if (!startTime) startTime = ts;
+      var progress = Math.min((ts - startTime) / duration, 1);
+      var eased = 1 - Math.pow(1 - progress, 3);
+      var current = Math.round(start + (end - start) * eased);
+      el.textContent = comma ? current.toLocaleString() : current;
+      if (progress < 1) requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+  }
+
+  function animateSuffix(el, start, end, duration, suffix) {
+    var startTime = null;
+    var isFloat = end % 1 !== 0;
+    function step(ts) {
+      if (!startTime) startTime = ts;
+      var progress = Math.min((ts - startTime) / duration, 1);
+      var eased = 1 - Math.pow(1 - progress, 3);
+      var current = start + (end - start) * eased;
+      el.textContent = (isFloat ? current.toFixed(1) : Math.round(current)) + suffix;
+      if (progress < 1) requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+  }
+
+  function buildHeartbeat() {
+    var container = document.getElementById('heartbeat-container');
+    var svgNS = 'http://www.w3.org/2000/svg';
+    var svg = document.createElementNS(svgNS, 'svg');
+    svg.setAttribute('viewBox', '0 0 1200 120');
+    svg.setAttribute('preserveAspectRatio', 'none');
+
+    // Build a heartbeat waveform that tiles
+    var seg = 'M0,60 L80,60 L100,60 L110,30 L120,90 L130,15 L140,100 L150,45 L160,60 L240,60 ' +
+              'L280,60 L300,60 L310,35 L320,85 L330,20 L340,95 L350,50 L360,60 L440,60 ' +
+              'L480,60 L500,60 L510,32 L520,88 L530,18 L540,98 L550,48 L560,60 L600,60';
+    var path = document.createElementNS(svgNS, 'path');
+    path.setAttribute('d', seg + ' L600,60 L680,60 L700,60 L710,30 L720,90 L730,15 L740,100 L750,45 L760,60 L840,60 L880,60 L900,60 L910,35 L920,85 L930,20 L940,95 L950,50 L960,60 L1040,60 L1080,60 L1100,60 L1110,32 L1120,88 L1130,18 L1140,98 L1150,48 L1160,60 L1200,60');
+    path.setAttribute('fill', 'none');
+    path.setAttribute('stroke', '#00f5ff');
+    path.setAttribute('stroke-width', '2');
+
+    svg.appendChild(path);
+    container.appendChild(svg);
+  }
+
+  function initScrollAnimations() {
+    var observer = new IntersectionObserver(function(entries) {
+      entries.forEach(function(entry) {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('visible');
+
+          // Trigger pattern bar fills
+          var bars = entry.target.querySelectorAll('.pattern-bar-fill[data-width]');
+          for (var i = 0; i < bars.length; i++) {
+            bars[i].style.width = bars[i].dataset.width + '%';
+          }
+
+          // Trigger code line reveals
+          var codeLines = entry.target.querySelectorAll('.code-line');
+          if (codeLines.length) {
+            for (var j = 0; j < codeLines.length; j++) {
+              codeLines[j].classList.add('visible');
+            }
+          }
+
+          observer.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.1 });
+
+    var animEls = document.querySelectorAll('.anim-in');
+    for (var i = 0; i < animEls.length; i++) {
+      observer.observe(animEls[i]);
+    }
+
+    // Also observe the code block and pattern grid directly
+    var codeBlock = document.getElementById('code-block');
+    if (codeBlock) observer.observe(codeBlock);
+    var patternGrid = document.getElementById('pattern-grid');
+    if (patternGrid) observer.observe(patternGrid);
   }
 
   function escHtml(s) {
-    var d = document.createElement('div');
-    d.textContent = s;
-    return d.innerHTML;
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 
   function formatJson(obj) {
     var json = JSON.stringify(obj, null, 2);
-    // Syntax highlight
     json = json.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    // Keys
     json = json.replace(/"([^"]+)":/g, '<span class="key">"$1"</span>:');
-    // String values (after colon)
     json = json.replace(/: "([^"]*?)"/g, ': <span class="str">"$1"</span>');
-    // Numbers
     json = json.replace(/: (\d+\.?\d*)/g, ': <span class="num">$1</span>');
-    // Arrays of strings
     json = json.replace(/"([^"]*?)"/g, function(match, p1) {
-      // Only highlight if not already wrapped in a span
       if (match.indexOf('class=') >= 0) return match;
       return '<span class="str">"' + p1 + '"</span>';
     });
     return json;
   }
+
 })();
 
+/* ── CTA handlers ── */
 function goRun() {
   var addr = document.getElementById('cta-address').value.trim();
   if (!addr) {
-    document.getElementById('cta-address').style.borderColor = 'var(--red)';
-    setTimeout(function() { document.getElementById('cta-address').style.borderColor = ''; }, 1500);
+    var el = document.getElementById('cta-address');
+    el.style.borderColor = 'var(--red)';
+    el.style.boxShadow = '0 0 15px rgba(255,51,85,0.2)';
+    setTimeout(function() { el.style.borderColor = ''; el.style.boxShadow = ''; }, 1500);
     return;
   }
-  var slug = window._epSlug || 'ahs';
+  window.location.href = '/?service=ahs&address=' + encodeURIComponent(addr);
+}
+
+function goRunGeneric() {
+  var addr = document.getElementById('gen-cta-address').value.trim();
+  if (!addr) {
+    var el = document.getElementById('gen-cta-address');
+    el.style.borderColor = 'var(--red)';
+    setTimeout(function() { el.style.borderColor = ''; }, 1500);
+    return;
+  }
+  var slug = window._genSlug || 'ahs';
   window.location.href = '/?service=' + encodeURIComponent(slug) + '&address=' + encodeURIComponent(addr);
 }
 
 document.getElementById('cta-address').addEventListener('keydown', function(e) {
   if (e.key === 'Enter') goRun();
+});
+document.getElementById('gen-cta-address').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') goRunGeneric();
 });
 </script>
 
