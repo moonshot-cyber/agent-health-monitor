@@ -108,6 +108,30 @@
     gap: 1rem;
   }
 
+  .nav-links { display: flex; align-items: center; gap: 0.25rem; }
+  .nav-link {
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    letter-spacing: 0.1em;
+    color: var(--text-dim);
+    padding: 0.5rem 0.85rem;
+    text-decoration: none;
+    transition: color 0.2s;
+  }
+  .nav-link:hover { color: var(--cyan); }
+  .nav-link.active { color: var(--cyan); }
+  .nav-cta {
+    color: var(--bg);
+    background: var(--cyan);
+    border-radius: 3px;
+    font-weight: 700;
+    margin-left: 0.5rem;
+    text-shadow: none;
+    text-decoration: none;
+    transition: background 0.2s, transform 0.2s;
+  }
+  .nav-cta:hover { background: var(--text-bright); color: var(--bg); transform: translateY(-1px); }
+
   .status-dot {
     width: 6px;
     height: 6px;
@@ -562,6 +586,8 @@
     header {
       padding: 0 1rem;
     }
+    .nav-link { padding: 0.4rem 0.5rem; font-size: 0.55rem; }
+    .nav-cta { margin-left: 0.25rem; padding: 0.4rem 0.6rem; }
     .container {
       padding: 0 1rem 3rem;
     }
@@ -590,10 +616,12 @@
 
 <header>
   <a href="/" class="logo">AGENT HEALTH MONITOR</a>
-  <div class="status-bar">
-    <div class="status-dot"></div>
-    LIVE // BASE MAINNET
-  </div>
+  <nav class="nav-links">
+    <a href="/dashboard" class="nav-link active">DASHBOARD</a>
+    <a href="/endpoints/ahs" class="nav-link">ENDPOINTS</a>
+    <a href="/roadmap" class="nav-link">ROADMAP</a>
+    <a href="/app" class="nav-link nav-cta">TRY IT &rarr;</a>
+  </nav>
 </header>
 
 <div class="container">
@@ -708,8 +736,10 @@
   <div class="footer-text">DATA UPDATED NIGHTLY VIA AUTOMATED SCANNING // AGENTHEALTHMONITOR.XYZ</div>
   <div class="footer-links">
     <a href="/" class="footer-link">HOME</a>
+    <a href="/dashboard" class="footer-link">DASHBOARD</a>
     <a href="/endpoints/ahs" class="footer-link">ENDPOINTS</a>
     <a href="/roadmap" class="footer-link">ROADMAP</a>
+    <a href="/app" class="footer-link">TRY IT</a>
   </div>
   <div class="footer-network">
     <div class="status-dot"></div>
