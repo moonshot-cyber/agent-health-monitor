@@ -2200,11 +2200,20 @@ STATIC_DIR = Path(__file__).parent / "static"
 
 @app.get("/")
 async def root():
-    """Serve the landing page or redirect to docs."""
+    """Serve the marketing homepage."""
     index = STATIC_DIR / "index.html"
     if index.is_file():
         return FileResponse(index)
     return JSONResponse({"service": "Agent Health Monitor", "docs": "/docs", "info": "/api/info"})
+
+
+@app.get("/app")
+async def app_page():
+    """Serve the developer tool (formerly the homepage)."""
+    app_file = STATIC_DIR / "app.html"
+    if app_file.is_file():
+        return FileResponse(app_file)
+    raise HTTPException(status_code=404, detail="App page not found")
 
 
 @app.get("/roadmap")
