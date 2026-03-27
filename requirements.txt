@@ -6,3 +6,4 @@ x402[fastapi,evm]>=2.0.0
 anthropic>=0.40.0
 PyJWT>=2.8.0
 Pillow>=10.0.0
+APScheduler>=3.10,<4

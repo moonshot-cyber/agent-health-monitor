@@ -26,6 +26,7 @@ import logging
 import os
 import re
 import secrets
+import time
 
 import db as scan_db
 from generate_report_card import generate_report_card
@@ -47,6 +48,8 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
 from x402.http import FacilitatorConfig, HTTPFacilitatorClient, PaymentOption
 from x402.http.middleware.fastapi import PaymentMiddlewareASGI
 from x402.http.types import RouteConfig
@@ -1227,8 +1230,26 @@ async def lifespan(app: FastAPI):
         logger.exception("Zombie pattern backfill failed (non-fatal)")
     alert_task = asyncio.create_task(alert_monitor_loop())
     rescan_task = asyncio.create_task(rescan_loop())
-    logger.info("Background tasks started: alert_monitor, rescan_loop")
+
+    # -- APScheduler: nightly ACP scan at 02:00 UTC --
+    scheduler = AsyncIOScheduler()
+    scheduler.add_job(
+        run_acp_scan,
+        trigger=CronTrigger(hour=2, minute=0, timezone="UTC"),
+        id="acp_nightly_scan",
+        name="ACP Nightly Scan",
+        coalesce=True,
+        misfire_grace_time=3600,  # fire if <=1hr late (e.g. restart at 02:30)
+        max_instances=1,
+    )
+    scheduler.start()
+    app.state.scheduler = scheduler
+
+    logger.info("Background tasks started: alert_monitor, rescan_loop, acp_scheduler")
     yield
+
+    # -- Shutdown --
+    scheduler.shutdown(wait=False)
     alert_task.cancel()
     rescan_task.cancel()
     for t in [alert_task, rescan_task]:
@@ -4060,9 +4081,135 @@ async def trust_registry(request: Request):
     return stats
 
 
+# -- ACP Scan Trigger & Status -----------------------------------------------
+
+@app.post("/acp-scan/trigger")
+async def trigger_acp_scan(request: Request):
+    """Manually trigger the ACP nightly scan.
+
+    Protected by X-Internal-Key header. Returns immediately;
+    scan runs in the background.
+    """
+    internal_key = request.headers.get("X-Internal-Key", "")
+    if not INTERNAL_API_KEY or not hmac.compare_digest(internal_key, INTERNAL_API_KEY):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    if _acp_scan_lock.locked():
+        raise HTTPException(status_code=409, detail="ACP scan already running")
+
+    asyncio.create_task(run_acp_scan())
+    return {"status": "ok", "message": "ACP scan triggered"}
+
+
+@app.get("/acp-scan/status")
+async def acp_scan_status(request: Request):
+    """Check if an ACP scan is currently running.
+
+    Protected by X-Internal-Key header.
+    """
+    internal_key = request.headers.get("X-Internal-Key", "")
+    if not INTERNAL_API_KEY or not hmac.compare_digest(internal_key, INTERNAL_API_KEY):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    scheduler = request.app.state.scheduler
+    job = scheduler.get_job("acp_nightly_scan")
+    next_run = job.next_run_time.isoformat() if job and job.next_run_time else None
+
+    return {
+        "running": _acp_scan_lock.locked(),
+        "next_scheduled_run": next_run,
+    }
+
+
 # -- Static file serving (must be after all route definitions) ----------------
 os.makedirs("static/report-cards", exist_ok=True)
 app.mount("/static", StaticFiles(directory="static"), name="static")
+
+
+# -- ACP Nightly Scan (replaces Railway cron service) -----------------------
+
+_acp_scan_lock = asyncio.Lock()
+
+
+async def run_acp_scan():
+    """Run the nightly ACP proactive scan in a background thread.
+
+    Mirrors cron_acp_scan.py logic but runs inside the web process.
+    All sync I/O is offloaded to the default executor via run_in_executor.
+    """
+    if _acp_scan_lock.locked():
+        logger.warning("ACP scan skipped: previous scan still running")
+        return
+
+    async with _acp_scan_lock:
+        logger.info("ACP nightly scan — START")
+        start = time.time()
+
+        max_agents = int(os.getenv("ACP_MAX_AGENTS", "500"))
+        max_scans = int(os.getenv("ACP_MAX_SCANS", "100"))
+        sort_order = os.getenv("ACP_SORT", "successfulJobCount:desc")
+        max_runtime = int(os.getenv("ACP_MAX_RUNTIME", "3600"))
+
+        loop = asyncio.get_running_loop()
+
+        try:
+            from acp_proactive_scan import (
+                discover_agents, deduplicate_wallets,
+                scan_wallets, generate_report,
+            )
+
+            # Phase 1: Discovery
+            agents, api_stats = await loop.run_in_executor(
+                None,
+                partial(discover_agents,
+                        max_agents=max_agents,
+                        sort=sort_order,
+                        max_new=max_scans),
+            )
+
+            if not agents:
+                logger.info("ACP scan: no agents discovered, exiting cleanly")
+                return
+
+            # Phase 2: Deduplication
+            dedup_stats = await loop.run_in_executor(
+                None,
+                partial(deduplicate_wallets, agents),
+            )
+
+            # Runtime guard
+            elapsed = time.time() - start
+            if elapsed > max_runtime * 0.8:
+                logger.warning(
+                    "ACP scan runtime guard: discovery took %.0fs, skipping scan phase",
+                    elapsed,
+                )
+                await loop.run_in_executor(
+                    None,
+                    partial(generate_report, agents, api_stats, dedup_stats, {}),
+                )
+                return
+
+            # Phase 3: Scanning
+            scan_results = await loop.run_in_executor(
+                None,
+                partial(scan_wallets, agents,
+                        max_scans=max_scans,
+                        force_rescan=False),
+            )
+
+            # Phase 4: Report
+            await loop.run_in_executor(
+                None,
+                partial(generate_report, agents, api_stats, dedup_stats, scan_results),
+            )
+
+            elapsed = time.time() - start
+            logger.info("ACP nightly scan — COMPLETE (%.0fs)", elapsed)
+
+        except Exception:
+            elapsed = time.time() - start
+            logger.exception("ACP nightly scan — FAILED after %.0fs", elapsed)
 
 
 # -- Rescan Background Loop --------------------------------------------------
