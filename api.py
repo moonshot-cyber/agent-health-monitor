@@ -1231,7 +1231,7 @@ async def lifespan(app: FastAPI):
     alert_task = asyncio.create_task(alert_monitor_loop())
     rescan_task = asyncio.create_task(rescan_loop())
 
-    # -- APScheduler: nightly ACP scan at 02:00 UTC --
+    # -- APScheduler: nightly scans --
     scheduler = AsyncIOScheduler()
     scheduler.add_job(
         run_acp_scan,
@@ -1242,10 +1242,19 @@ async def lifespan(app: FastAPI):
         misfire_grace_time=3600,  # fire if <=1hr late (e.g. restart at 02:30)
         max_instances=1,
     )
+    scheduler.add_job(
+        run_olas_scan,
+        trigger=CronTrigger(hour=2, minute=30, timezone="UTC"),
+        id="olas_nightly_scan",
+        name="Olas Nightly Scan",
+        coalesce=True,
+        misfire_grace_time=3600,
+        max_instances=1,
+    )
     scheduler.start()
     app.state.scheduler = scheduler
 
-    logger.info("Background tasks started: alert_monitor, rescan_loop, acp_scheduler")
+    logger.info("Background tasks started: alert_monitor, rescan_loop, acp_scheduler, olas_scheduler")
     yield
 
     # -- Shutdown --
@@ -4121,6 +4130,46 @@ async def acp_scan_status(request: Request):
     }
 
 
+# -- Olas Scan Trigger & Status ----------------------------------------------
+
+@app.post("/olas-scan/trigger")
+async def trigger_olas_scan(request: Request):
+    """Manually trigger the Olas nightly scan.
+
+    Protected by X-Internal-Key header. Returns immediately;
+    scan runs in the background.
+    """
+    internal_key = request.headers.get("X-Internal-Key", "")
+    if not INTERNAL_API_KEY or not hmac.compare_digest(internal_key, INTERNAL_API_KEY):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    if _olas_scan_lock.locked():
+        raise HTTPException(status_code=409, detail="Olas scan already running")
+
+    asyncio.create_task(run_olas_scan())
+    return {"status": "ok", "message": "Olas scan triggered"}
+
+
+@app.get("/olas-scan/status")
+async def olas_scan_status(request: Request):
+    """Check if an Olas scan is currently running.
+
+    Protected by X-Internal-Key header.
+    """
+    internal_key = request.headers.get("X-Internal-Key", "")
+    if not INTERNAL_API_KEY or not hmac.compare_digest(internal_key, INTERNAL_API_KEY):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    scheduler = request.app.state.scheduler
+    job = scheduler.get_job("olas_nightly_scan")
+    next_run = job.next_run_time.isoformat() if job and job.next_run_time else None
+
+    return {
+        "running": _olas_scan_lock.locked(),
+        "next_scheduled_run": next_run,
+    }
+
+
 # -- Static file serving (must be after all route definitions) ----------------
 os.makedirs("static/report-cards", exist_ok=True)
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -4210,6 +4259,48 @@ async def run_acp_scan():
         except Exception:
             elapsed = time.time() - start
             logger.exception("ACP nightly scan — FAILED after %.0fs", elapsed)
+
+
+# -- Olas Nightly Scan -------------------------------------------------------
+
+_olas_scan_lock = asyncio.Lock()
+
+
+async def run_olas_scan():
+    """Run the nightly Olas protocol scan in a background thread.
+
+    Discovers wallet addresses from the Olas ServiceRegistryL2 on Base,
+    then runs AHS scoring on new wallets. All sync I/O is offloaded
+    to the default executor via run_in_executor.
+    """
+    if _olas_scan_lock.locked():
+        logger.warning("Olas scan skipped: previous scan still running")
+        return
+
+    async with _olas_scan_lock:
+        logger.info("Olas nightly scan — START")
+        start = time.time()
+
+        max_scans = int(os.getenv("OLAS_MAX_SCANS", "200"))
+        loop = asyncio.get_running_loop()
+
+        try:
+            from olas_scan import scan_olas_services
+
+            wallets = await loop.run_in_executor(
+                None,
+                partial(scan_olas_services, max_scans=max_scans),
+            )
+
+            elapsed = time.time() - start
+            logger.info(
+                "Olas nightly scan — COMPLETE (%.0fs, %d wallets discovered)",
+                elapsed, len(wallets),
+            )
+
+        except Exception:
+            elapsed = time.time() - start
+            logger.exception("Olas nightly scan — FAILED after %.0fs", elapsed)
 
 
 # -- Rescan Background Loop --------------------------------------------------
