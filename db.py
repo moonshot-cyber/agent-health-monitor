@@ -432,6 +432,8 @@ def get_ecosystem_dashboard_stats() -> dict:
             key = r["source"]
             if key and "acp" in key.lower():
                 data_sources["ACP"] = data_sources.get("ACP", 0) + r["cnt"]
+            elif key and "olas" in key.lower():
+                data_sources["Olas"] = data_sources.get("Olas", 0) + r["cnt"]
             elif key and "erc8004" in key.lower():
                 data_sources["ERC-8004"] = data_sources.get("ERC-8004", 0) + r["cnt"]
             else:
