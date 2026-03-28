@@ -18,6 +18,7 @@ Usage:
 import argparse
 import logging
 import os
+import random
 import sys
 import time
 from datetime import datetime, timezone
@@ -29,7 +30,7 @@ logger = logging.getLogger("ahm.olas_scan")
 # Configuration
 # ---------------------------------------------------------------------------
 
-BASE_RPC_URL = os.getenv("BASE_RPC_URL", "https://mainnet.base.org")
+BASE_RPC_URL = os.getenv("OLAS_RPC_URL", os.getenv("BASE_RPC_URL", "https://mainnet.base.org"))
 
 # ServiceRegistryL2 on Base mainnet (chain 8453)
 # Source: valory-xyz/autonolas-registries configuration.json
@@ -38,7 +39,10 @@ SERVICE_REGISTRY_ADDRESS = "0x3C1fF68f5aa342D296d4DEe4Bb1cACCA912D95fE"
 # Service states in the Olas registry
 SERVICE_STATE_DEPLOYED = 4
 
-# Minimal ABI for read-only calls
+# Minimal ABI for read-only calls.
+# Source: Basescan verified contract ABI for 0x3C1fF68f...on Base.
+# getService returns a Service struct with 8 fields (including agentIds[]).
+# getAgentInstances returns (uint256, address[]).
 SERVICE_REGISTRY_ABI = [
     {
         "name": "totalSupply",
@@ -53,7 +57,7 @@ SERVICE_REGISTRY_ABI = [
         "inputs": [{"name": "serviceId", "type": "uint256"}],
         "outputs": [
             {
-                "name": "",
+                "name": "service",
                 "type": "tuple",
                 "components": [
                     {"name": "securityDeposit", "type": "uint96"},
@@ -63,6 +67,7 @@ SERVICE_REGISTRY_ABI = [
                     {"name": "maxNumAgentInstances", "type": "uint32"},
                     {"name": "numAgentInstances", "type": "uint32"},
                     {"name": "state", "type": "uint8"},
+                    {"name": "agentIds", "type": "uint32[]"},
                 ],
             }
         ],
@@ -73,15 +78,17 @@ SERVICE_REGISTRY_ABI = [
         "type": "function",
         "inputs": [{"name": "serviceId", "type": "uint256"}],
         "outputs": [
-            {"name": "numAgentInstances", "type": "uint32"},
+            {"name": "numAgentInstances", "type": "uint256"},
             {"name": "agentInstances", "type": "address[]"},
         ],
         "stateMutability": "view",
     },
 ]
 
-# Rate limiting for RPC calls
-RPC_DELAY = 0.15  # seconds between calls to avoid rate limits
+# RPC rate limiting and retry
+RPC_DELAY = 0.25  # seconds between calls to avoid rate limits
+RPC_MAX_RETRIES = 4  # max retries per RPC call on 429/timeout
+RPC_BACKOFF_BASE = 2.0  # exponential backoff base (seconds)
 
 
 # ---------------------------------------------------------------------------
@@ -92,7 +99,10 @@ def _get_contract():
     """Lazy-initialise Web3 and return the ServiceRegistryL2 contract."""
     from web3 import Web3
 
-    w3 = Web3(Web3.HTTPProvider(BASE_RPC_URL))
+    w3 = Web3(Web3.HTTPProvider(
+        BASE_RPC_URL,
+        request_kwargs={"timeout": 30},
+    ))
     if not w3.is_connected():
         raise ConnectionError(f"Cannot connect to Base RPC at {BASE_RPC_URL}")
     contract = w3.eth.contract(
@@ -100,6 +110,40 @@ def _get_contract():
         abi=SERVICE_REGISTRY_ABI,
     )
     return w3, contract
+
+
+def _rpc_call_with_retry(fn, *args, label: str = "RPC call"):
+    """Execute a Web3 contract call with exponential backoff on 429/timeouts.
+
+    Args:
+        fn: Bound contract function (e.g. contract.functions.getService(1))
+        label: Human-readable label for log messages.
+
+    Returns:
+        The call result.
+    """
+    last_exc = None
+    for attempt in range(RPC_MAX_RETRIES + 1):
+        try:
+            return fn.call()
+        except Exception as e:
+            last_exc = e
+            err_str = str(e).lower()
+            is_rate_limit = "429" in err_str or "too many" in err_str or "rate" in err_str
+            is_timeout = "timeout" in err_str or "timed out" in err_str
+
+            if not (is_rate_limit or is_timeout) or attempt == RPC_MAX_RETRIES:
+                raise
+
+            # Exponential backoff with jitter
+            delay = RPC_BACKOFF_BASE * (2 ** attempt) + random.uniform(0, 1)
+            logger.warning(
+                "%s attempt %d/%d failed (429/timeout), retrying in %.1fs: %s",
+                label, attempt + 1, RPC_MAX_RETRIES + 1, delay, str(e)[:80],
+            )
+            time.sleep(delay)
+
+    raise last_exc  # unreachable, but keeps type checkers happy
 
 
 def discover_olas_wallets(max_services: int = 500) -> list[dict]:
@@ -114,7 +158,9 @@ def discover_olas_wallets(max_services: int = 500) -> list[dict]:
     logger.info("Olas discovery — connecting to Base RPC")
     w3, contract = _get_contract()
 
-    total_supply = contract.functions.totalSupply().call()
+    total_supply = _rpc_call_with_retry(
+        contract.functions.totalSupply(), label="totalSupply",
+    )
     logger.info("Olas ServiceRegistryL2 totalSupply: %d", total_supply)
 
     if total_supply == 0:
@@ -133,8 +179,11 @@ def discover_olas_wallets(max_services: int = 500) -> list[dict]:
 
     for service_id in range(start_id, end_id - 1, -1):
         try:
-            service = contract.functions.getService(service_id).call()
-            state = service[6]  # state is the last tuple element
+            service = _rpc_call_with_retry(
+                contract.functions.getService(service_id),
+                label=f"getService({service_id})",
+            )
+            state = service[6]  # state field (index 6 in the 8-field struct)
 
             if state != SERVICE_STATE_DEPLOYED:
                 skipped_count += 1
@@ -159,7 +208,10 @@ def discover_olas_wallets(max_services: int = 500) -> list[dict]:
 
             # Get agent instance EOA addresses
             time.sleep(RPC_DELAY)
-            num_agents, agent_instances = contract.functions.getAgentInstances(service_id).call()
+            num_agents, agent_instances = _rpc_call_with_retry(
+                contract.functions.getAgentInstances(service_id),
+                label=f"getAgentInstances({service_id})",
+            )
 
             for agent_addr in agent_instances:
                 addr = agent_addr.lower()
