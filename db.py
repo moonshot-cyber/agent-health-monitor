@@ -15,7 +15,7 @@ logger = logging.getLogger("ahm.db")
 
 DB_PATH = os.getenv("DB_PATH", "./ahm_history.db")
 
-_SCHEMA_VERSION = 2
+_SCHEMA_VERSION = 3
 
 _SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS scans (
@@ -75,6 +75,20 @@ CREATE INDEX IF NOT EXISTS idx_scans_grade            ON scans(grade);
 CREATE INDEX IF NOT EXISTS idx_patterns_scan_id       ON scan_patterns(scan_id);
 CREATE INDEX IF NOT EXISTS idx_patterns_name          ON scan_patterns(pattern_name);
 CREATE INDEX IF NOT EXISTS idx_wallets_rescan         ON known_wallets(rescan_enabled, last_scanned_at);
+
+CREATE TABLE IF NOT EXISTS scan_batch_log (
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    batch_date         TEXT NOT NULL,
+    source             TEXT NOT NULL,
+    wallets_scanned    INTEGER NOT NULL,
+    average_ahs        REAL,
+    min_ahs            INTEGER,
+    max_ahs            INTEGER,
+    grade_distribution TEXT,
+    avg_d1             REAL,
+    avg_d2             REAL,
+    created_at         TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+);
 """
 
 
@@ -107,6 +121,9 @@ def init_db():
                 "UPDATE known_wallets SET registries = source "
                 "WHERE (registries IS NULL OR registries = '') AND source IS NOT NULL"
             )
+
+        # v3: Add scan_batch_log table (created via _SCHEMA_SQL above)
+        # No ALTER needed — table is created by CREATE TABLE IF NOT EXISTS.
 
         if current < _SCHEMA_VERSION:
             conn.execute("INSERT INTO schema_version (version) VALUES (?)", (_SCHEMA_VERSION,))
@@ -496,5 +513,76 @@ def forget_address(address: str) -> int:
         conn.execute("DELETE FROM known_wallets WHERE address = ?", (addr,))
         conn.commit()
         return deleted
+    finally:
+        conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Batch quality tracking
+# ---------------------------------------------------------------------------
+
+def log_batch_quality(
+    source: str,
+    wallets_scanned: int,
+    average_ahs: float | None = None,
+    min_ahs: int | None = None,
+    max_ahs: int | None = None,
+    grade_distribution: dict | None = None,
+    avg_d1: float | None = None,
+    avg_d2: float | None = None,
+) -> None:
+    """Log aggregate quality stats for a completed scan batch."""
+    conn = get_connection()
+    try:
+        conn.execute(
+            """INSERT INTO scan_batch_log
+               (batch_date, source, wallets_scanned, average_ahs,
+                min_ahs, max_ahs, grade_distribution, avg_d1, avg_d2)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                datetime.now(timezone.utc).isoformat(),
+                source,
+                wallets_scanned,
+                average_ahs,
+                min_ahs,
+                max_ahs,
+                json.dumps(grade_distribution) if grade_distribution else None,
+                avg_d1,
+                avg_d2,
+            ),
+        )
+        conn.commit()
+        logger.info(
+            "Batch quality logged: source=%s wallets=%d avg_ahs=%.1f",
+            source, wallets_scanned, average_ahs or 0,
+        )
+    finally:
+        conn.close()
+
+
+def get_batch_quality_history(days: int = 30) -> list[dict]:
+    """Return batch quality records from the last N days."""
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            """SELECT batch_date, source, wallets_scanned, average_ahs,
+                      min_ahs, max_ahs, grade_distribution, avg_d1, avg_d2
+               FROM scan_batch_log
+               WHERE batch_date >= datetime('now', ?)
+               ORDER BY batch_date DESC""",
+            (f"-{days} days",),
+        ).fetchall()
+
+        result = []
+        for r in rows:
+            entry = dict(r)
+            gd = entry.get("grade_distribution")
+            if gd:
+                try:
+                    entry["grade_distribution"] = json.loads(gd)
+                except (json.JSONDecodeError, TypeError):
+                    pass
+            result.append(entry)
+        return result
     finally:
         conn.close()

@@ -2230,11 +2230,20 @@ STATIC_DIR = Path(__file__).parent / "static"
 
 @app.get("/")
 async def root():
-    """Serve the landing page or redirect to docs."""
+    """Serve the marketing homepage."""
     index = STATIC_DIR / "index.html"
     if index.is_file():
         return FileResponse(index)
     return JSONResponse({"service": "Agent Health Monitor", "docs": "/docs", "info": "/api/info"})
+
+
+@app.get("/app")
+async def app_page():
+    """Serve the developer tool (formerly the homepage)."""
+    app_file = STATIC_DIR / "app.html"
+    if app_file.is_file():
+        return FileResponse(app_file)
+    raise HTTPException(status_code=404, detail="App page not found")
 
 
 @app.get("/roadmap")
@@ -2357,6 +2366,14 @@ async def ecosystem_stats():
     loop = asyncio.get_running_loop()
     stats = await loop.run_in_executor(None, scan_db.get_ecosystem_dashboard_stats)
     return stats
+
+
+@app.get("/scan/quality")
+async def scan_quality():
+    """Batch quality history for the last 30 days. No auth required."""
+    loop = asyncio.get_running_loop()
+    history = await loop.run_in_executor(None, scan_db.get_batch_quality_history)
+    return {"batches": history}
 
 
 @app.get("/dashboard")
