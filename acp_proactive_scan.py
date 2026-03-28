@@ -476,6 +476,33 @@ def scan_wallets(agents: list[ACPAgent], max_scans: int = 500, force_rescan: boo
     print(f"\n[+] Scanned {scan_count} wallets in {elapsed_total/60:.1f} min ({errors} errors)")
     if scan_count > 0:
         print(f"[+] Average: {elapsed_total/scan_count:.1f}s per wallet")
+
+    # Log batch quality stats
+    try:
+        scored = [r for r in results.values() if r.get("ahs_score") is not None]
+        if scored:
+            scores = [r["ahs_score"] for r in scored]
+            grades = {}
+            for r in scored:
+                g = r.get("grade", "?")
+                grades[g] = grades.get(g, 0) + 1
+            d1_scores = [r["d1_score"] for r in scored if r.get("d1_score") is not None]
+            d2_scores = [r["d2_score"] for r in scored if r.get("d2_score") is not None]
+
+            db.log_batch_quality(
+                source="acp",
+                wallets_scanned=len(scored),
+                average_ahs=round(sum(scores) / len(scores), 1),
+                min_ahs=min(scores),
+                max_ahs=max(scores),
+                grade_distribution=grades,
+                avg_d1=round(sum(d1_scores) / len(d1_scores), 1) if d1_scores else None,
+                avg_d2=round(sum(d2_scores) / len(d2_scores), 1) if d2_scores else None,
+            )
+            print(f"[+] Batch quality logged: {len(scored)} wallets, avg AHS {sum(scores)/len(scores):.1f}")
+    except Exception as e:
+        print(f"[!] Batch quality logging failed (non-fatal): {e}")
+
     return results
 
 
