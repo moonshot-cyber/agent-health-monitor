@@ -2329,6 +2329,14 @@ async def ecosystem_stats():
     return stats
 
 
+@app.get("/scan/quality")
+async def scan_quality():
+    """Batch quality history for the last 30 days. No auth required."""
+    loop = asyncio.get_running_loop()
+    history = await loop.run_in_executor(None, scan_db.get_batch_quality_history)
+    return {"batches": history}
+
+
 @app.get("/dashboard")
 async def dashboard():
     """Serve the public ecosystem health dashboard."""
