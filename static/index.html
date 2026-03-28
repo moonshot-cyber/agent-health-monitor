@@ -3,18 +3,17 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="base:app_id" content="699881c46768b2f53f686a78" />
-<title>Agent Health Monitor // Diagnostics for the Agent Economy</title>
-<meta property="og:title" content="Agent Health Monitor — Diagnostics for the Agent Economy">
-<meta property="og:description" content="Pay-per-call agent health diagnostics on Base. 11 x402 endpoints. No accounts. Just USDC.">
+<title>Agent Health Monitor — The Health Layer for the Agent Economy</title>
+<meta property="og:title" content="Agent Health Monitor — The Health Layer for the Agent Economy">
+<meta property="og:description" content="Pay-per-call diagnostics for autonomous agents on Base. No accounts. Just USDC.">
 <meta property="og:image" content="https://agenthealthmonitor.xyz/static/ahm-og-banner.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta property="og:url" content="https://agenthealthmonitor.xyz">
 <meta property="og:type" content="website">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="Agent Health Monitor — Diagnostics for the Agent Economy">
-<meta name="twitter:description" content="Pay-per-call agent health diagnostics on Base. 11 x402 endpoints. No accounts. Just USDC.">
+<meta name="twitter:title" content="Agent Health Monitor — The Health Layer for the Agent Economy">
+<meta name="twitter:description" content="Pay-per-call diagnostics for autonomous agents on Base. No accounts. Just USDC.">
 <meta name="twitter:image" content="https://agenthealthmonitor.xyz/static/ahm-og-banner.png">
 <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
 <link rel="icon" type="image/png" sizes="32x32" href="/static/ahm-favicon-32.png">
@@ -38,36 +37,29 @@
     --text: #c8e8f0;
     --text-dim: #4a7a8a;
     --text-bright: #e8f8ff;
-    --mono: 'Share Tech Mono', monospace;
     --display: 'Orbitron', sans-serif;
     --body: 'Rajdhani', sans-serif;
+    --mono: 'Share Tech Mono', monospace;
   }
 
   * { margin: 0; padding: 0; box-sizing: border-box; }
-
-  html { scroll-behavior: smooth; }
 
   body {
     background: var(--bg);
     color: var(--text);
     font-family: var(--body);
     font-size: 16px;
+    line-height: 1.6;
     overflow-x: hidden;
     cursor: crosshair;
   }
 
-  /* Scanlines overlay */
+  /* Scanlines */
   body::before {
     content: '';
     position: fixed;
     inset: 0;
-    background: repeating-linear-gradient(
-      0deg,
-      transparent,
-      transparent 2px,
-      rgba(0,245,255,0.015) 2px,
-      rgba(0,245,255,0.015) 4px
-    );
+    background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,245,255,0.015) 2px, rgba(0,245,255,0.015) 4px);
     pointer-events: none;
     z-index: 9999;
   }
@@ -82,2584 +74,692 @@
       linear-gradient(90deg, rgba(0,245,255,0.03) 1px, transparent 1px);
     background-size: 40px 40px;
     pointer-events: none;
-    z-index: 0;
+    z-index: -1;
   }
 
-  /* ─── HEADER ─── */
+  a { color: var(--cyan); text-decoration: none; }
+  a:hover { color: var(--text-bright); }
+
+  /* ── NAV ── */
   header {
-    position: relative;
-    z-index: 10;
-    padding: 0 2rem;
-    height: 64px;
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    z-index: 100;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    border-bottom: 1px solid var(--border);
-    background: rgba(3,6,9,0.9);
+    padding: 0 2rem;
+    height: 60px;
+    background: rgba(3,6,9,0.85);
     backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--border);
   }
 
   .logo {
     font-family: var(--display);
     font-size: 0.85rem;
     font-weight: 700;
-    letter-spacing: 0.15em;
     color: var(--cyan);
-    text-shadow: 0 0 20px var(--cyan);
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
+    letter-spacing: 0.15em;
+    text-shadow: 0 0 20px rgba(0,245,255,0.4);
   }
 
-  .logo-icon {
-    height: 28px;
-    width: auto;
-    animation: pulse-border 3s ease-in-out infinite;
-  }
+  .nav-links { display: flex; align-items: center; gap: 0.25rem; }
 
-  @keyframes pulse-border {
-    0%, 100% { box-shadow: 0 0 8px var(--cyan-dim); }
-    50% { box-shadow: 0 0 20px var(--cyan), inset 0 0 10px rgba(0,245,255,0.1); }
-  }
-
-  .status-bar {
+  .nav-link {
     font-family: var(--mono);
-    font-size: 0.65rem;
-    color: var(--green);
-    display: flex;
-    align-items: center;
-    gap: 1rem;
+    font-size: 0.7rem;
+    letter-spacing: 0.1em;
+    color: var(--text-dim);
+    padding: 0.5rem 0.85rem;
+    transition: color 0.2s;
   }
+  .nav-link:hover { color: var(--cyan); }
 
-  .status-dot {
-    width: 6px;
-    height: 6px;
-    background: var(--green);
-    border-radius: 50%;
-    animation: blink 2s ease-in-out infinite;
-    box-shadow: 0 0 8px var(--green);
+  .nav-cta {
+    color: var(--bg);
+    background: var(--cyan);
+    border-radius: 3px;
+    font-weight: 700;
+    margin-left: 0.5rem;
+    text-shadow: none;
+    transition: background 0.2s, transform 0.2s;
   }
+  .nav-cta:hover { background: var(--text-bright); color: var(--bg); transform: translateY(-1px); }
 
-  @keyframes blink {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.3; }
-  }
-
-  /* ─── HERO (compact) ─── */
+  /* ── HERO ── */
   .hero {
     position: relative;
-    z-index: 10;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
+    min-height: 100vh;
+    padding: 80px 2rem 4rem;
     text-align: center;
-    padding: 2.5rem 2rem 1.5rem;
     overflow: hidden;
   }
 
-  .hero-tag {
+  .hero-status {
+    position: absolute;
+    top: 80px;
+    right: 2rem;
     font-family: var(--mono);
     font-size: 0.6rem;
-    color: var(--cyan-dim);
-    letter-spacing: 0.3em;
-    text-transform: uppercase;
-    margin-bottom: 0.75rem;
+    letter-spacing: 0.15em;
+    color: var(--green);
     display: flex;
     align-items: center;
-    gap: 0.75rem;
+    gap: 0.5rem;
   }
 
-  .hero-tag::before, .hero-tag::after {
-    content: '';
-    width: 30px;
-    height: 1px;
-    background: var(--cyan-dim);
+  .status-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--green);
+    animation: blink 2s ease-in-out infinite;
   }
 
-  h1 {
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+  .hero-score-wrap {
+    position: relative;
+    margin-bottom: 2rem;
+  }
+
+  /* Heartbeat SVG behind score */
+  .heartbeat-svg {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 500px;
+    height: 120px;
+    opacity: 0.25;
+  }
+
+  .heartbeat-line {
+    fill: none;
+    stroke: var(--cyan);
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-dasharray: 600;
+    stroke-dashoffset: 600;
+    animation: heartbeat-draw 3s ease-in-out infinite;
+  }
+
+  @keyframes heartbeat-draw {
+    0% { stroke-dashoffset: 600; opacity: 0.3; }
+    50% { stroke-dashoffset: 0; opacity: 1; }
+    100% { stroke-dashoffset: -600; opacity: 0.3; }
+  }
+
+  .hero-score {
     font-family: var(--display);
-    font-size: clamp(1.6rem, 4vw, 2.8rem);
+    font-size: clamp(5rem, 15vw, 10rem);
     font-weight: 900;
-    line-height: 1.1;
-    letter-spacing: 0.05em;
-    color: var(--text-bright);
-    text-shadow: 0 0 40px rgba(0,245,255,0.3);
-    margin-bottom: 0.4rem;
+    color: var(--cyan);
+    text-shadow: 0 0 60px rgba(0,245,255,0.5), 0 0 120px rgba(0,245,255,0.2);
+    line-height: 1;
+    position: relative;
+    z-index: 1;
   }
 
-  h1 span {
-    color: var(--cyan);
-    text-shadow: 0 0 30px var(--cyan);
+  .hero-score-label {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.25em;
+    color: var(--text-dim);
+    margin-top: 0.5rem;
+  }
+
+  .hero h1 {
+    font-family: var(--display);
+    font-size: clamp(1.2rem, 3vw, 2.2rem);
+    font-weight: 700;
+    color: var(--text-bright);
+    letter-spacing: 0.05em;
+    margin-bottom: 1rem;
+    text-shadow: 0 0 30px rgba(0,245,255,0.15);
   }
 
   .hero-sub {
+    font-family: var(--body);
+    font-size: clamp(0.95rem, 2vw, 1.15rem);
+    color: var(--text-dim);
+    max-width: 600px;
+    margin-bottom: 2.5rem;
+    font-weight: 400;
+  }
+
+  .hero-ctas { display: flex; gap: 1rem; flex-wrap: wrap; justify-content: center; }
+
+  .btn {
     font-family: var(--mono);
     font-size: 0.75rem;
+    letter-spacing: 0.1em;
+    padding: 0.85rem 1.75rem;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    cursor: pointer;
+    transition: all 0.2s;
+    color: var(--text);
+    background: transparent;
+  }
+  .btn:hover { border-color: var(--cyan); color: var(--cyan); transform: translateY(-1px); }
+
+  .btn-primary {
+    background: var(--cyan);
+    color: var(--bg);
+    border-color: var(--cyan);
+    font-weight: 700;
+  }
+  .btn-primary:hover { background: var(--text-bright); border-color: var(--text-bright); color: var(--bg); }
+
+  /* ── STATS STRIP ── */
+  .stats-strip {
+    display: flex;
+    justify-content: center;
+    gap: 3rem;
+    padding: 2rem;
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    background: var(--bg2);
+  }
+
+  .stat-item { text-align: center; }
+
+  .stat-value {
+    font-family: var(--display);
+    font-size: 1.8rem;
+    font-weight: 900;
+    color: var(--cyan);
+    text-shadow: 0 0 20px rgba(0,245,255,0.3);
+  }
+
+  .stat-label {
+    font-family: var(--mono);
+    font-size: 0.6rem;
+    letter-spacing: 0.2em;
     color: var(--text-dim);
-    margin: 0.5rem 0 0;
-    max-width: 500px;
+    margin-top: 0.25rem;
+  }
+
+  /* ── SECTIONS ── */
+  .section {
+    padding: 5rem 2rem;
+    max-width: 1100px;
+    margin: 0 auto;
+  }
+
+  .section-title {
+    font-family: var(--display);
+    font-size: clamp(0.9rem, 2vw, 1.3rem);
+    font-weight: 700;
+    color: var(--text-bright);
+    letter-spacing: 0.1em;
+    text-align: center;
+    margin-bottom: 0.5rem;
+  }
+
+  .section-tag {
+    font-family: var(--mono);
+    font-size: 0.6rem;
+    letter-spacing: 0.2em;
+    color: var(--cyan-dim);
+    text-align: center;
+    margin-bottom: 3rem;
+  }
+
+  /* ── PILLARS ── */
+  .pillars { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem; }
+
+  .pillar {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 2rem;
+    text-align: center;
+    transition: border-color 0.3s, transform 0.2s;
+    display: block;
+  }
+  .pillar:hover { border-color: var(--cyan); transform: translateY(-3px); color: var(--text); }
+
+  .pillar-title {
+    font-family: var(--display);
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: var(--cyan);
+    letter-spacing: 0.15em;
+    margin-bottom: 1rem;
+  }
+
+  .pillar-stat {
+    font-family: var(--display);
+    font-size: 1.5rem;
+    font-weight: 900;
+    color: var(--text-bright);
+    margin-bottom: 0.5rem;
+  }
+
+  .pillar-desc {
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    color: var(--text-dim);
+    letter-spacing: 0.1em;
+  }
+
+  /* ── SOCIAL PROOF ── */
+  .quotes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem; }
+
+  .quote-card {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--cyan);
+    border-radius: 4px;
+    padding: 1.5rem;
+  }
+
+  .quote-text {
+    font-family: var(--body);
+    font-size: 0.95rem;
+    color: var(--text);
+    font-style: italic;
+    margin-bottom: 1rem;
+    line-height: 1.5;
+  }
+  .quote-text::before { content: '\201C'; color: var(--cyan); font-size: 1.2rem; }
+  .quote-text::after { content: '\201D'; color: var(--cyan); font-size: 1.2rem; }
+
+  .quote-author {
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    color: var(--cyan);
+    letter-spacing: 0.05em;
+  }
+
+  .quote-handle {
+    font-family: var(--mono);
+    font-size: 0.6rem;
+    color: var(--text-dim);
+    letter-spacing: 0.05em;
+  }
+
+  /* ── MECHANIC ── */
+  .mechanic-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem; margin-bottom: 2rem; }
+
+  .dim-card {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 1.5rem;
+    text-align: center;
+  }
+
+  .dim-label {
+    font-family: var(--display);
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: var(--cyan);
+    letter-spacing: 0.1em;
+    margin-bottom: 0.75rem;
+  }
+
+  .dim-title {
+    font-family: var(--body);
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text-bright);
+    margin-bottom: 0.5rem;
+  }
+
+  .dim-desc {
+    font-family: var(--mono);
+    font-size: 0.6rem;
+    color: var(--text-dim);
+    letter-spacing: 0.05em;
     line-height: 1.6;
   }
 
-  /* ─── CHAT-FIRST: GUIDED MENU ─── */
-  .guided-menu {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.5rem;
-    margin-bottom: 1.25rem;
-  }
-
-  .guided-btn {
-    background: var(--bg2);
+  .formula {
+    text-align: center;
+    font-family: var(--display);
+    font-size: clamp(0.8rem, 2vw, 1.1rem);
+    font-weight: 700;
+    color: var(--text-bright);
+    padding: 1.5rem;
     border: 1px solid var(--border);
-    color: var(--text);
-    font-family: var(--mono);
-    font-size: 0.65rem;
-    padding: 0.4rem 0.75rem;
-    cursor: pointer;
-    transition: all 0.15s;
+    border-radius: 6px;
+    background: var(--bg3);
     letter-spacing: 0.05em;
-    white-space: nowrap;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
   }
 
-  .guided-btn:hover {
-    border-color: var(--cyan-dim);
-    background: rgba(0,245,255,0.04);
-    color: var(--cyan);
-  }
+  .formula span { color: var(--cyan); }
 
-  .guided-btn.active {
-    border-color: var(--cyan);
-    background: rgba(0,245,255,0.08);
-    color: var(--cyan);
-    box-shadow: 0 0 10px rgba(0,245,255,0.1);
-  }
+  /* ── ENDPOINT SHOWCASE ── */
+  .endpoints-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; }
 
-  .guided-price {
-    color: var(--green);
-    font-size: 0.6rem;
-    opacity: 0.8;
-  }
-
-  .guided-btn.active .guided-price {
-    opacity: 1;
-  }
-
-  .intent-row {
-    display: flex;
-    gap: 0.5rem;
-  }
-
-  .intent-row input {
-    flex: 1;
-  }
-
-  .intent-row .chat-send {
-    flex-shrink: 0;
-  }
-
-  /* ─── BROWSE ENDPOINTS (collapsible) ─── */
-  .browse-toggle-header {
-    cursor: pointer;
-    user-select: none;
-  }
-
-  .browse-toggle-header:hover .panel-title {
-    text-shadow: 0 0 8px var(--cyan);
-  }
-
-  /* ─── MAIN APP ─── */
-  .app-container {
-    position: relative;
-    z-index: 10;
-    max-width: 900px;
-    margin: 0 auto;
-    padding: 0 1.5rem 6rem;
-  }
-
-  /* ─── PANEL ─── */
-  .panel {
-    background: var(--panel);
+  .ep-card {
+    background: var(--bg3);
     border: 1px solid var(--border);
-    position: relative;
-    margin-bottom: 1.5rem;
+    border-radius: 6px;
+    padding: 1.5rem;
+    display: block;
+    transition: border-color 0.3s, transform 0.2s;
+  }
+  .ep-card:hover { border-color: var(--cyan); transform: translateY(-3px); color: var(--text); }
+
+  .ep-card-name {
+    font-family: var(--display);
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: var(--text-bright);
+    letter-spacing: 0.1em;
+    margin-bottom: 0.5rem;
   }
 
-  .panel::before {
-    content: '';
-    position: absolute;
-    top: -1px; left: -1px; right: -1px;
-    height: 2px;
-    background: linear-gradient(90deg, transparent, var(--cyan), transparent);
-    opacity: 0.6;
-  }
-
-  .panel-header {
-    padding: 0.75rem 1.25rem;
-    border-bottom: 1px solid var(--border);
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    background: rgba(0,245,255,0.02);
-  }
-
-  .panel-title {
-    font-family: var(--mono);
-    font-size: 0.65rem;
-    letter-spacing: 0.25em;
-    color: var(--cyan);
-    text-transform: uppercase;
-  }
-
-  .panel-tag {
-    font-family: var(--mono);
-    font-size: 0.6rem;
-    color: var(--text-dim);
-  }
-
-  .panel-body {
-    padding: 1.5rem 1.25rem;
-  }
-
-  /* ─── ENDPOINT SELECTOR ─── */
-  .endpoint-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-    gap: 0.75rem;
-  }
-
-  .endpoint-card {
-    border: 1px solid var(--border);
-    padding: 1rem;
-    cursor: pointer;
-    transition: all 0.15s;
-    position: relative;
-    background: var(--bg2);
-  }
-
-  .endpoint-card:hover {
-    border-color: var(--cyan-dim);
-    background: rgba(0,245,255,0.04);
-  }
-
-  .endpoint-card.selected {
-    border-color: var(--cyan);
-    background: rgba(0,245,255,0.08);
-    box-shadow: inset 0 0 20px rgba(0,245,255,0.05), 0 0 15px rgba(0,245,255,0.1);
-  }
-
-  .endpoint-card.selected::after {
-    content: '✓';
-    position: absolute;
-    top: 0.5rem;
-    right: 0.5rem;
-    font-size: 0.6rem;
-    color: var(--cyan);
-    font-family: var(--mono);
-  }
-
-  .ep-price {
+  .ep-card-price {
     font-family: var(--display);
     font-size: 1.1rem;
-    font-weight: 700;
-    color: var(--green);
-    text-shadow: 0 0 10px var(--green);
-    margin-bottom: 0.4rem;
-  }
-
-  .ep-name {
-    font-family: var(--mono);
-    font-size: 0.65rem;
-    color: var(--cyan);
-    letter-spacing: 0.1em;
-    margin-bottom: 0.4rem;
-  }
-
-  .ep-desc {
-    font-family: var(--body);
-    font-size: 0.75rem;
-    color: var(--text-dim);
-    line-height: 1.4;
-  }
-
-  /* ─── INPUTS ─── */
-  .input-group {
-    margin-bottom: 1rem;
-  }
-
-  .input-label {
-    font-family: var(--mono);
-    font-size: 0.65rem;
-    letter-spacing: 0.2em;
-    color: var(--text-dim);
-    text-transform: uppercase;
-    margin-bottom: 0.5rem;
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-  }
-
-  .input-label .optional {
-    color: var(--text-dim);
-    opacity: 0.5;
-    font-size: 0.55rem;
-  }
-
-  input[type="text"] {
-    width: 100%;
-    background: var(--bg);
-    border: 1px solid var(--border);
-    color: var(--text-bright);
-    font-family: var(--mono);
-    font-size: 0.85rem;
-    padding: 0.75rem 1rem;
-    outline: none;
-    transition: all 0.2s;
-    letter-spacing: 0.05em;
-  }
-
-  input[type="text"]:focus {
-    border-color: var(--cyan);
-    box-shadow: 0 0 0 1px rgba(0,245,255,0.2), inset 0 0 15px rgba(0,245,255,0.03);
-  }
-
-  input[type="text"]::placeholder {
-    color: var(--text-dim);
-    opacity: 0.5;
-  }
-
-  .coupon-toggle {
-    font-family: var(--mono);
-    font-size: 0.65rem;
-    color: var(--cyan-dim);
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-    margin-bottom: 0.75rem;
-    transition: color 0.2s;
-    background: none;
-    border: none;
-    padding: 0;
-  }
-
-  .coupon-toggle:hover { color: var(--cyan); }
-
-  .coupon-field {
-    display: none;
-    animation: fadeIn 0.2s ease;
-  }
-
-  .coupon-field.visible { display: block; }
-
-  @keyframes fadeIn {
-    from { opacity: 0; transform: translateY(-5px); }
-    to { opacity: 1; transform: translateY(0); }
-  }
-
-  .coupon-status {
-    font-family: var(--mono);
-    font-size: 0.65rem;
-    margin-top: 0.4rem;
-    height: 1rem;
-  }
-
-  .coupon-status.valid { color: var(--green); }
-  .coupon-status.invalid { color: var(--red); }
-
-  /* ─── EXECUTE BUTTON ─── */
-  .execute-btn {
-    width: 100%;
-    padding: 1rem;
-    background: transparent;
-    border: 1px solid var(--cyan);
-    color: var(--cyan);
-    font-family: var(--display);
-    font-size: 0.8rem;
-    font-weight: 700;
-    letter-spacing: 0.25em;
-    text-transform: uppercase;
-    cursor: pointer;
-    transition: all 0.2s;
-    position: relative;
-    overflow: hidden;
-    margin-top: 1rem;
-  }
-
-  .execute-btn::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: var(--cyan);
-    transform: translateX(-100%);
-    transition: transform 0.3s;
-    z-index: -1;
-  }
-
-  .execute-btn:hover {
-    color: var(--bg);
-    box-shadow: 0 0 30px rgba(0,245,255,0.4);
-  }
-
-  .execute-btn:hover::before { transform: translateX(0); }
-
-  .execute-btn:disabled {
-    opacity: 0.3;
-    cursor: not-allowed;
-    pointer-events: none;
-  }
-
-  .execute-btn.free {
-    border-color: var(--green);
-    color: var(--green);
-  }
-
-  .execute-btn.free::before { background: var(--green); }
-
-  /* ─── TERMINAL OUTPUT ─── */
-  .terminal {
-    background: var(--bg);
-    border: 1px solid var(--border);
-    font-family: var(--mono);
-    font-size: 0.75rem;
-    line-height: 1.7;
-    padding: 1.25rem;
-    min-height: 120px;
-    max-height: 400px;
-    overflow-y: auto;
-    color: var(--text);
-    display: none;
-  }
-
-  .terminal.active { display: block; }
-
-  .terminal::-webkit-scrollbar { width: 4px; }
-  .terminal::-webkit-scrollbar-track { background: var(--bg); }
-  .terminal::-webkit-scrollbar-thumb { background: var(--border); }
-
-  .t-line { margin-bottom: 0.25rem; }
-  .t-prompt { color: var(--cyan-dim); }
-  .t-success { color: var(--green); }
-  .t-error { color: var(--red); }
-  .t-info { color: var(--amber); }
-  .t-dim { color: var(--text-dim); }
-  .t-data { color: var(--text-bright); }
-
-  /* ─── RESULTS PANEL ─── */
-  .results-panel {
-    display: none;
-    animation: fadeIn 0.3s ease;
-  }
-
-  .results-panel.active { display: block; }
-
-  .health-score {
-    text-align: center;
-    padding: 2rem 1rem;
-    border-bottom: 1px solid var(--border);
-    margin-bottom: 1.5rem;
-  }
-
-  .score-label {
-    font-family: var(--mono);
-    font-size: 0.6rem;
-    letter-spacing: 0.3em;
-    color: var(--text-dim);
-    margin-bottom: 1rem;
-  }
-
-  .score-number {
-    font-family: var(--display);
-    font-size: 5rem;
     font-weight: 900;
-    line-height: 1;
+    color: var(--cyan);
     margin-bottom: 0.5rem;
   }
 
-  .score-number.high { color: var(--green); text-shadow: 0 0 40px var(--green); }
-  .score-number.medium { color: var(--amber); text-shadow: 0 0 40px var(--amber); }
-  .score-number.low { color: var(--red); text-shadow: 0 0 40px var(--red); }
-
-  .score-bar-container {
-    width: 100%;
-    max-width: 300px;
-    margin: 1rem auto 0;
-    height: 4px;
-    background: var(--bg3);
-    position: relative;
-  }
-
-  .score-bar-fill {
-    height: 100%;
-    transition: width 1s ease;
-    position: relative;
-  }
-
-  .score-bar-fill.high { background: var(--green); box-shadow: 0 0 10px var(--green); }
-  .score-bar-fill.medium { background: var(--amber); box-shadow: 0 0 10px var(--amber); }
-  .score-bar-fill.low { background: var(--red); box-shadow: 0 0 10px var(--red); }
-
-  .score-priority {
-    font-family: var(--mono);
-    font-size: 0.65rem;
-    margin-top: 0.75rem;
-    letter-spacing: 0.1em;
-  }
-
-  .priority-HIGH { color: var(--red); }
-  .priority-MEDIUM { color: var(--amber); }
-  .priority-LOW { color: var(--green); }
-
-  .result-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 0.75rem;
-    margin-bottom: 1rem;
-  }
-
-  .result-item {
-    padding: 0.75rem;
-    background: var(--bg2);
-    border: 1px solid var(--border);
-  }
-
-  .result-item-label {
-    font-family: var(--mono);
-    font-size: 0.55rem;
-    color: var(--text-dim);
-    letter-spacing: 0.2em;
-    text-transform: uppercase;
-    margin-bottom: 0.3rem;
-  }
-
-  .result-item-val {
-    font-family: var(--mono);
-    font-size: 0.85rem;
-    color: var(--text-bright);
-  }
-
-  .raw-json {
-    background: var(--bg);
-    border: 1px solid var(--border);
-    padding: 1rem;
-    font-family: var(--mono);
-    font-size: 0.7rem;
-    color: var(--text-dim);
-    overflow-x: auto;
-    white-space: pre-wrap;
-    word-break: break-all;
-    max-height: 300px;
-    overflow-y: auto;
-    display: none;
-  }
-
-  .raw-json.visible { display: block; }
-
-  .toggle-raw {
+  .ep-card-desc {
     font-family: var(--mono);
     font-size: 0.6rem;
     color: var(--text-dim);
-    background: none;
-    border: none;
-    cursor: pointer;
-    padding: 0.5rem 0;
-    display: block;
-    letter-spacing: 0.1em;
-    transition: color 0.2s;
+    letter-spacing: 0.05em;
+    line-height: 1.5;
   }
 
-  .toggle-raw:hover { color: var(--cyan); }
-
-  /* ─── CHAT ─── */
-  .chat-messages {
-    max-height: 350px;
-    overflow-y: auto;
-    padding: 1rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-  }
-
-  .chat-messages::-webkit-scrollbar { width: 4px; }
-  .chat-messages::-webkit-scrollbar-thumb { background: var(--border); }
-
-  .msg {
-    display: flex;
-    gap: 0.75rem;
-    animation: fadeIn 0.2s ease;
-  }
-
-  .msg-avatar {
-    width: 28px;
-    height: 28px;
-    border: 1px solid var(--border);
-    display: grid;
-    place-items: center;
-    font-family: var(--mono);
-    font-size: 0.55rem;
-    flex-shrink: 0;
-    color: var(--text-dim);
-  }
-
-  .msg.assistant .msg-avatar {
-    border-color: var(--cyan-dim);
-    color: var(--cyan);
-    background: rgba(0,245,255,0.05);
-  }
-
-  .msg-content {
-    flex: 1;
-    font-family: var(--body);
-    font-size: 0.85rem;
-    line-height: 1.6;
-    color: var(--text);
-    padding-top: 0.2rem;
-  }
-
-  .msg.assistant .msg-content { color: var(--text-bright); }
-
-  .chat-input-row {
-    display: flex;
-    gap: 0.5rem;
-    padding: 0.75rem 1rem;
+  /* ── ROADMAP TEASER ── */
+  .roadmap-teaser {
+    text-align: center;
+    padding: 3rem 2rem;
     border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
     background: var(--bg2);
   }
 
-  .chat-input {
-    flex: 1;
-    background: var(--bg);
-    border: 1px solid var(--border);
-    color: var(--text-bright);
+  .roadmap-teaser a {
     font-family: var(--mono);
     font-size: 0.8rem;
-    padding: 0.6rem 0.75rem;
-    outline: none;
-    transition: border-color 0.2s;
-  }
-
-  .chat-input:focus { border-color: var(--cyan-dim); }
-
-  .chat-send {
-    background: transparent;
-    border: 1px solid var(--border);
-    color: var(--text-dim);
-    font-family: var(--mono);
-    font-size: 0.7rem;
-    padding: 0.6rem 0.75rem;
-    cursor: pointer;
-    transition: all 0.2s;
     letter-spacing: 0.1em;
-    white-space: nowrap;
-  }
-
-  .chat-send:hover {
-    border-color: var(--cyan);
     color: var(--cyan);
+    transition: color 0.2s;
   }
+  .roadmap-teaser a:hover { color: var(--text-bright); }
 
-  /* ─── FOOTER ─── */
+  /* ── FOOTER ── */
   footer {
-    position: relative;
-    z-index: 10;
+    padding: 2.5rem 2rem;
+    text-align: center;
     border-top: 1px solid var(--border);
-    padding: 1.5rem 2rem;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    background: rgba(3,6,9,0.9);
-  }
-
-  .footer-text {
-    font-family: var(--mono);
-    font-size: 0.6rem;
-    color: var(--text-dim);
-    letter-spacing: 0.15em;
   }
 
   .footer-links {
-    font-family: var(--mono);
-    font-size: 0.6rem;
-    letter-spacing: 0.15em;
     display: flex;
+    justify-content: center;
     gap: 1.5rem;
+    margin-bottom: 1rem;
   }
 
   .footer-link {
-    color: var(--cyan-dim);
-    text-decoration: none;
-    opacity: 0.7;
-    transition: opacity 0.2s;
-  }
-
-  .footer-link:hover {
-    opacity: 1;
-    color: var(--cyan);
-  }
-
-  .footer-network {
     font-family: var(--mono);
     font-size: 0.6rem;
-    color: var(--cyan-dim);
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
+    letter-spacing: 0.15em;
+    color: var(--text-dim);
+    transition: color 0.2s;
   }
+  .footer-link:hover { color: var(--cyan); }
 
-  /* ─── LOADER ─── */
-  .loader {
-    display: inline-block;
-    width: 10px;
-    height: 10px;
-    border: 1px solid var(--cyan-dim);
-    border-top-color: var(--cyan);
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
-    vertical-align: middle;
-    margin-right: 0.5rem;
-  }
-
-  @keyframes spin {
-    to { transform: rotate(360deg); }
-  }
-
-  /* ─── TYPEWRITER ─── */
-  @keyframes type {
-    from { width: 0; }
-    to { width: 100%; }
-  }
-
-  .typewriter {
-    overflow: hidden;
-    white-space: nowrap;
-    animation: type 1.5s steps(40) forwards;
-    display: inline-block;
-  }
-
-  /* ─── TIER BADGE ─── */
-  .score-tier {
-    font-family: var(--display);
-    font-size: 0.9rem;
-    font-weight: 700;
-    letter-spacing: 0.3em;
-    margin-top: 0.75rem;
-  }
-
-  .score-tier.tier-elite { color: var(--green); text-shadow: 0 0 15px var(--green); }
-  .score-tier.tier-healthy { color: var(--green); }
-  .score-tier.tier-atrisk { color: var(--amber); text-shadow: 0 0 10px var(--amber); }
-  .score-tier.tier-critical { color: var(--red); text-shadow: 0 0 10px var(--red); }
-
-  /* ─── SCORE DELTA ─── */
-  .score-delta {
+  .footer-sub {
     font-family: var(--mono);
-    font-size: 0.7rem;
-    margin-top: 0.5rem;
-    letter-spacing: 0.05em;
+    font-size: 0.55rem;
+    color: var(--text-dim);
+    letter-spacing: 0.1em;
+    opacity: 0.6;
   }
 
-  .score-delta.up { color: var(--green); }
-  .score-delta.down { color: var(--red); }
-  .score-delta.same { color: var(--text-dim); }
-
-  /* ─── ELITE GLOW ─── */
-  .results-panel.elite-glow {
-    border-color: var(--green);
-    animation: elitePulse 2s ease-in-out infinite;
+  /* ── RESPONSIVE ── */
+  @media (max-width: 768px) {
+    header { padding: 0 1rem; }
+    .nav-link { padding: 0.5rem 0.5rem; font-size: 0.6rem; }
+    .stats-strip { gap: 1.5rem; flex-wrap: wrap; }
+    .pillars, .quotes, .mechanic-grid { grid-template-columns: 1fr; }
+    .endpoints-grid { grid-template-columns: repeat(2, 1fr); }
+    .hero-status { display: none; }
+    .heartbeat-svg { width: 300px; }
   }
 
-  @keyframes elitePulse {
-    0%, 100% { box-shadow: 0 0 10px rgba(0,255,136,0.1); }
-    50% { box-shadow: 0 0 25px rgba(0,255,136,0.3), inset 0 0 15px rgba(0,255,136,0.03); }
-  }
-
-  /* ─── TOAST ─── */
-  .toast {
-    position: fixed;
-    top: 80px;
-    left: 50%;
-    transform: translateX(-50%) translateY(-20px);
-    background: var(--panel);
-    border: 1px solid var(--cyan);
-    padding: 0.75rem 1.5rem;
-    font-family: var(--display);
-    font-size: 0.75rem;
-    font-weight: 700;
-    letter-spacing: 0.2em;
-    color: var(--cyan);
-    z-index: 9999;
-    opacity: 0;
-    animation: toastIn 0.3s ease forwards, toastOut 0.3s ease 2.5s forwards;
-    box-shadow: 0 0 30px rgba(0,245,255,0.3);
-  }
-
-  .toast.green {
-    border-color: var(--green);
-    color: var(--green);
-    box-shadow: 0 0 30px rgba(0,255,136,0.3);
-  }
-
-  @keyframes toastIn {
-    to { opacity: 1; transform: translateX(-50%) translateY(0); }
-  }
-
-  @keyframes toastOut {
-    to { opacity: 0; transform: translateX(-50%) translateY(-20px); }
-  }
-
-  /* responsive */
-  @media (max-width: 600px) {
-    .guided-menu { gap: 0.35rem; }
-    .guided-btn { font-size: 0.58rem; padding: 0.3rem 0.5rem; }
-    .endpoint-grid { grid-template-columns: 1fr 1fr; }
-    .result-grid { grid-template-columns: 1fr; }
-    h1 { font-size: 1.4rem; }
-    .intent-row { flex-direction: column; }
+  @media (max-width: 480px) {
+    .nav-links { gap: 0; }
+    .nav-link { padding: 0.4rem 0.35rem; font-size: 0.55rem; }
+    .nav-cta { margin-left: 0.25rem; padding: 0.4rem 0.6rem; }
+    .endpoints-grid { grid-template-columns: 1fr; }
+    .stats-strip { gap: 1rem; }
+    .stat-value { font-size: 1.3rem; }
+    .hero-ctas { flex-direction: column; align-items: center; }
   }
 </style>
 </head>
 <body>
 
-<!-- HEADER -->
+<!-- NAV -->
 <header>
-  <div class="logo">
-    AGENT HEALTH MONITOR
-  </div>
-  <div class="status-bar">
+  <a href="/" class="logo">AGENT HEALTH MONITOR</a>
+  <nav class="nav-links">
+    <a href="/dashboard" class="nav-link">DASHBOARD</a>
+    <a href="/endpoints/ahs" class="nav-link">ENDPOINTS</a>
+    <a href="/roadmap" class="nav-link">ROADMAP</a>
+    <a href="/app" class="nav-link nav-cta">TRY IT &rarr;</a>
+  </nav>
+</header>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="hero-status">
     <div class="status-dot"></div>
     LIVE // BASE MAINNET // USDC
   </div>
-</header>
 
-<!-- HERO (compact) -->
-<section class="hero">
-  <div class="hero-tag">Blockchain Intelligence Protocol</div>
-  <h1>AGENT <span>HEALTH</span> MONITOR</h1>
-  <p class="hero-sub">// Diagnostics for the agent economy &middot; 12 endpoints from $0.01 &middot; USDC on Base</p>
+  <div class="hero-score-wrap">
+    <svg class="heartbeat-svg" viewBox="0 0 500 120" preserveAspectRatio="none">
+      <path class="heartbeat-line" d="M0,60 L120,60 L140,60 L160,20 L180,100 L200,40 L220,80 L240,60 L360,60 L380,60 L400,25 L420,95 L440,45 L460,75 L480,60 L500,60"/>
+    </svg>
+    <div class="hero-score" id="hero-score">--</div>
+    <div class="hero-score-label">ECOSYSTEM AVERAGE AHS</div>
+  </div>
+
+  <h1>The health layer for the agent economy</h1>
+  <p class="hero-sub">Diagnostics for autonomous agents. Pay-per-call. No accounts. USDC on Base.</p>
+
+  <div class="hero-ctas">
+    <a href="/dashboard" class="btn btn-primary">View Dashboard &rarr;</a>
+    <a href="/app" class="btn">Score Your Agent &rarr;</a>
+  </div>
 </section>
 
-<!-- MAIN APP -->
-<div class="app-container">
+<!-- STATS STRIP -->
+<div class="stats-strip">
+  <div class="stat-item">
+    <div class="stat-value" id="stat-scanned">--</div>
+    <div class="stat-label">AGENTS SCANNED</div>
+  </div>
+  <div class="stat-item">
+    <div class="stat-value" id="stat-zombie">--</div>
+    <div class="stat-label">ZOMBIE AGENT PATTERNS</div>
+  </div>
+  <div class="stat-item">
+    <div class="stat-value">DAILY</div>
+    <div class="stat-label">UPDATED</div>
+  </div>
+</div>
 
-  <!-- CHAT-FIRST INTERACTION -->
-  <div class="panel">
-    <div class="panel-header">
-      <span class="panel-title">// WHAT_DO_YOU_NEED?</span>
-      <span class="panel-tag">Select a service or describe your query</span>
+<!-- PILLARS -->
+<section class="section">
+  <div class="section-title">WHAT AHM DOES</div>
+  <div class="section-tag">// THREE PILLARS</div>
+  <div class="pillars">
+    <a href="/endpoints/ahs" class="pillar">
+      <div class="pillar-title">DIAGNOSE</div>
+      <div class="pillar-stat">12 endpoints</div>
+      <div class="pillar-desc">$0.01 &ndash; $25 PER CALL</div>
+    </a>
+    <a href="/dashboard" class="pillar">
+      <div class="pillar-title">MONITOR</div>
+      <div class="pillar-stat">Daily scanning</div>
+      <div class="pillar-desc">ECOSYSTEM-WIDE INTELLIGENCE</div>
+    </a>
+    <a href="/endpoints/report-card" class="pillar">
+      <div class="pillar-title">PROTECT</div>
+      <div class="pillar-stat">AHS 0&ndash;100</div>
+      <div class="pillar-desc">AGENT HEALTH SCORE</div>
+    </a>
+  </div>
+</section>
+
+<!-- SOCIAL PROOF -->
+<section class="section">
+  <div class="section-title">WHAT BUILDERS ARE SAYING</div>
+  <div class="section-tag">// SOCIAL PROOF</div>
+  <div class="quotes">
+    <div class="quote-card">
+      <div class="quote-text">37% zombie agent patterns is a wild stat. will take a closer look at AHM</div>
+      <div class="quote-author">@JordanLyall</div>
+      <div class="quote-handle">agentpaymentsstack.com</div>
     </div>
-    <div class="panel-body">
-      <div class="guided-menu">
-        <button class="guided-btn active" data-endpoint="risk" onclick="selectService('risk')">Quick Risk Check <span class="guided-price">$0.01</span></button>
-        <button class="guided-btn" data-endpoint="risk-premium" onclick="selectService('risk-premium')">Premium Risk Scan <span class="guided-price">$0.05</span></button>
-        <button class="guided-btn" data-endpoint="counterparties" onclick="selectService('counterparties')">Counterparties <span class="guided-price">$0.10</span></button>
-        <button class="guided-btn" data-endpoint="network-map" onclick="selectService('network-map')">Network Map <span class="guided-price">$0.10</span></button>
-        <button class="guided-btn" data-endpoint="health" onclick="selectService('health')">Full Health Check <span class="guided-price">$0.50</span></button>
-        <button class="guided-btn" data-endpoint="wash" onclick="selectService('wash')">Agent Wash <span class="guided-price">$0.50</span></button>
-        <button class="guided-btn" data-endpoint="ahs" onclick="selectService('ahs')">Agent Health Score <span class="guided-price">$1.00</span></button>
-        <button class="guided-btn" data-endpoint="report-card" onclick="selectService('report-card')">Report Card <span class="guided-price">$2.00</span></button>
-        <button class="guided-btn" data-endpoint="alerts" onclick="selectService('alerts')">Live Alerts <span class="guided-price">$2.00</span></button>
-        <button class="guided-btn" data-endpoint="optimize" onclick="selectService('optimize')">Optimize <span class="guided-price">$5.00</span></button>
-        <button class="guided-btn" data-endpoint="retry" onclick="selectService('retry')">Retry Failed Txns <span class="guided-price">$10.00</span></button>
-        <button class="guided-btn" data-endpoint="protect" onclick="selectService('protect')">Agent Protect <span class="guided-price">$25.00</span></button>
-      </div>
-      <div class="intent-row">
-        <input type="text" id="intent-input" placeholder="Diagnose an agent, check a wallet, or describe what you need..." onkeydown="if(event.key==='Enter') handleIntent()" />
-        <button class="chat-send" onclick="handleIntent()">GO ▶</button>
-      </div>
+    <div class="quote-card">
+      <div class="quote-text">@AHMprotocol flagged a self-registration bug &rarr; fixed and expanded self-reg to x402 + MPP</div>
+      <div class="quote-author">@RyanTheGentry</div>
+      <div class="quote-handle">402index.io</div>
+    </div>
+    <div class="quote-card">
+      <div class="quote-text">That routing gate direction is the right one&hellip; agent-side health scoring before routing makes sense</div>
+      <div class="quote-author">@Alfredz0x</div>
+      <div class="quote-handle">httppay.xyz</div>
     </div>
   </div>
+</section>
 
-  <!-- WALLET INPUT + EXECUTE -->
-  <div class="panel">
-    <div class="panel-header">
-      <span class="panel-title">// EXECUTE_QUERY</span>
-      <span class="panel-tag" id="price-tag">COST: $0.01 USDC</span>
+<!-- THE MECHANIC -->
+<section class="section">
+  <div class="section-title">HOW AHS WORKS</div>
+  <div class="section-tag">// THE MECHANIC</div>
+  <div class="mechanic-grid">
+    <div class="dim-card">
+      <div class="dim-label">D1</div>
+      <div class="dim-title">Wallet Hygiene</div>
+      <div class="dim-desc">DUST, SPAM, GAS EFFICIENCY, FAILED TX PATTERNS</div>
     </div>
-    <div class="panel-body">
-      <div class="input-group">
-        <div class="input-label">Target Wallet Address</div>
-        <input type="text" id="wallet-input" placeholder="0x..." maxlength="42" />
-      </div>
-
-      <button class="coupon-toggle" onclick="toggleCoupon()">
-        <span id="coupon-toggle-arrow">▶</span> Have a coupon code?
-      </button>
-
-      <div class="coupon-field" id="coupon-field">
-        <div class="input-group">
-          <div class="input-label">Coupon Code <span class="optional">// optional</span></div>
-          <input type="text" id="coupon-input" placeholder="EARLY001" oninput="validateCoupon()" style="text-transform:uppercase" />
-          <div class="coupon-status" id="coupon-status"></div>
-        </div>
-      </div>
-
-      <button class="execute-btn" id="execute-btn" onclick="execute()">
-        ▶ EXECUTE ANALYSIS
-      </button>
+    <div class="dim-card">
+      <div class="dim-label">D2</div>
+      <div class="dim-title">Behavioural Patterns</div>
+      <div class="dim-desc">TIMING, DIVERSITY, COUNTERPARTIES, ACTIVITY CLUSTERS</div>
+    </div>
+    <div class="dim-card">
+      <div class="dim-label">D3</div>
+      <div class="dim-title">Infrastructure Health</div>
+      <div class="dim-desc">API RELIABILITY, UPTIME, RESPONSE QUALITY</div>
     </div>
   </div>
+  <div class="formula"><span>D1</span> + <span>D2</span> + <span>D3</span> = <span>Agent Health Score</span></div>
+</section>
 
-  <!-- TERMINAL LOG -->
-  <div class="terminal" id="terminal"></div>
-
-  <!-- RESULTS -->
-  <div class="panel results-panel" id="results-panel">
-    <div class="panel-header">
-      <span class="panel-title">// ANALYSIS_RESULTS</span>
-      <span class="panel-tag" id="results-timestamp"></span>
-    </div>
-    <div class="panel-body" id="results-body">
-    </div>
+<!-- ENDPOINT SHOWCASE -->
+<section class="section">
+  <div class="section-title">ENDPOINTS</div>
+  <div class="section-tag">// PAY-PER-CALL VIA x402</div>
+  <div class="endpoints-grid">
+    <a href="/endpoints/ahs" class="ep-card">
+      <div class="ep-card-name">AGENT HEALTH SCORE</div>
+      <div class="ep-card-price">$1.00</div>
+      <div class="ep-card-desc">The definitive composite health score</div>
+    </a>
+    <a href="/endpoints/wash" class="ep-card">
+      <div class="ep-card-name">AGENT WASH</div>
+      <div class="ep-card-price">$0.50</div>
+      <div class="ep-card-desc">Deep hygiene scan</div>
+    </a>
+    <a href="/endpoints/risk" class="ep-card">
+      <div class="ep-card-name">RISK SCORE</div>
+      <div class="ep-card-price">$0.01</div>
+      <div class="ep-card-desc">Instant pre-flight check</div>
+    </a>
+    <a href="/endpoints/report-card" class="ep-card">
+      <div class="ep-card-name">REPORT CARD</div>
+      <div class="ep-card-price">$2.00</div>
+      <div class="ep-card-desc">See where you rank</div>
+    </a>
   </div>
+</section>
 
-  <!-- CHAT -->
-  <div class="panel" id="chat-panel" style="display:none">
-    <div class="panel-header">
-      <span class="panel-title">// AGENT_ASSIST</span>
-      <span class="panel-tag">Ask about your results</span>
-    </div>
-    <div class="chat-messages" id="chat-messages">
-      <div class="msg assistant">
-        <div class="msg-avatar">AI</div>
-        <div class="msg-content">Analysis complete. Ask me anything about this health report — I can explain scores, suggest improvements, or dig into specific issues.</div>
-      </div>
-    </div>
-    <div id="chat-suggestions" style="padding:0.5rem 1rem 0; display:flex; flex-wrap:wrap; gap:0.5rem"></div>
-    <div class="chat-input-row">
-      <input type="text" class="chat-input" id="chat-input" placeholder="Ask about your results..." onkeydown="if(event.key==='Enter') sendChat()" />
-      <button class="chat-send" onclick="sendChat()">SEND ▶</button>
-    </div>
-  </div>
-
-  <!-- BROWSE ENDPOINTS (below fold, collapsible) -->
-  <div class="panel" id="browse-section">
-    <div class="panel-header browse-toggle-header" onclick="toggleBrowse()">
-      <span class="panel-title">// BROWSE_ENDPOINTS</span>
-      <span class="panel-tag" id="browse-toggle-label">▶ Show all 12 services</span>
-    </div>
-    <div class="panel-body" id="browse-body" style="display:none">
-      <div class="endpoint-grid">
-        <div class="endpoint-card selected" data-endpoint="risk" data-price="0.01" data-path="/risk" onclick="selectEndpoint(this)">
-          <div class="ep-price">$0.01</div>
-          <div class="ep-name">/risk</div>
-          <div class="ep-desc">Quick risk score for pre-flight checks</div>
-        </div>
-        <div class="endpoint-card" data-endpoint="risk-premium" data-price="0.05" data-path="/risk/premium" onclick="selectEndpoint(this)">
-          <div class="ep-price">$0.05</div>
-          <div class="ep-name">/risk/premium</div>
-          <div class="ep-desc">Risk score + Nansen smart money labels</div>
-        </div>
-        <div class="endpoint-card" data-endpoint="counterparties" data-price="0.10" data-path="/counterparties" onclick="selectEndpoint(this)">
-          <div class="ep-price">$0.10</div>
-          <div class="ep-name">/counterparties</div>
-          <div class="ep-desc">Know Your Counterparty — top interactions + Nansen</div>
-        </div>
-        <div class="endpoint-card" data-endpoint="network-map" data-price="0.10" data-path="/network-map" onclick="selectEndpoint(this)">
-          <div class="ep-price">$0.10</div>
-          <div class="ep-name">/network-map</div>
-          <div class="ep-desc">Network Map — funding, deployer & multisig links via Nansen</div>
-        </div>
-        <div class="endpoint-card" data-endpoint="health" data-price="0.50" data-path="/health" onclick="selectEndpoint(this)">
-          <div class="ep-price">$0.50</div>
-          <div class="ep-name">/health</div>
-          <div class="ep-desc">Full health score with risk analysis</div>
-        </div>
-        <div class="endpoint-card" data-endpoint="wash" data-price="0.50" data-path="/wash" data-method="POST" onclick="selectEndpoint(this)">
-          <div class="ep-price">$0.50</div>
-          <div class="ep-name">/wash</div>
-          <div class="ep-desc">Agent hygiene scan — dust, spam, gas efficiency, failure patterns</div>
-        </div>
-        <div class="endpoint-card" data-endpoint="ahs" data-price="1.00" data-path="/ahs" onclick="selectEndpoint(this)">
-          <div class="ep-price">$1.00</div>
-          <div class="ep-name">/ahs</div>
-          <div class="ep-desc">Agent Health Score — composite 0-100 index across wallet hygiene, behaviour &amp; infrastructure</div>
-        </div>
-        <div class="endpoint-card" data-endpoint="report-card" data-price="2.00" data-path="/report-card" onclick="selectEndpoint(this)">
-          <div class="ep-price">$2.00</div>
-          <div class="ep-name">/report-card</div>
-          <div class="ep-desc">Visual report card with ecosystem benchmarks — shareable 1200x675 PNG image</div>
-        </div>
-        <div class="endpoint-card" data-endpoint="alerts" data-price="2.00" data-path="/alerts/subscribe" onclick="selectEndpoint(this)">
-          <div class="ep-price">$2.00</div>
-          <div class="ep-name">/alerts</div>
-          <div class="ep-desc">Subscribe to real-time alerts</div>
-        </div>
-        <div class="endpoint-card" data-endpoint="optimize" data-price="5.00" data-path="/optimize" onclick="selectEndpoint(this)">
-          <div class="ep-price">$5.00</div>
-          <div class="ep-name">/optimize</div>
-          <div class="ep-desc">Gas & strategy optimisation report</div>
-        </div>
-        <div class="endpoint-card" data-endpoint="retry" data-price="10.00" data-path="/retry" onclick="selectEndpoint(this)">
-          <div class="ep-price">$10.00</div>
-          <div class="ep-name">/retry</div>
-          <div class="ep-desc">Analyse and retry failed transactions</div>
-        </div>
-        <div class="endpoint-card" data-endpoint="protect" data-price="25.00" data-path="/agent/protect" onclick="selectEndpoint(this)">
-          <div class="ep-price">$25.00</div>
-          <div class="ep-name">/protect</div>
-          <div class="ep-desc">Full protection suite for autonomous agents</div>
-        </div>
-      </div>
-    </div>
-  </div>
-
+<!-- ROADMAP TEASER -->
+<div class="roadmap-teaser">
+  <a href="/roadmap">See what's coming &rarr; agenthealthmonitor.xyz/roadmap</a>
 </div>
 
 <!-- FOOTER -->
 <footer>
-  <div class="footer-text">AGENT HEALTH MONITOR // PAY-PER-CALL // NO ACCOUNTS REQUIRED</div>
   <div class="footer-links">
+    <a href="/" class="footer-link">HOME</a>
     <a href="/dashboard" class="footer-link">DASHBOARD</a>
     <a href="/endpoints/ahs" class="footer-link">ENDPOINTS</a>
     <a href="/roadmap" class="footer-link">ROADMAP</a>
+    <a href="/app" class="footer-link">TRY IT</a>
   </div>
-  <div class="footer-network">
-    <div class="status-dot"></div>
-    BASE MAINNET // USDC // x402 PROTOCOL
-  </div>
+  <div class="footer-sub">POWERED BY x402 &middot; USDC &middot; BASE MAINNET &middot; @AHMprotocol</div>
 </footer>
 
 <script>
-  // ─── CONFIG ───
-  const API_BASE = window.location.origin;
+(function() {
+  var API = window.location.origin + '/api/ecosystem-stats';
 
-  // Valid coupon codes — in production these come from /coupon/validate endpoint
-  // For now we check locally as a demo; real validation happens server-side
-  const DEMO_COUPONS = ['TEST-ELITE','EARLY001','EARLY002','EARLY003','REDDIT50','SUBSTACK1'];
-
-  let selectedEndpoint = { path: '/risk', price: 0.01, name: 'risk', method: 'GET', couponPath: '/coupon/risk' };
-  let lastResults = null;
-  let couponValid = false;
-
-  // ─── CHAT-FIRST: INTENT DETECTION ───
-  function detectIntent(text) {
-    const t = text.toLowerCase();
-    if (/risk\s*premium|premium\s*risk|nansen|label|pnl|smart\s*money/.test(t)) return 'risk-premium';
-    if (/risk|safe|scam|fraud|rug|suspicious|legit/.test(t)) return 'risk';
-    if (/counterpart|who.*interact|top.*address|know.*your/.test(t)) return 'counterparties';
-    if (/network|map|fund|deploy|multisig|related|link/.test(t)) return 'network-map';
-    if (/health|full.*report|score|overview|diagnos/.test(t)) return 'health';
-    if (/alert|monitor|watch|notif|subscribe/.test(t)) return 'alerts';
-    if (/wash|clean|hygiene|dust|spam|clutter|sweep/.test(t)) return 'wash';
-    if (/report\s*card|visual|share|png|image/i.test(t)) return 'report-card';
-    if (/\bahs\b|agent\s*health\s*score|composite\s*score|behavio|infra.*health|zombie|pattern/i.test(t)) return 'ahs';
-    if (/optimi[sz]|gas|efficien|save|cheaper/.test(t)) return 'optimize';
-    if (/retry|fail|revert|stuck|rescue/.test(t)) return 'retry';
-    if (/protect|guard|shield|full.*suite|everything/.test(t)) return 'protect';
-    return null;
-  }
-
-  function selectService(name) {
-    const card = document.querySelector(`.endpoint-card[data-endpoint="${name}"]`);
-    if (card) selectEndpoint(card);
-    // Update guided buttons active state
-    document.querySelectorAll('.guided-btn').forEach(b => b.classList.remove('active'));
-    const activeBtn = document.querySelector(`.guided-btn[data-endpoint="${name}"]`);
-    if (activeBtn) activeBtn.classList.add('active');
-    // Focus wallet input
-    document.getElementById('wallet-input').focus();
-  }
-
-  function handleIntent() {
-    const input = document.getElementById('intent-input');
-    const text = input.value.trim();
-    if (!text) return;
-
-    // Check if it looks like a wallet address or test mode
-    if (/^0x[0-9a-fA-F]{40}$/.test(text) || TEST_MODES[text.toUpperCase()]) {
-      document.getElementById('wallet-input').value = text;
-      input.value = '';
-      execute();
-      return;
-    }
-
-    const intent = detectIntent(text);
-    if (intent) {
-      selectService(intent);
-      showToast('Selected: /' + intent);
-      input.value = '';
-    } else {
-      showToast('Try: "check risk", "optimize gas", "monitor agent"');
-    }
-  }
-
-  function toggleBrowse() {
-    const body = document.getElementById('browse-body');
-    const label = document.getElementById('browse-toggle-label');
-    const visible = body.style.display !== 'none';
-    body.style.display = visible ? 'none' : 'block';
-    label.textContent = visible ? '\u25B6 Show all 12 services' : '\u25BC Hide services';
-  }
-
-  // ─── ENDPOINT SELECT ───
-  function selectEndpoint(el) {
-    document.querySelectorAll('.endpoint-card').forEach(c => c.classList.remove('selected'));
-    el.classList.add('selected');
-    selectedEndpoint = {
-      path: el.dataset.path,
-      price: parseFloat(el.dataset.price),
-      name: el.dataset.endpoint,
-      method: el.dataset.method || 'GET',
-      couponPath: '/coupon/' + el.dataset.endpoint
-    };
-    document.getElementById('price-tag').textContent =
-      couponValid ? 'COST: FREE (COUPON APPLIED)' : `COST: $${el.dataset.price} USDC`;
-    updateBtn();
-    // Sync guided buttons
-    document.querySelectorAll('.guided-btn').forEach(b => b.classList.remove('active'));
-    const activeBtn = document.querySelector(`.guided-btn[data-endpoint="${el.dataset.endpoint}"]`);
-    if (activeBtn) activeBtn.classList.add('active');
-  }
-
-  // ─── COUPON ───
-  function toggleCoupon() {
-    const field = document.getElementById('coupon-field');
-    const arrow = document.getElementById('coupon-toggle-arrow');
-    field.classList.toggle('visible');
-    arrow.textContent = field.classList.contains('visible') ? '▼' : '▶';
-  }
-
-  let _couponTimeout;
-  async function validateCoupon() {
-    const code = document.getElementById('coupon-input').value.trim().toUpperCase();
-    const status = document.getElementById('coupon-status');
-    const btn = document.getElementById('execute-btn');
-    const priceTag = document.getElementById('price-tag');
-
-    if (!code) {
-      status.textContent = '';
-      couponValid = false;
-      priceTag.textContent = `COST: $${selectedEndpoint.price.toFixed(2)} USDC`;
-      updateBtn();
-      return;
-    }
-
-    clearTimeout(_couponTimeout);
-    _couponTimeout = setTimeout(async () => {
-      try {
-        const res = await fetch(`${API_BASE}/coupon/validate/${code}`);
-        const data = await res.json();
-        if (data.valid) {
-          status.textContent = '✓ VALID — FREE ACCESS GRANTED';
-          status.className = 'coupon-status valid';
-          couponValid = true;
-          priceTag.textContent = 'COST: FREE (COUPON APPLIED)';
-          btn.textContent = '▶ EXECUTE FREE ANALYSIS';
-          btn.className = 'execute-btn free';
-        } else {
-          status.textContent = '✗ INVALID CODE';
-          status.className = 'coupon-status invalid';
-          couponValid = false;
-          priceTag.textContent = `COST: $${selectedEndpoint.price.toFixed(2)} USDC`;
-          updateBtn();
-        }
-      } catch (e) {
-        status.textContent = '✗ VALIDATION ERROR';
-        status.className = 'coupon-status invalid';
-        couponValid = false;
-      }
-    }, 300);
-  }
-
-  function updateBtn() {
-    const btn = document.getElementById('execute-btn');
-    if (couponValid) {
-      btn.textContent = '▶ EXECUTE FREE ANALYSIS';
-      btn.className = 'execute-btn free';
-    } else {
-      btn.textContent = '▶ EXECUTE ANALYSIS';
-      btn.className = 'execute-btn';
-    }
-  }
-
-  // ─── TERMINAL ───
-  function terminal(lines) {
-    const el = document.getElementById('terminal');
-    el.classList.add('active');
-    el.innerHTML = lines.map(([cls, txt]) =>
-      `<div class="t-line"><span class="t-prompt">$</span> <span class="${cls}">${txt}</span></div>`
-    ).join('');
-    el.scrollTop = el.scrollHeight;
-  }
-
-  function termAppend(cls, txt) {
-    const el = document.getElementById('terminal');
-    el.innerHTML += `<div class="t-line"><span class="t-prompt">$</span> <span class="${cls}">${txt}</span></div>`;
-    el.scrollTop = el.scrollHeight;
-  }
-
-  // ─── EXECUTE ───
-  // ─── TEST MODE ───
-  const TEST_MODES = {
-    'TEST-ELITE': 92, 'TEST-HEALTHY': 76, 'TEST-ATRISK': 58, 'TEST-CRITICAL': 35,
-    'TEST-MODERATE': 65, 'TEST-NEW': 85
-  };
-
-  function mockResult(score) {
-    const failed = Math.round((1 - score / 100) * 500);
-    const success = 500 - failed;
-    return {
-      status: 'ok',
-      report: {
-        address: '0x' + 'test'.repeat(10).slice(0, 40),
-        is_contract: false,
-        health_score: score,
-        optimization_priority: score >= 85 ? 'LOW' : score >= 70 ? 'MEDIUM' : score >= 50 ? 'HIGH' : 'CRITICAL',
-        total_transactions: 500,
-        successful: success,
-        failed: failed,
-        success_rate_pct: (success / 500 * 100),
-        total_gas_spent_eth: 0.025 + (100 - score) * 0.001,
-        wasted_gas_eth: score < 70 ? 0.0052 : 0.0003,
-        estimated_monthly_waste_usd: score < 70 ? 71.50 : 4.20,
-        avg_gas_efficiency_pct: score * 0.7,
-        out_of_gas_count: score < 50 ? 12 : score < 70 ? 3 : 0,
-        reverted_count: failed,
-        nonce_gap_count: score < 50 ? 5 : 0,
-        retry_count: score < 70 ? 8 : 0,
-        top_failure_type: failed > 0 ? 'reverted' : 'none',
-        first_seen: '2024-06-01',
-        last_seen: '2026-02-20',
-        recommendations: [
-          score < 70 ? { category: 'reliability', severity: 'high', message: `Success rate is ${(success / 500 * 100).toFixed(1)}%. Review contract interactions and add pre-flight simulation.` } : null,
-          score < 85 ? { category: 'gas_efficiency', severity: 'medium', message: `Gas efficiency at ${(score * 0.7).toFixed(1)}%. Use tighter estimates via eth_estimateGas.` } : null,
-          score >= 85 ? { category: 'general', severity: 'info', message: `Health score ${score}/100. This agent is operating well. Continue monitoring for regressions.` } : null,
-        ].filter(Boolean),
-        eth_price_usd: 2650.00,
-        analyzed_at: new Date().toISOString(),
-      },
-      token_balances: [
-        { chain: 'base', symbol: 'USDC', name: 'USD Coin', amount: 5000.0, usd_value: 5000.0 },
-        { chain: 'ethereum', symbol: 'WETH', name: 'Wrapped Ether', amount: 0.78, usd_value: 2067.0 },
-        { chain: 'base', symbol: 'PEPE', name: 'Pepe', amount: 12500000, usd_value: 50.0 },
-      ],
-      total_portfolio_usd: 7117.0,
-    };
-  }
-
-  async function execute() {
-    const wallet = document.getElementById('wallet-input').value.trim();
-    const testScore = TEST_MODES[wallet.toUpperCase()];
-
-    if (!testScore && (!wallet || !wallet.match(/^0x[0-9a-fA-F]{40}$/))) {
-      terminal([['t-error', 'ERROR: Invalid wallet address format']]);
-      return;
-    }
-
-    const btn = document.getElementById('execute-btn');
-    btn.disabled = true;
-    document.getElementById('results-panel').classList.remove('active');
-    document.getElementById('chat-panel').style.display = 'none';
-
-    // Test mode — inject mock data
-    if (testScore) {
-      const testMode = wallet.toUpperCase();
-      terminal([
-        ['t-dim', `ENDPOINT: ${selectedEndpoint.path}`],
-        ['t-dim', `TARGET: ${wallet}`],
-        ['t-info', `TEST MODE — injecting mock data (score: ${testScore})`],
-      ]);
-      let data;
-      if (selectedEndpoint.name === 'risk-premium') {
-        const riskScore = Math.max(0, Math.min(100, 100 - testScore));
-        const pnlByMode = {
-          'TEST-ELITE': {
-            pnl_available: true,
-            pnl_summary: {
-              realized_pnl_usd: 125000, realized_pnl_percent: 34.5, win_rate: 78.0,
-              traded_token_count: 15, traded_times: 2400,
-              top_tokens: [
-                { token_symbol: 'ETH', chain: 'ethereum', realized_pnl: 85000, realized_roi: 45.0 },
-                { token_symbol: 'USDC', chain: 'base', realized_pnl: 25000, realized_roi: 12.0 },
-                { token_symbol: 'AAVE', chain: 'ethereum', realized_pnl: 15000, realized_roi: 35.0 },
-              ],
-            },
-          },
-          'TEST-HEALTHY': {
-            pnl_available: true,
-            pnl_summary: {
-              realized_pnl_usd: 8500, realized_pnl_percent: 6.2, win_rate: 55.0,
-              traded_token_count: 8, traded_times: 450,
-              top_tokens: [
-                { token_symbol: 'ETH', chain: 'ethereum', realized_pnl: 4200, realized_roi: 8.5 },
-                { token_symbol: 'UNI', chain: 'ethereum', realized_pnl: 2800, realized_roi: 12.0 },
-                { token_symbol: 'LINK', chain: 'ethereum', realized_pnl: 1500, realized_roi: 4.3 },
-              ],
-            },
-          },
-          'TEST-ATRISK': {
-            pnl_available: true,
-            pnl_summary: {
-              realized_pnl_usd: -3200, realized_pnl_percent: -4.1, win_rate: 32.0,
-              traded_token_count: 22, traded_times: 1800,
-              top_tokens: [
-                { token_symbol: 'ETH', chain: 'ethereum', realized_pnl: 2100, realized_roi: 3.2 },
-                { token_symbol: 'SHIB', chain: 'ethereum', realized_pnl: -3800, realized_roi: -62.0 },
-                { token_symbol: 'ARB', chain: 'arbitrum', realized_pnl: -1500, realized_roi: -18.5 },
-              ],
-            },
-          },
-          'TEST-CRITICAL': {
-            pnl_available: true,
-            pnl_summary: {
-              realized_pnl_usd: -45000, realized_pnl_percent: -72.3, win_rate: 15.0,
-              traded_token_count: 35, traded_times: 5200,
-              top_tokens: [
-                { token_symbol: 'LUNA', chain: 'ethereum', realized_pnl: -22000, realized_roi: -98.5 },
-                { token_symbol: 'FTT', chain: 'ethereum', realized_pnl: -15000, realized_roi: -95.0 },
-                { token_symbol: 'UST', chain: 'ethereum', realized_pnl: -8000, realized_roi: -99.2 },
-              ],
-            },
-          },
-          'TEST-MODERATE': {
-            pnl_available: true,
-            pnl_summary: {
-              realized_pnl_usd: 2100, realized_pnl_percent: 3.8, win_rate: 48.0,
-              traded_token_count: 12, traded_times: 680,
-              top_tokens: [
-                { token_symbol: 'ETH', chain: 'ethereum', realized_pnl: 1500, realized_roi: 5.2 },
-                { token_symbol: 'OP', chain: 'optimism', realized_pnl: 800, realized_roi: 8.1 },
-                { token_symbol: 'DOGE', chain: 'ethereum', realized_pnl: -200, realized_roi: -12.0 },
-              ],
-            },
-          },
-          'TEST-NEW': {
-            pnl_available: true,
-            pnl_summary: {
-              realized_pnl_usd: 50, realized_pnl_percent: 0.5, win_rate: 66.7,
-              traded_token_count: 2, traded_times: 3,
-              top_tokens: [
-                { token_symbol: 'ETH', chain: 'base', realized_pnl: 50, realized_roi: 0.5 },
-              ],
-            },
-          },
-        };
-        const nansenByMode = {
-          'TEST-ELITE': [
-            { label: 'Smart Money', tag: 'defi_trader', entity: null },
-            { label: 'Uniswap Power User', tag: 'dex_trader', entity: 'Uniswap' },
-            { label: 'Airdrop Hunter', tag: 'airdrop', entity: null },
-          ],
-          'TEST-HEALTHY': [
-            { label: 'DeFi User', tag: 'defi_user', entity: null },
-            { label: 'Aave Depositor', tag: 'lending', entity: 'Aave' },
-          ],
-          'TEST-ATRISK': [
-            { label: 'High Frequency Trader', tag: 'hft', entity: null },
-            { label: 'MEV Bot Operator', tag: 'mev', entity: null },
-          ],
-          'TEST-CRITICAL': [
-            { label: 'Flagged Address', tag: 'flagged', entity: null },
-            { label: 'Mixer User', tag: 'mixer', entity: 'Tornado Cash' },
-          ],
-          'TEST-MODERATE': [
-            { label: 'Active Trader', tag: 'trader', entity: null },
-            { label: 'Bridge User', tag: 'bridge', entity: null },
-          ],
-          'TEST-NEW': [
-            { label: 'New Wallet', tag: 'new', entity: null },
-          ],
-        };
-        const opHealthByMode = {
-          'TEST-ELITE': {
-            tx_failure_rate_1hr: 0.02, tx_failure_rate_24hr: 0.01,
-            total_txs_1hr: 45, total_txs_24hr: 380,
-            nonce_gaps_detected: false, volume_anomaly: false,
-            health_status: 'healthy', health_detail: 'Operations normal — low revert rate across all windows',
-          },
-          'TEST-HEALTHY': {
-            tx_failure_rate_1hr: 0.03, tx_failure_rate_24hr: 0.02,
-            total_txs_1hr: 12, total_txs_24hr: 95,
-            nonce_gaps_detected: false, volume_anomaly: false,
-            health_status: 'healthy', health_detail: 'Operations normal — low revert rate across all windows',
-          },
-          'TEST-ATRISK': {
-            tx_failure_rate_1hr: 0.08, tx_failure_rate_24hr: 0.06,
-            total_txs_1hr: 30, total_txs_24hr: 200,
-            nonce_gaps_detected: false, volume_anomaly: false,
-            health_status: 'degraded', health_detail: '8% revert rate in last hour',
-          },
-          'TEST-CRITICAL': {
-            tx_failure_rate_1hr: 0.35, tx_failure_rate_24hr: 0.22,
-            total_txs_1hr: 50, total_txs_24hr: 420,
-            nonce_gaps_detected: true, volume_anomaly: true,
-            health_status: 'critical', health_detail: '35% revert rate in last hour; nonce gaps detected; transaction volume anomaly with elevated reverts',
-          },
-          'TEST-MODERATE': {
-            tx_failure_rate_1hr: 0.12, tx_failure_rate_24hr: 0.07,
-            total_txs_1hr: 25, total_txs_24hr: 180,
-            nonce_gaps_detected: false, volume_anomaly: false,
-            health_status: 'degraded', health_detail: '12% revert rate in last hour; 7% revert rate in last 24 hours',
-          },
-          'TEST-NEW': {
-            tx_failure_rate_1hr: 0.0, tx_failure_rate_24hr: 0.0,
-            total_txs_1hr: 1, total_txs_24hr: 3,
-            nonce_gaps_detected: false, volume_anomaly: false,
-            health_status: 'healthy', health_detail: 'Operations normal — low revert rate across all windows',
-          },
-        };
-        const pnl = pnlByMode[testMode] || pnlByMode['TEST-ELITE'];
-        const opHealth = opHealthByMode[testMode] || opHealthByMode['TEST-ELITE'];
-        // Apply operational health risk adjustment (same logic as backend)
-        let adjustedRisk = riskScore;
-        if (opHealth.health_status === 'critical') adjustedRisk = Math.min(100, adjustedRisk + 10);
-        else if (opHealth.health_status === 'degraded') adjustedRisk = Math.min(100, adjustedRisk + 5);
-        data = {
-          risk_score: adjustedRisk,
-          risk_level: adjustedRisk >= 75 ? 'CRITICAL' : adjustedRisk >= 50 ? 'HIGH' : adjustedRisk >= 25 ? 'MEDIUM' : 'LOW',
-          verdict: adjustedRisk >= 75 ? 'Critical — flagged interactions and heavy losses detected'
-                 : adjustedRisk >= 50 ? 'High — elevated failure rate with contract reverts detected'
-                 : adjustedRisk >= 25 ? 'Medium — some concerning patterns but generally stable'
-                 : 'Low — operating normally with strong track record',
-          nansen_labels: nansenByMode[testMode] || nansenByMode['TEST-ELITE'],
-          nansen_available: true,
-          ...pnl,
-          operational_health: opHealth,
-        };
-      } else if (selectedEndpoint.name === 'counterparties') {
-        const cpByMode = {
-          'TEST-ELITE': {
-            counterparties: [
-              { address: '0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D', label: 'Uniswap V2: Router', interaction_count: 142, volume_usd: 385000.00 },
-              { address: '0x7d2768dE32b0b80b7a3454c06BdAc94A69DDc7A9', label: 'Aave V2: Lending Pool', interaction_count: 98, volume_usd: 520000.00 },
-              { address: '0xA090e606E30bD747d4E6245a1517EbE430F0057e', label: 'Coinbase Commerce', interaction_count: 45, volume_usd: 280000.00 },
-              { address: '0xc00e94Cb662C3520282E6f5717214004A7f26888', label: 'Compound: COMP Token', interaction_count: 38, volume_usd: 95000.00 },
-              { address: '0xae7ab96520DE3A18E5e111B5EaAb095312D7fE84', label: 'Lido: stETH', interaction_count: 27, volume_usd: 1200000.00 },
-            ],
-            total_counterparties: 5, nansen_available: true,
-          },
-          'TEST-HEALTHY': {
-            counterparties: [
-              { address: '0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45', label: 'Uniswap V3: Router 2', interaction_count: 89, volume_usd: 120000.00 },
-              { address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', label: 'USDC Token', interaction_count: 67, volume_usd: 85000.00 },
-              { address: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2', label: 'WETH Token', interaction_count: 55, volume_usd: 62000.00 },
-              { address: '0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984', label: null, interaction_count: 22, volume_usd: 8500.00 },
-              { address: '0xdAC17F958D2ee523a2206206994597C13D831ec7', label: 'Tether: USDT', interaction_count: 18, volume_usd: 45000.00 },
-            ],
-            total_counterparties: 5, nansen_available: true,
-          },
-          'TEST-ATRISK': {
-            counterparties: [
-              { address: '0x3fC91A3afd70395Cd496C647d5a6CC9D4B2b7FAD', label: 'Uniswap Universal Router', interaction_count: 1842, volume_usd: 45000.00 },
-              { address: '0x000000000000Ad05Ccc4F10045630fb830B95127', label: null, interaction_count: 956, volume_usd: 12000.00 },
-              { address: '0xDef1C0ded9bec7F1a1670819833240f027b25EfF', label: '0x: Exchange Proxy', interaction_count: 445, volume_usd: 88000.00 },
-              { address: '0x00000000009726632680AF5E0b0E2C0E5F3E1a23', label: 'High Activity Address', interaction_count: 2200, volume_usd: 3200.00 },
-              { address: '0xA69babEF1cA67A37Ffaf7a485DfFF3382056e78C', label: null, interaction_count: 678, volume_usd: 22000.00 },
-            ],
-            total_counterparties: 5, nansen_available: true,
-          },
-          'TEST-CRITICAL': {
-            counterparties: [
-              { address: '0xd90e2f925DA726b50C4Ed8D0Fb90Ad053324F31b', label: 'Tornado Cash: Router', interaction_count: 89, volume_usd: 15000.00 },
-              { address: '0x722122dF12D4e14e13Ac3b6895a86e84145b6967', label: 'Tornado Cash: Proxy', interaction_count: 67, volume_usd: 12000.00 },
-              { address: '0x00000000A991C429eE2Ec6df19d40fe0c80088B8', label: 'Flagged Entity', interaction_count: 234, volume_usd: 8500.00 },
-              { address: '0xBA12222222228d8Ba445958a75a0704d566BF2C8', label: null, interaction_count: 456, volume_usd: 2800.00 },
-              { address: '0x0000000000007F150Bd6f54c40A34d7C3d5e9f56', label: 'Sanctioned Mixer', interaction_count: 112, volume_usd: 55000.00 },
-            ],
-            total_counterparties: 5, nansen_available: true,
-          },
-        };
-        const cp = cpByMode[testMode] || cpByMode['TEST-ELITE'];
-        data = { status: 'ok', address: '0x' + 'test'.repeat(10).slice(0, 40), ...cp };
-      } else if (selectedEndpoint.name === 'network-map') {
-        const nmByMode = {
-          'TEST-ELITE': {
-            related_wallets: [
-              { address: '0x28C6c06298d514Db089934071355E5743bf21d60', label: 'Smart Money Fund', relation: 'first_funder', chain: 'ethereum', transaction_hash: '0xabc123...def456' },
-              { address: '0x503828976D22510aad0201ac7EC88293211D23Da', label: 'Coinbase Custody', relation: 'deployer', chain: 'ethereum', transaction_hash: '0x789abc...012def' },
-              { address: '0xd9Db270c1B5E3Bd161E8c8503c55cEABeE709552', label: 'Gnosis Safe Multisig', relation: 'multisig_member', chain: 'ethereum', transaction_hash: '0x345678...9abcde' },
-            ],
-            total_related: 3, chain: 'ethereum', nansen_available: true,
-          },
-          'TEST-HEALTHY': {
-            related_wallets: [
-              { address: '0x47ac0Fb4F2D84898e4D9E7b4DaB3C24507a6D503', label: 'Binance Hot Wallet', relation: 'first_funder', chain: 'ethereum', transaction_hash: '0xfed321...abc789' },
-              { address: '0x0000000000000000000000000000000000000000', label: null, relation: 'deployer', chain: 'ethereum', transaction_hash: '0x111222...333444' },
-            ],
-            total_related: 2, chain: 'ethereum', nansen_available: true,
-          },
-          'TEST-ATRISK': {
-            related_wallets: [
-              { address: '0x56Eddb7aa87536c09CCc2793473599fD21A8b17F', label: 'MEV Bot Deployer', relation: 'deployer', chain: 'ethereum', transaction_hash: '0xaaa111...bbb222' },
-              { address: '0x00000000003b3cc22aF3aE1EAc0440BcEe416B40', label: null, relation: 'first_funder', chain: 'ethereum', transaction_hash: '0xccc333...ddd444' },
-              { address: '0x98C3d3183C4b8A650614ad179A1a98be0a8d6B8E', label: 'High Risk Wallet', relation: 'multisig_member', chain: 'ethereum', transaction_hash: '0xeee555...fff666' },
-              { address: '0xA160cdAB225685dA1d56aa342Ad8841c3b53f291', label: null, relation: 'first_funder', chain: 'ethereum', transaction_hash: '0x777888...999000' },
-            ],
-            total_related: 4, chain: 'ethereum', nansen_available: true,
-          },
-          'TEST-CRITICAL': {
-            related_wallets: [
-              { address: '0xd90e2f925DA726b50C4Ed8D0Fb90Ad053324F31b', label: 'Tornado Cash: Router', relation: 'first_funder', chain: 'ethereum', transaction_hash: '0xbad000...bad111' },
-              { address: '0x00000000A991C429eE2Ec6df19d40fe0c80088B8', label: 'OFAC Sanctioned', relation: 'deployer', chain: 'ethereum', transaction_hash: '0xbad222...bad333' },
-              { address: '0x0836222F2B2B24A3F36f98668Ed8F0B38D1a872f', label: 'Tornado Cash Pool', relation: 'multisig_member', chain: 'ethereum', transaction_hash: '0xbad444...bad555' },
-              { address: '0x178169B423a011fff22B9e3F3abeA13414dDD0F1', label: null, relation: 'first_funder', chain: 'ethereum', transaction_hash: '0xbad666...bad777' },
-              { address: '0xFD8610d20aA15b7B2E3Be39B396a1bC3516c7144', label: 'Flagged Mixer Proxy', relation: 'deployer', chain: 'ethereum', transaction_hash: '0xbad888...bad999' },
-            ],
-            total_related: 5, chain: 'ethereum', nansen_available: true,
-          },
-        };
-        const nm = nmByMode[testMode] || nmByMode['TEST-ELITE'];
-        data = { status: 'ok', address: '0x' + 'test'.repeat(10).slice(0, 40), ...nm };
-      } else if (selectedEndpoint.name === 'wash') {
-        const washByMode = {
-          'TEST-ELITE': {
-            cleanliness_score: 92, cleanliness_grade: 'Spotless',
-            total_issues: 1, issues_by_severity: { high: 0, medium: 0, low: 1 },
-            dust_tokens: 1, dust_total_usd: 0.003, spam_tokens: 0, spam_token_list: [],
-            gas_efficiency_pct: 85.0, gas_efficiency_grade: 'Excellent', wasted_gas_usd: 0.0,
-            failed_tx_count_24hr: 0, failed_tx_patterns: [], nonce_gaps: 0,
-            issues: [
-              { category: 'dust', severity: 'low', description: '1 dust token worth $0.003 total', action: 'Clear 1 dust token to declutter wallet', estimated_savings: '$0.003 recoverable' },
-            ],
-            recommendations: ['Looking good — schedule your next wash in 30 days'],
-            next_wash_recommended: '30 days',
-          },
-          'TEST-CRITICAL': {
-            cleanliness_score: 18, cleanliness_grade: 'Critical',
-            total_issues: 9, issues_by_severity: { high: 4, medium: 3, low: 2 },
-            dust_tokens: 25, dust_total_usd: 0.082, spam_tokens: 15,
-            spam_token_list: [
-              { name: 'Visit https://freeclaim.xyz', symbol: 'CLAIM', reason: 'URL in token name' },
-              { name: 'Airdrop Voucher Token', symbol: 'AVT', reason: 'Low holder count (12); Zero 24h volume' },
-              { name: 'DeFi Reward Token', symbol: 'DRWD', reason: 'Zero market cap; No exchange rate (unlisted)' },
-            ],
-            gas_efficiency_pct: 32.0, gas_efficiency_grade: 'Poor', wasted_gas_usd: 4.85,
-            failed_tx_count_24hr: 12,
-            failed_tx_patterns: [
-              { contract: '0x3fc91a3a...b7fad', failure_count: 8, pattern: 'Repeated failures' },
-              { contract: 'method:0x3593564c', failure_count: 6, pattern: 'Method execute (Universal Router) has 35% failure rate' },
-            ],
-            nonce_gaps: 3,
-            issues: [
-              { category: 'gas', severity: 'high', description: 'Gas efficiency at 32.0% — gas limits set too high', action: 'Reduce gas limits by ~68% to save on transaction costs', estimated_savings: '~68% gas savings' },
-              { category: 'gas', severity: 'high', description: '$4.85 wasted on failed transactions', action: 'Add pre-flight simulation (eth_call) to avoid paying for failures', estimated_savings: '$4.85 recoverable' },
-              { category: 'failed_tx', severity: 'high', description: '8 repeated failures to contract 0x3fc91a3a...b7fad', action: 'Check integration status with contract 0x3fc91a3a...b7fad', estimated_savings: null },
-              { category: 'nonce', severity: 'high', description: '3 nonce gaps detected in transaction sequence', action: 'Implement proper nonce tracking with pending transaction awareness', estimated_savings: null },
-              { category: 'spam', severity: 'medium', description: '15 spam tokens detected in wallet', action: '15 spam tokens detected — consider blocking future airdrops', estimated_savings: null },
-              { category: 'dust', severity: 'medium', description: '25 dust tokens worth $0.082 total cluttering wallet', action: 'Clear 25 dust tokens to declutter wallet', estimated_savings: '$0.082 recoverable' },
-              { category: 'failed_tx', severity: 'medium', description: '12 failed transactions in the last 24 hours', action: 'Review failure reasons and add pre-flight checks', estimated_savings: null },
-              { category: 'gas', severity: 'low', description: '18 transactions used gas limits >2x actual usage', action: 'Use eth_estimateGas with a 15% buffer instead of hardcoded limits', estimated_savings: null },
-              { category: 'gas', severity: 'low', description: 'Overall efficiency below optimal range', action: 'Review gas estimation strategy', estimated_savings: null },
-            ],
-            recommendations: [
-              'Reduce gas limits by ~68% to save on transaction costs',
-              'Add pre-flight simulation (eth_call) to avoid paying for failures',
-              'Check integration status with contract 0x3fc91a3a...b7fad',
-            ],
-            next_wash_recommended: '7 days',
-          },
-          'TEST-MODERATE': {
-            cleanliness_score: 55, cleanliness_grade: 'Needs Attention',
-            total_issues: 5, issues_by_severity: { high: 1, medium: 3, low: 1 },
-            dust_tokens: 8, dust_total_usd: 0.024, spam_tokens: 4,
-            spam_token_list: [
-              { name: 'Reward Token v2', symbol: 'RWD2', reason: 'Low holder count (45); Zero 24h volume' },
-              { name: 'Claim at t.ly/bonus', symbol: 'BONUS', reason: 'URL in token name' },
-            ],
-            gas_efficiency_pct: 58.0, gas_efficiency_grade: 'Fair', wasted_gas_usd: 0.92,
-            failed_tx_count_24hr: 3,
-            failed_tx_patterns: [
-              { contract: '0xdef1c0de...e78c', failure_count: 3, pattern: 'Repeated failures' },
-            ],
-            nonce_gaps: 1,
-            issues: [
-              { category: 'gas', severity: 'high', description: '$0.92 wasted on failed transactions', action: 'Add pre-flight simulation to avoid paying for failures', estimated_savings: '$0.92 recoverable' },
-              { category: 'spam', severity: 'medium', description: '4 spam tokens detected in wallet', action: '4 spam tokens detected — consider blocking future airdrops', estimated_savings: null },
-              { category: 'gas', severity: 'medium', description: 'Gas efficiency at 58.0% — gas limits set too high', action: 'Reduce gas limits by ~42% to save on transaction costs', estimated_savings: '~42% gas savings' },
-              { category: 'dust', severity: 'medium', description: '8 dust tokens worth $0.024 total cluttering wallet', action: 'Clear 8 dust tokens to declutter wallet', estimated_savings: '$0.024 recoverable' },
-              { category: 'nonce', severity: 'low', description: '1 nonce gap detected in transaction sequence', action: 'Implement proper nonce tracking', estimated_savings: null },
-            ],
-            recommendations: [
-              'Add pre-flight simulation to avoid paying for failures',
-              '4 spam tokens detected — consider blocking future airdrops',
-              'Reduce gas limits by ~42% to save on transaction costs',
-            ],
-            next_wash_recommended: '14 days',
-          },
-          'TEST-NEW': {
-            cleanliness_score: 95, cleanliness_grade: 'Spotless',
-            total_issues: 0, issues_by_severity: { high: 0, medium: 0, low: 0 },
-            dust_tokens: 0, dust_total_usd: 0.0, spam_tokens: 0, spam_token_list: [],
-            gas_efficiency_pct: 90.0, gas_efficiency_grade: 'Excellent', wasted_gas_usd: 0.0,
-            failed_tx_count_24hr: 0, failed_tx_patterns: [], nonce_gaps: 0,
-            issues: [],
-            recommendations: ['New wallet — insufficient history for full assessment'],
-            next_wash_recommended: '30 days',
-          },
-        };
-        const washData = washByMode[testMode] || washByMode['TEST-MODERATE'];
-        data = {
-          status: 'ok',
-          report: {
-            address: '0x' + 'test'.repeat(10).slice(0, 40),
-            scan_timestamp: new Date().toISOString(),
-            ...washData,
-          },
-        };
-      } else if (selectedEndpoint.name === 'ahs') {
-        const ahsByMode = {
-          'TEST-ELITE': {
-            agent_health_score: 92, grade: 'A — Excellent', confidence: 'HIGH', mode: '2D',
-            dimensions: [
-              { dimension: 'D1: Wallet Hygiene', score: 95, weight: 0.30, contributing_factors: ['Wallet hygiene is healthy'] },
-              { dimension: 'D2: Behavioural Patterns', score: 90, weight: 0.70, contributing_factors: ['Behavioural patterns are healthy'] },
-            ],
-            patterns_detected: [
-              { name: 'Healthy Operator', detected: true, severity: 'info', description: 'All dimensions performing well — clean wallet, adaptive gas pricing, diverse interactions, and no retry storms.' },
-            ],
-            trend: null, recommendations: ['Maintaining excellent health — scan again in 30 days'],
-            ahs_token: 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.mock-elite-token',
-            model_version: 'AHS-v1', next_scan_recommended: '30 days',
-          },
-          'TEST-CRITICAL': {
-            agent_health_score: 22, grade: 'E — Critical', confidence: 'MEDIUM', mode: '2D',
-            dimensions: [
-              { dimension: 'D1: Wallet Hygiene', score: 35, weight: 0.30, contributing_factors: ['15 spam tokens detected', 'Gas efficiency suboptimal (28.0%)', '3 nonce gaps in sequence'] },
-              { dimension: 'D2: Behavioural Patterns', score: 17, weight: 0.70, contributing_factors: ['Repeated failures: 12 consecutive to same contract', 'Retry storms: 5 events detected', 'Activity gaps: ratio 45.2'] },
-            ],
-            patterns_detected: [
-              { name: 'Cascading Infrastructure Failure', detected: true, severity: 'critical', description: 'Active degradation detected — failure rate is rising, nonce gaps are widening, and timing shows crash-restart patterns.' },
-              { name: 'Stale Strategy', detected: true, severity: 'warning', description: 'Agent is repeatedly failing on the same contract interaction without adapting.' },
-            ],
-            trend: 'declining', recommendations: [
-              'Active degradation detected — failure rate is rising, nonce gaps are widening, and timing shows crash-restart patter',
-              'Repeated failures: 12 consecutive to same contract',
-              'Retry storms: 5 events detected',
-            ],
-            ahs_token: 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.mock-critical-token',
-            model_version: 'AHS-v1', next_scan_recommended: '7 days',
-          },
-          'TEST-MODERATE': {
-            agent_health_score: 58, grade: 'C — Needs Attention', confidence: 'MEDIUM', mode: '2D',
-            dimensions: [
-              { dimension: 'D1: Wallet Hygiene', score: 65, weight: 0.30, contributing_factors: ['4 spam tokens detected', 'Gas efficiency suboptimal (52.0%)'] },
-              { dimension: 'D2: Behavioural Patterns', score: 55, weight: 0.70, contributing_factors: ['Transaction diversity: 3 unique pairs (0.025)', 'Gas adaptation index: 0.035 (CV)'] },
-            ],
-            patterns_detected: [],
-            trend: 'stable', recommendations: [
-              'Transaction diversity: 3 unique pairs (0.025)',
-              'Gas adaptation index: 0.035 (CV)',
-              '4 spam tokens detected',
-            ],
-            ahs_token: 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.mock-moderate-token',
-            model_version: 'AHS-v1', next_scan_recommended: '14 days',
-          },
-          'TEST-NEW': {
-            agent_health_score: 75, grade: 'B — Good', confidence: 'LOW', mode: '2D',
-            dimensions: [
-              { dimension: 'D1: Wallet Hygiene', score: 88, weight: 0.30, contributing_factors: ['Wallet hygiene is healthy'] },
-              { dimension: 'D2: Behavioural Patterns', score: 50, weight: 0.70, contributing_factors: ['Insufficient transaction history for behavioural analysis'] },
-            ],
-            patterns_detected: [],
-            trend: null, recommendations: ['Insufficient history for full assessment — scan again in 7 days to build baseline'],
-            ahs_token: 'eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.mock-new-token',
-            model_version: 'AHS-v1', next_scan_recommended: '14 days',
-          },
-        };
-        const ahsData = ahsByMode[testMode] || ahsByMode['TEST-MODERATE'];
-        data = {
-          status: 'ok',
-          report: {
-            address: '0x' + 'test'.repeat(10).slice(0, 40),
-            scan_timestamp: new Date().toISOString(),
-            ...ahsData,
-          },
-        };
-      } else if (selectedEndpoint.name === 'report-card') {
-        const rcByMode = {
-          'TEST-ELITE': {
-            agent_health_score: 92, grade: 'A — Excellent', confidence: 'HIGH', mode: '2D',
-            dimensions: [
-              { dimension: 'D1: Wallet Hygiene', score: 95, weight: 0.30 },
-              { dimension: 'D2: Behavioural Patterns', score: 90, weight: 0.70 },
-            ],
-            patterns_detected: [],
-            recommendations: ['Maintaining excellent health — scan again in 30 days'],
-            ecosystem_comparison: { average_ahs: 47.3, percentile_rank: 95, grade_distribution: { A: 1, B: 3, C: 12, D: 45, E: 38, F: 8 }, total_agents_scored: 1006 },
-            image_url: '/static/report-cards/test-placeholder.png',
-            share_url: 'https://x.com/intent/tweet?text=My%20agent%20scored%2092%2F100%20on%20%40AHM_xyz%20Report%20Card',
-          },
-          'TEST-CRITICAL': {
-            agent_health_score: 22, grade: 'E — Critical', confidence: 'MEDIUM', mode: '2D',
-            dimensions: [
-              { dimension: 'D1: Wallet Hygiene', score: 35, weight: 0.30 },
-              { dimension: 'D2: Behavioural Patterns', score: 17, weight: 0.70 },
-            ],
-            patterns_detected: [
-              { name: 'Cascading Infrastructure Failure', detected: true, severity: 'critical', description: 'Active degradation detected.' },
-            ],
-            recommendations: ['Active degradation detected — failure rate is rising'],
-            ecosystem_comparison: { average_ahs: 47.3, percentile_rank: 12, grade_distribution: { A: 1, B: 3, C: 12, D: 45, E: 38, F: 8 }, total_agents_scored: 1006 },
-            image_url: '/static/report-cards/test-placeholder.png',
-            share_url: 'https://x.com/intent/tweet?text=My%20agent%20scored%2022%2F100%20on%20%40AHM_xyz%20Report%20Card',
-          },
-          'TEST-MODERATE': {
-            agent_health_score: 58, grade: 'C — Needs Attention', confidence: 'MEDIUM', mode: '2D',
-            dimensions: [
-              { dimension: 'D1: Wallet Hygiene', score: 65, weight: 0.30 },
-              { dimension: 'D2: Behavioural Patterns', score: 55, weight: 0.70 },
-            ],
-            patterns_detected: [],
-            recommendations: ['Transaction diversity: 3 unique pairs', 'Gas adaptation index: 0.035'],
-            ecosystem_comparison: { average_ahs: 47.3, percentile_rank: 62, grade_distribution: { A: 1, B: 3, C: 12, D: 45, E: 38, F: 8 }, total_agents_scored: 1006 },
-            image_url: '/static/report-cards/test-placeholder.png',
-            share_url: 'https://x.com/intent/tweet?text=My%20agent%20scored%2058%2F100%20on%20%40AHM_xyz%20Report%20Card',
-          },
-        };
-        const rcData = rcByMode[testMode] || rcByMode['TEST-MODERATE'];
-        data = {
-          status: 'ok',
-          report: {
-            address: '0x' + 'test'.repeat(10).slice(0, 40),
-            scan_timestamp: new Date().toISOString(),
-            ...rcData,
-          },
-        };
+  // Animate a number from 0 to target
+  function animateCount(el, target, suffix, duration) {
+    suffix = suffix || '';
+    duration = duration || 1500;
+    var start = performance.now();
+    var isFloat = target % 1 !== 0;
+    function tick(now) {
+      var elapsed = now - start;
+      var progress = Math.min(elapsed / duration, 1);
+      // ease-out quad
+      var eased = 1 - (1 - progress) * (1 - progress);
+      var current = eased * target;
+      if (isFloat) {
+        el.textContent = current.toFixed(1) + suffix;
       } else {
-        data = mockResult(testScore);
+        el.textContent = Math.round(current).toLocaleString() + suffix;
       }
-      lastResults = data;
-      termAppend('t-success', 'STATUS: 200 OK — Mock analysis complete');
-      renderResults(data);
-      btn.disabled = false;
-      return;
+      if (progress < 1) requestAnimationFrame(tick);
     }
-
-    const coupon = document.getElementById('coupon-input')?.value?.trim().toUpperCase();
-    const url = couponValid && coupon
-      ? `${API_BASE}${selectedEndpoint.couponPath}/${coupon}/${wallet}`
-      : `${API_BASE}${selectedEndpoint.path}/${wallet}`;
-
-    terminal([
-      ['t-dim', `ENDPOINT: ${selectedEndpoint.path}`],
-      ['t-dim', `TARGET: ${wallet}`],
-      ['t-dim', `NETWORK: Base Mainnet (eip155:8453)`],
-      ['t-info', couponValid ? 'COUPON APPLIED — bypassing payment' : `PAYMENT: $${selectedEndpoint.price.toFixed(2)} USDC required`],
-      ['t-dim', 'Initiating request...'],
-    ]);
-
-    try {
-      const useCoupon = couponValid && coupon;
-      const fetchOpts = (!useCoupon && selectedEndpoint.method === 'POST') ? { method: 'POST' } : {};
-      const res = await fetch(url, fetchOpts);
-
-      if (res.status === 402) {
-        termAppend('t-info', 'STATUS: 402 — Payment required, initiating x402 flow...');
-        termAppend('t-dim', 'NOTE: Full payment flow requires x402-compatible client');
-        termAppend('t-dim', 'For agents: use x402 Python/TS SDK to auto-pay');
-        termAppend('t-dim', 'Payment details: ' + (res.headers.get('payment-required') || 'see response body'));
-        btn.disabled = false;
-        return;
-      }
-
-      if (!res.ok) {
-        const txt = await res.text();
-        termAppend('t-error', `ERROR: ${res.status} — ${txt}`);
-        btn.disabled = false;
-        return;
-      }
-
-      const data = await res.json();
-      lastResults = data;
-      termAppend('t-success', `STATUS: 200 OK — Analysis complete`);
-      termAppend('t-success', `PAYMENT: Verified via x402 on Base mainnet`);
-      renderResults(data);
-
-    } catch (e) {
-      termAppend('t-error', `NETWORK ERROR: ${e.message}`);
-    }
-
-    btn.disabled = false;
+    requestAnimationFrame(tick);
   }
 
-  // ─── RENDER RESULTS ───
-  function renderResults(data) {
-    const panel = document.getElementById('results-panel');
-    const body = document.getElementById('results-body');
-    const ts = document.getElementById('results-timestamp');
-    // Unwrap: API returns {status, report: {...}} — use report if present
-    const r = data.report ?? data;
-
-    ts.textContent = new Date().toISOString().replace('T', ' ').slice(0, 19) + ' UTC';
-
-    // Risk endpoint returns {risk_score, risk_level, verdict} — handle specially
-    if (r.risk_score !== undefined && r.verdict !== undefined) {
-      ts.textContent = new Date().toISOString().replace('T', ' ').slice(0, 19) + ' UTC';
-      const rs = r.risk_score;
-      const rsClass = rs >= 75 ? 'low' : rs >= 50 ? 'low' : rs >= 25 ? 'medium' : 'high';
-      body.innerHTML = `
-        <div class="health-score">
-          <div class="score-label">// RISK SCORE</div>
-          <div class="score-number ${rsClass}">${rs}<span style="font-size:2rem;opacity:0.4">/100</span></div>
-          <div class="score-tier ${rs >= 75 ? 'tier-critical' : rs >= 50 ? 'tier-atrisk' : rs >= 25 ? 'tier-healthy' : 'tier-elite'}">${r.risk_level}</div>
-          <div class="score-bar-container">
-            <div class="score-bar-fill ${rsClass}" style="width:${rs}%"></div>
-          </div>
-        </div>
-        <div style="padding:0.5rem 0.75rem; border-left:2px solid var(--cyan-dim); margin-bottom:1rem; font-family:var(--mono); font-size:0.8rem; color:var(--text)">${r.verdict}</div>
-        ${r.nansen_labels && r.nansen_labels.length > 0 ? `
-          <div style="margin-bottom:1rem">
-            <div style="font-family:var(--mono); font-size:0.6rem; letter-spacing:0.2em; color:var(--text-dim); margin-bottom:0.5rem">// NANSEN WALLET LABELS</div>
-            <div style="display:flex; flex-wrap:wrap; gap:0.4rem">
-              ${r.nansen_labels.map(l => `<span style="border:1px solid var(--cyan-dim); padding:0.25rem 0.6rem; font-family:var(--mono); font-size:0.65rem; color:var(--cyan); background:rgba(0,245,255,0.05)">${l.label}${l.tag ? ' <span style=&quot;color:var(--text-dim)&quot;>[' + l.tag + ']</span>' : ''}${l.entity ? ' <span style=&quot;color:var(--amber)&quot;>' + l.entity + '</span>' : ''}</span>`).join('')}
-            </div>
-          </div>` : r.nansen_available === false && r.nansen_labels !== undefined ? `
-          <div style="font-family:var(--mono); font-size:0.65rem; color:var(--text-dim); margin-bottom:1rem; opacity:0.6">// Nansen enrichment unavailable</div>` : ''}
-        ${r.pnl_available && r.pnl_summary ? (() => {
-          const pnl = r.pnl_summary;
-          const pnlColor = pnl.realized_pnl_usd >= 0 ? 'var(--green, #00ff88)' : 'var(--red, #ff4444)';
-          const pnlSign = pnl.realized_pnl_usd >= 0 ? '+' : '';
-          return `
-          <div style="margin-bottom:1rem">
-            <div style="font-family:var(--mono); font-size:0.6rem; letter-spacing:0.2em; color:var(--text-dim); margin-bottom:0.5rem">// PnL SUMMARY (NANSEN)</div>
-            <div style="display:flex; gap:2rem; flex-wrap:wrap; font-family:var(--mono); font-size:0.75rem; margin-bottom:0.75rem">
-              <span style="color:${pnlColor}"><span style="color:var(--text-dim)">Realized PnL:</span> ${pnlSign}$${Math.abs(pnl.realized_pnl_usd).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
-              <span style="color:${pnlColor}"><span style="color:var(--text-dim)">ROI:</span> ${pnlSign}${pnl.realized_pnl_percent.toFixed(2)}%</span>
-              <span style="color:var(--cyan)"><span style="color:var(--text-dim)">Win Rate:</span> ${pnl.win_rate.toFixed(1)}%</span>
-              <span style="color:var(--text)"><span style="color:var(--text-dim)">Tokens:</span> ${pnl.traded_token_count} <span style="color:var(--text-dim)">(${pnl.traded_times} trades)</span></span>
-            </div>
-            ${pnl.top_tokens && pnl.top_tokens.length > 0 ? `
-            <table style="width:100%; border-collapse:collapse; font-family:var(--mono); font-size:0.7rem">
-              <thead>
-                <tr style="border-bottom:1px solid var(--cyan-dim); color:var(--text-dim); font-size:0.6rem; letter-spacing:0.1em">
-                  <th style="text-align:left; padding:0.3rem 0.5rem">TOKEN</th>
-                  <th style="text-align:left; padding:0.3rem 0.5rem">CHAIN</th>
-                  <th style="text-align:right; padding:0.3rem 0.5rem">PnL</th>
-                  <th style="text-align:right; padding:0.3rem 0.5rem">ROI</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${pnl.top_tokens.slice(0, 5).map(t => {
-                  const tColor = t.realized_pnl >= 0 ? 'var(--green, #00ff88)' : 'var(--red, #ff4444)';
-                  const tSign = t.realized_pnl >= 0 ? '+' : '';
-                  return `
-                  <tr style="border-bottom:1px solid rgba(0,245,255,0.08)">
-                    <td style="padding:0.3rem 0.5rem; color:var(--cyan)">${t.token_symbol}</td>
-                    <td style="padding:0.3rem 0.5rem; color:var(--text-dim)">${t.chain}</td>
-                    <td style="padding:0.3rem 0.5rem; text-align:right; color:${tColor}">${tSign}$${Math.abs(t.realized_pnl).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
-                    <td style="padding:0.3rem 0.5rem; text-align:right; color:${tColor}">${tSign}${t.realized_roi.toFixed(2)}%</td>
-                  </tr>`;
-                }).join('')}
-              </tbody>
-            </table>` : ''}
-            <div style="font-family:var(--mono); font-size:0.6rem; color:var(--text-dim); margin-top:0.5rem; opacity:0.7">// PnL data used in risk score adjustment</div>
-          </div>`;
-        })() : r.pnl_available === false ? `
-          <div style="font-family:var(--mono); font-size:0.65rem; color:var(--text-dim); margin-bottom:1rem; opacity:0.6">// PnL enrichment unavailable</div>` : ''}
-        ${r.operational_health ? (() => {
-          const oh = r.operational_health;
-          const ohColor = oh.health_status === 'healthy' ? 'var(--green, #00ff88)' : oh.health_status === 'degraded' ? 'var(--amber, #ffaa00)' : oh.health_status === 'critical' ? 'var(--red, #ff3355)' : 'var(--text-dim)';
-          const ohBorder = oh.health_status === 'healthy' ? 'var(--green-dim, #004d2a)' : oh.health_status === 'degraded' ? 'rgba(255,170,0,0.3)' : oh.health_status === 'critical' ? 'rgba(255,51,85,0.3)' : 'var(--border)';
-          return `
-          <div style="margin-bottom:1rem; border:1px solid ${ohBorder}; padding:0.75rem; background:rgba(0,0,0,0.2)">
-            <div style="font-family:var(--mono); font-size:0.6rem; letter-spacing:0.2em; color:var(--text-dim); margin-bottom:0.5rem">// OPERATIONAL HEALTH</div>
-            <div style="display:flex; align-items:center; gap:0.75rem; margin-bottom:0.5rem">
-              <span style="font-family:var(--mono); font-size:0.85rem; font-weight:bold; color:${ohColor}; text-transform:uppercase; letter-spacing:0.1em">${oh.health_status}</span>
-              <span style="width:8px; height:8px; border-radius:50%; background:${ohColor}; box-shadow:0 0 6px ${ohColor}; display:inline-block"></span>
-            </div>
-            <div style="font-family:var(--mono); font-size:0.7rem; color:var(--text); margin-bottom:0.75rem; border-left:2px solid ${ohColor}; padding-left:0.5rem">${oh.health_detail}</div>
-            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(140px, 1fr)); gap:0.5rem; font-family:var(--mono); font-size:0.7rem">
-              <div><span style="color:var(--text-dim)">Revert 1hr:</span> <span style="color:${oh.tx_failure_rate_1hr > 0.2 ? 'var(--red)' : oh.tx_failure_rate_1hr > 0.05 ? 'var(--amber)' : 'var(--green)'}">${(oh.tx_failure_rate_1hr * 100).toFixed(1)}%</span> <span style="color:var(--text-dim)">(${oh.total_txs_1hr} txs)</span></div>
-              <div><span style="color:var(--text-dim)">Revert 24hr:</span> <span style="color:${oh.tx_failure_rate_24hr > 0.2 ? 'var(--red)' : oh.tx_failure_rate_24hr > 0.05 ? 'var(--amber)' : 'var(--green)'}">${(oh.tx_failure_rate_24hr * 100).toFixed(1)}%</span> <span style="color:var(--text-dim)">(${oh.total_txs_24hr} txs)</span></div>
-              <div><span style="color:var(--text-dim)">Nonce Gaps:</span> <span style="color:${oh.nonce_gaps_detected ? 'var(--amber)' : 'var(--green)'}">${oh.nonce_gaps_detected ? 'YES' : 'No'}</span></div>
-              <div><span style="color:var(--text-dim)">Vol Anomaly:</span> <span style="color:${oh.volume_anomaly ? 'var(--red)' : 'var(--green)'}">${oh.volume_anomaly ? 'YES' : 'No'}</span></div>
-            </div>
-          </div>`;
-        })() : ''}
-        <button class="toggle-raw" onclick="toggleRaw()">▶ VIEW RAW JSON</button>
-        <pre class="raw-json" id="raw-json">${JSON.stringify(data, null, 2)}</pre>
-      `;
-      panel.classList.add('active');
-      panel.classList.remove('elite-glow');
-      setTimeout(() => { const bar = document.querySelector('.score-bar-fill'); if (bar) bar.style.width = rs + '%'; }, 50);
-      return;
-    }
-
-    // Counterparties endpoint returns {counterparties: [...]} — handle specially
-    if (data.counterparties !== undefined && data.total_counterparties !== undefined) {
-      const cps = data.counterparties ?? [];
-      const totalVol = cps.reduce((s, c) => s + (c.volume_usd ?? 0), 0);
-      body.innerHTML = `
-        <div style="margin-bottom:1rem">
-          <div style="font-family:var(--mono); font-size:0.6rem; letter-spacing:0.2em; color:var(--text-dim); margin-bottom:0.25rem">// KNOW YOUR COUNTERPARTY</div>
-          <div style="display:flex; gap:2rem; font-family:var(--mono); font-size:0.75rem; margin-bottom:0.75rem">
-            <span style="color:var(--cyan)"><span style="color:var(--text-dim)">Counterparties:</span> ${cps.length}</span>
-            <span style="color:var(--cyan)"><span style="color:var(--text-dim)">Total Volume:</span> $${totalVol.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
-          </div>
-          <table style="width:100%; border-collapse:collapse; font-family:var(--mono); font-size:0.7rem">
-            <thead>
-              <tr style="border-bottom:1px solid var(--cyan-dim); color:var(--text-dim); font-size:0.6rem; letter-spacing:0.1em">
-                <th style="text-align:left; padding:0.3rem 0.5rem">ADDRESS</th>
-                <th style="text-align:left; padding:0.3rem 0.5rem">LABEL</th>
-                <th style="text-align:right; padding:0.3rem 0.5rem">TXNS</th>
-                <th style="text-align:right; padding:0.3rem 0.5rem">VOLUME</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${cps.map(c => `
-                <tr style="border-bottom:1px solid rgba(0,245,255,0.08)">
-                  <td style="padding:0.3rem 0.5rem; color:var(--text-dim); font-size:0.6rem">${c.address.slice(0, 6)}...${c.address.slice(-4)}</td>
-                  <td style="padding:0.3rem 0.5rem; color:${c.label ? 'var(--cyan)' : 'var(--text-dim)'}">${c.label ?? 'Unknown'}</td>
-                  <td style="padding:0.3rem 0.5rem; text-align:right; color:var(--text)">${c.interaction_count ?? 0}</td>
-                  <td style="padding:0.3rem 0.5rem; text-align:right; color:var(--text)">$${(c.volume_usd ?? 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
-                </tr>`).join('')}
-            </tbody>
-          </table>
-        </div>
-        ${data.nansen_available ? `<div style="font-family:var(--mono); font-size:0.6rem; color:var(--cyan-dim); margin-bottom:0.75rem; opacity:0.7">// Enriched with Nansen intelligence</div>` : data.nansen_available === false ? `<div style="font-family:var(--mono); font-size:0.6rem; color:var(--text-dim); margin-bottom:0.75rem; opacity:0.6">// Nansen enrichment unavailable</div>` : ''}
-        <button class="toggle-raw" onclick="toggleRaw()">▶ VIEW RAW JSON</button>
-        <pre class="raw-json" id="raw-json">${JSON.stringify(data, null, 2)}</pre>
-      `;
-      panel.classList.add('active');
-      panel.classList.remove('elite-glow');
-      return;
-    }
-
-    // Network Map endpoint returns {related_wallets: [...]} — handle specially
-    if (data.related_wallets !== undefined && data.total_related !== undefined) {
-      const wallets = data.related_wallets ?? [];
-      body.innerHTML = `
-        <div style="margin-bottom:1rem">
-          <div style="font-family:var(--mono); font-size:0.6rem; letter-spacing:0.2em; color:var(--text-dim); margin-bottom:0.25rem">// NETWORK MAP</div>
-          <div style="display:flex; gap:2rem; font-family:var(--mono); font-size:0.75rem; margin-bottom:0.75rem">
-            <span style="color:var(--cyan)"><span style="color:var(--text-dim)">Related Wallets:</span> ${wallets.length}</span>
-            <span style="color:var(--cyan)"><span style="color:var(--text-dim)">Chain:</span> ${data.chain ?? 'ethereum'}</span>
-          </div>
-          ${wallets.length > 0 ? `
-          <table style="width:100%; border-collapse:collapse; font-family:var(--mono); font-size:0.7rem">
-            <thead>
-              <tr style="border-bottom:1px solid var(--cyan-dim); color:var(--text-dim); font-size:0.6rem; letter-spacing:0.1em">
-                <th style="text-align:left; padding:0.3rem 0.5rem">ADDRESS</th>
-                <th style="text-align:left; padding:0.3rem 0.5rem">LABEL</th>
-                <th style="text-align:left; padding:0.3rem 0.5rem">RELATION</th>
-                <th style="text-align:left; padding:0.3rem 0.5rem">CHAIN</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${wallets.map(w => `
-                <tr style="border-bottom:1px solid rgba(0,245,255,0.08)">
-                  <td style="padding:0.3rem 0.5rem; color:var(--text-dim); font-size:0.6rem">${w.address.slice(0, 6)}...${w.address.slice(-4)}</td>
-                  <td style="padding:0.3rem 0.5rem; color:${w.label ? 'var(--cyan)' : 'var(--text-dim)'}">${w.label ?? 'Unknown'}</td>
-                  <td style="padding:0.3rem 0.5rem; color:var(--amber, #ffaa00)">${w.relation}</td>
-                  <td style="padding:0.3rem 0.5rem; color:var(--text-dim)">${w.chain}</td>
-                </tr>`).join('')}
-            </tbody>
-          </table>` : `<div style="font-family:var(--mono); font-size:0.75rem; color:var(--text-dim); padding:1rem 0">No related wallets found on this chain.</div>`}
-        </div>
-        ${data.nansen_available ? `<div style="font-family:var(--mono); font-size:0.6rem; color:var(--cyan-dim); margin-bottom:0.75rem; opacity:0.7">// Enriched with Nansen intelligence</div>` : data.nansen_available === false ? `<div style="font-family:var(--mono); font-size:0.6rem; color:var(--text-dim); margin-bottom:0.75rem; opacity:0.6">// Nansen enrichment unavailable</div>` : ''}
-        <button class="toggle-raw" onclick="toggleRaw()">▶ VIEW RAW JSON</button>
-        <pre class="raw-json" id="raw-json">${JSON.stringify(data, null, 2)}</pre>
-      `;
-      panel.classList.add('active');
-      panel.classList.remove('elite-glow');
-      return;
-    }
-
-    // Wash endpoint returns {cleanliness_score, cleanliness_grade} — handle specially
-    if (r.cleanliness_score !== undefined && r.cleanliness_grade !== undefined) {
-      const ws = r.cleanliness_score;
-      const wsColor = ws >= 90 ? 'var(--green, #00ff88)' : ws >= 70 ? 'var(--cyan, #00f5ff)' : ws >= 50 ? 'var(--amber, #ffaa00)' : ws >= 30 ? '#ff8800' : 'var(--red, #ff3355)';
-      const wsClass = ws >= 70 ? 'high' : ws >= 40 ? 'medium' : 'low';
-      const gradeClass = ws >= 90 ? 'tier-elite' : ws >= 70 ? 'tier-healthy' : ws >= 50 ? 'tier-atrisk' : 'tier-critical';
-      const ibs = r.issues_by_severity ?? {};
-      body.innerHTML = `
-        <div class="health-score">
-          <div class="score-label">// CLEANLINESS SCORE</div>
-          <div class="score-number ${wsClass}" style="color:${wsColor}">${ws}<span style="font-size:2rem;opacity:0.4">/100</span></div>
-          <div class="score-tier ${gradeClass}">${r.cleanliness_grade}</div>
-          <div class="score-bar-container">
-            <div class="score-bar-fill ${wsClass}" style="width:${ws}%; background:${wsColor}"></div>
-          </div>
-        </div>
-
-        <div style="display:flex; gap:0.5rem; flex-wrap:wrap; margin-bottom:1rem; font-family:var(--mono); font-size:0.7rem">
-          ${(ibs.high ?? 0) > 0 ? `<span style="color:var(--red); border:1px solid rgba(255,51,85,0.3); padding:0.2rem 0.5rem">${ibs.high} HIGH</span>` : ''}
-          ${(ibs.medium ?? 0) > 0 ? `<span style="color:var(--amber); border:1px solid rgba(255,170,0,0.3); padding:0.2rem 0.5rem">${ibs.medium} MEDIUM</span>` : ''}
-          ${(ibs.low ?? 0) > 0 ? `<span style="color:var(--text-dim); border:1px solid var(--border); padding:0.2rem 0.5rem">${ibs.low} LOW</span>` : ''}
-          ${r.total_issues === 0 ? `<span style="color:var(--green); border:1px solid rgba(0,255,136,0.3); padding:0.2rem 0.5rem">NO ISSUES</span>` : ''}
-        </div>
-
-        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:0.5rem; margin-bottom:1rem">
-          <div style="border:1px solid var(--border); padding:0.5rem; background:rgba(0,0,0,0.2)">
-            <div style="font-family:var(--mono); font-size:0.55rem; color:var(--text-dim); letter-spacing:0.15em; margin-bottom:0.3rem">DUST TOKENS</div>
-            <div style="font-family:var(--display); font-size:1.2rem; color:${r.dust_tokens > 5 ? 'var(--amber)' : 'var(--text)'}">${r.dust_tokens}</div>
-            <div style="font-family:var(--mono); font-size:0.6rem; color:var(--text-dim)">$${(r.dust_total_usd ?? 0).toFixed(4)} total</div>
-          </div>
-          <div style="border:1px solid var(--border); padding:0.5rem; background:rgba(0,0,0,0.2)">
-            <div style="font-family:var(--mono); font-size:0.55rem; color:var(--text-dim); letter-spacing:0.15em; margin-bottom:0.3rem">SPAM TOKENS</div>
-            <div style="font-family:var(--display); font-size:1.2rem; color:${r.spam_tokens > 3 ? 'var(--red)' : 'var(--text)'}">${r.spam_tokens}</div>
-          </div>
-          <div style="border:1px solid var(--border); padding:0.5rem; background:rgba(0,0,0,0.2)">
-            <div style="font-family:var(--mono); font-size:0.55rem; color:var(--text-dim); letter-spacing:0.15em; margin-bottom:0.3rem">GAS EFFICIENCY</div>
-            <div style="font-family:var(--display); font-size:1.2rem; color:${r.gas_efficiency_pct > 60 ? 'var(--green)' : r.gas_efficiency_pct > 40 ? 'var(--amber)' : 'var(--red)'}">${r.gas_efficiency_pct.toFixed(1)}%</div>
-            <div style="font-family:var(--mono); font-size:0.6rem; color:var(--text-dim)">${r.gas_efficiency_grade}</div>
-          </div>
-          <div style="border:1px solid var(--border); padding:0.5rem; background:rgba(0,0,0,0.2)">
-            <div style="font-family:var(--mono); font-size:0.55rem; color:var(--text-dim); letter-spacing:0.15em; margin-bottom:0.3rem">FAILED TXS (24HR)</div>
-            <div style="font-family:var(--display); font-size:1.2rem; color:${r.failed_tx_count_24hr > 3 ? 'var(--red)' : r.failed_tx_count_24hr > 0 ? 'var(--amber)' : 'var(--green)'}">${r.failed_tx_count_24hr}</div>
-            ${r.nonce_gaps > 0 ? `<div style="font-family:var(--mono); font-size:0.6rem; color:var(--amber)">${r.nonce_gaps} nonce gaps</div>` : ''}
-          </div>
-        </div>
-
-        ${r.issues && r.issues.length > 0 ? `
-        <div style="margin-bottom:1rem">
-          <div style="font-family:var(--mono); font-size:0.6rem; letter-spacing:0.2em; color:var(--text-dim); margin-bottom:0.5rem">// ISSUES (${r.issues.length})</div>
-          ${r.issues.map(i => {
-            const sevColor = i.severity === 'high' ? 'var(--red)' : i.severity === 'medium' ? 'var(--amber)' : 'var(--text-dim)';
-            const sevBorder = i.severity === 'high' ? 'rgba(255,51,85,0.3)' : i.severity === 'medium' ? 'rgba(255,170,0,0.3)' : 'var(--border)';
-            return `<div style="border-left:3px solid ${sevColor}; padding:0.4rem 0.6rem; margin-bottom:0.4rem; background:rgba(0,0,0,0.2); font-family:var(--mono); font-size:0.7rem">
-              <div style="display:flex; gap:0.5rem; align-items:center; margin-bottom:0.2rem">
-                <span style="color:${sevColor}; text-transform:uppercase; font-size:0.6rem; letter-spacing:0.1em">${i.severity}</span>
-                <span style="color:var(--cyan-dim); font-size:0.6rem">[${i.category}]</span>
-              </div>
-              <div style="color:var(--text); margin-bottom:0.15rem">${i.description}</div>
-              <div style="color:var(--cyan); font-size:0.65rem">${i.action}${i.estimated_savings ? ' <span style="color:var(--green)">(' + i.estimated_savings + ')</span>' : ''}</div>
-            </div>`;
-          }).join('')}
-        </div>` : ''}
-
-        ${r.recommendations && r.recommendations.length > 0 ? `
-        <div style="margin-bottom:1rem">
-          <div style="font-family:var(--mono); font-size:0.6rem; letter-spacing:0.2em; color:var(--text-dim); margin-bottom:0.5rem">// TOP RECOMMENDATIONS</div>
-          ${r.recommendations.map((rec, i) => `
-            <div style="border:1px solid var(--cyan-dim); padding:0.5rem 0.75rem; margin-bottom:0.4rem; background:rgba(0,245,255,0.03); font-family:var(--mono); font-size:0.75rem">
-              <span style="color:var(--cyan); margin-right:0.5rem">#${i + 1}</span>
-              <span style="color:var(--text)">${rec}</span>
-            </div>
-          `).join('')}
-        </div>` : ''}
-
-        <div style="font-family:var(--mono); font-size:0.7rem; color:var(--cyan); border:1px solid var(--cyan-dim); padding:0.5rem 0.75rem; margin-bottom:1rem; background:rgba(0,245,255,0.03)">
-          Next wash recommended: <strong>${r.next_wash_recommended}</strong>
-        </div>
-
-        ${r.spam_token_list && r.spam_token_list.length > 0 ? `
-        <details style="margin-bottom:1rem">
-          <summary style="font-family:var(--mono); font-size:0.65rem; color:var(--text-dim); cursor:pointer; letter-spacing:0.1em">SPAM TOKENS (${r.spam_token_list.length})</summary>
-          <div style="margin-top:0.5rem">
-            ${r.spam_token_list.map(s => `
-              <div style="font-family:var(--mono); font-size:0.65rem; padding:0.25rem 0; border-bottom:1px solid rgba(255,255,255,0.05)">
-                <span style="color:var(--red)">${s.name}</span> <span style="color:var(--text-dim)">(${s.symbol})</span>
-                <span style="color:var(--text-dim); font-size:0.6rem"> — ${s.reason}</span>
-              </div>
-            `).join('')}
-          </div>
-        </details>` : ''}
-
-        <button class="toggle-raw" onclick="toggleRaw()">▶ VIEW RAW JSON</button>
-        <pre class="raw-json" id="raw-json">${JSON.stringify(data, null, 2)}</pre>
-      `;
-      panel.classList.add('active');
-      panel.classList.toggle('elite-glow', ws >= 90);
-      document.getElementById('chat-panel').style.display = 'block';
-      return;
-    }
-
-    // Report Card endpoint returns {image_url, ecosystem_comparison, agent_health_score} — handle specially
-    if (r.image_url !== undefined && r.ecosystem_comparison !== undefined) {
-      const ahs = r.agent_health_score;
-      const ahsColor = ahs >= 90 ? 'var(--green, #00ff88)' : ahs >= 75 ? 'var(--cyan, #00f5ff)' : ahs >= 60 ? 'var(--amber, #ffaa00)' : ahs >= 40 ? '#ff8800' : 'var(--red, #ff3355)';
-      const ahsClass = ahs >= 70 ? 'high' : ahs >= 40 ? 'medium' : 'low';
-      const gradeClass = ahs >= 90 ? 'tier-elite' : ahs >= 75 ? 'tier-healthy' : ahs >= 60 ? 'tier-atrisk' : 'tier-critical';
-      const eco = r.ecosystem_comparison;
-      const pctRank = eco.percentile_rank ?? 50;
-      const imgUrl = API_BASE + r.image_url;
-      const shareUrl = r.share_url ?? '#';
-
-      // Build dimensions HTML
-      let dimsHtml = '';
-      if ((r.dimensions ?? []).length > 0) {
-        dimsHtml = '<div style="font-family:var(--mono); font-size:0.6rem; letter-spacing:0.2em; color:var(--text-dim); margin-bottom:0.5rem">// DIMENSION SCORES</div>' +
-          '<div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:0.5rem; margin-bottom:1rem">' +
-          r.dimensions.map(d => {
-            const ds = d.score;
-            const dColor = ds == null ? 'var(--text-dim)' : ds >= 80 ? 'var(--green)' : ds >= 60 ? 'var(--cyan)' : ds >= 40 ? 'var(--amber)' : 'var(--red)';
-            return '<div style="border:1px solid var(--border); padding:0.6rem; background:rgba(0,0,0,0.2)">' +
-              '<div style="font-family:var(--mono); font-size:0.55rem; color:var(--text-dim); letter-spacing:0.15em; margin-bottom:0.3rem">' + d.dimension + '</div>' +
-              '<div style="display:flex; align-items:baseline; gap:0.5rem; margin-bottom:0.3rem">' +
-                '<span style="font-family:var(--display); font-size:1.5rem; color:' + dColor + '">' + (ds ?? 'N/A') + '</span>' +
-                (ds != null ? '<span style="font-family:var(--mono); font-size:0.6rem; color:var(--text-dim)">/ 100</span>' : '') +
-                '<span style="font-family:var(--mono); font-size:0.55rem; color:var(--text-dim); margin-left:auto">weight: ' + (d.weight * 100).toFixed(0) + '%</span>' +
-              '</div>' +
-              (ds != null ? '<div style="height:3px; background:var(--border)"><div style="height:100%; width:' + ds + '%; background:' + dColor + '"></div></div>' : '') +
-            '</div>';
-          }).join('') + '</div>';
-      }
-
-      // Build patterns HTML
-      let patsHtml = '';
-      if ((r.patterns_detected ?? []).length > 0) {
-        patsHtml = '<div style="margin-bottom:1rem">' +
-          '<div style="font-family:var(--mono); font-size:0.6rem; letter-spacing:0.2em; color:var(--text-dim); margin-bottom:0.5rem">// PATTERNS DETECTED (' + r.patterns_detected.length + ')</div>' +
-          r.patterns_detected.map(p => {
-            const pColor = p.severity === 'critical' ? 'var(--red)' : p.severity === 'warning' ? 'var(--amber)' : 'var(--green)';
-            return '<div style="border-left:3px solid ' + pColor + '; padding:0.4rem 0.6rem; margin-bottom:0.4rem; background:rgba(0,0,0,0.2); font-family:var(--mono); font-size:0.7rem">' +
-              '<div style="display:flex; gap:0.5rem; align-items:center; margin-bottom:0.2rem">' +
-                '<span style="color:' + pColor + '; text-transform:uppercase; font-size:0.6rem; letter-spacing:0.1em">' + p.severity + '</span>' +
-                '<span style="color:var(--text-bright); font-weight:bold">' + p.name + '</span>' +
-              '</div>' +
-              '<div style="color:var(--text); font-size:0.65rem">' + p.description + '</div>' +
-            '</div>';
-          }).join('') + '</div>';
-      }
-
-      body.innerHTML = `
-        <div class="health-score">
-          <div class="score-label">// AGENT REPORT CARD</div>
-          <div class="score-number ${ahsClass}" style="color:${ahsColor}">${ahs}<span style="font-size:2rem;opacity:0.4">/100</span></div>
-          <div class="score-tier ${gradeClass}">${r.grade ?? ''}</div>
-          <div class="score-bar-container">
-            <div class="score-bar-fill ${ahsClass}" style="width:${ahs}%; background:${ahsColor}"></div>
-          </div>
-        </div>
-
-        <div style="margin-bottom:1rem; text-align:center">
-          <img src="${imgUrl}" alt="Agent Report Card" style="max-width:100%; border:1px solid var(--border); border-radius:6px; margin-bottom:0.75rem" />
-        </div>
-
-        <div style="display:flex; gap:0.5rem; flex-wrap:wrap; justify-content:center; margin-bottom:1rem">
-          <a href="${shareUrl}" target="_blank" rel="noopener" style="display:inline-flex; align-items:center; gap:0.4rem; padding:0.5rem 1rem; background:rgba(0,245,255,0.1); border:1px solid var(--cyan); color:var(--cyan); text-decoration:none; font-family:var(--mono); font-size:0.75rem; letter-spacing:0.05em; cursor:pointer">
-            SHARE ON X &#x2197;
-          </a>
-          <a href="${imgUrl}" download="report-card.png" style="display:inline-flex; align-items:center; gap:0.4rem; padding:0.5rem 1rem; background:rgba(0,255,136,0.1); border:1px solid var(--green); color:var(--green); text-decoration:none; font-family:var(--mono); font-size:0.75rem; letter-spacing:0.05em; cursor:pointer">
-            DOWNLOAD PNG &#x2193;
-          </a>
-        </div>
-
-        <div style="margin-bottom:1rem; border:1px solid var(--border); padding:0.75rem; background:rgba(0,0,0,0.2)">
-          <div style="font-family:var(--mono); font-size:0.6rem; letter-spacing:0.2em; color:var(--text-dim); margin-bottom:0.5rem">// ECOSYSTEM COMPARISON</div>
-          <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(140px, 1fr)); gap:0.5rem; font-family:var(--mono); font-size:0.75rem">
-            <div><span style="color:var(--text-dim)">Your Score:</span> <span style="color:${ahsColor}">${ahs}</span></div>
-            <div><span style="color:var(--text-dim)">Avg Score:</span> <span style="color:var(--amber)">${eco.average_ahs ?? 'N/A'}</span></div>
-            <div><span style="color:var(--text-dim)">Rank:</span> <span style="color:var(--green)">Top ${100 - pctRank}%</span></div>
-            <div><span style="color:var(--text-dim)">Agents Scored:</span> <span style="color:var(--text)">${(eco.total_agents_scored ?? 0).toLocaleString()}</span></div>
-          </div>
-        </div>
-
-        ${dimsHtml}
-        ${patsHtml}
-
-        <button class="toggle-raw" onclick="toggleRaw()">&#x25B6; VIEW RAW JSON</button>
-        <pre class="raw-json" id="raw-json">${JSON.stringify(data, null, 2)}</pre>
-      `;
-      panel.classList.add('active');
-      panel.classList.toggle('elite-glow', ahs >= 90);
-      return;
-    }
-
-    // AHS endpoint returns {agent_health_score, grade, dimensions, patterns_detected} — handle specially
-    if (r.agent_health_score !== undefined && r.dimensions !== undefined) {
-      const ahs = r.agent_health_score;
-      const ahsColor = ahs >= 90 ? 'var(--green, #00ff88)' : ahs >= 75 ? 'var(--cyan, #00f5ff)' : ahs >= 60 ? 'var(--amber, #ffaa00)' : ahs >= 40 ? '#ff8800' : 'var(--red, #ff3355)';
-      const ahsClass = ahs >= 70 ? 'high' : ahs >= 40 ? 'medium' : 'low';
-      const gradeClass = ahs >= 90 ? 'tier-elite' : ahs >= 75 ? 'tier-healthy' : ahs >= 60 ? 'tier-atrisk' : 'tier-critical';
-      const gradeParts = (r.grade ?? '').split(' — ');
-      const gradeLetter = gradeParts[0] ?? '';
-      const gradeLabel = gradeParts[1] ?? '';
-      const modeBadge = r.mode === '3D'
-        ? '<span style="border:1px solid var(--green); color:var(--green); padding:0.15rem 0.4rem; font-size:0.6rem; font-family:var(--mono); letter-spacing:0.1em">3D MODE</span>'
-        : '<span style="border:1px solid var(--cyan-dim); color:var(--cyan-dim); padding:0.15rem 0.4rem; font-size:0.6rem; font-family:var(--mono); letter-spacing:0.1em">2D MODE</span>';
-      const trendIcon = r.trend === 'improving' ? '<span style="color:var(--green)">&#x2191; Improving</span>' : r.trend === 'declining' ? '<span style="color:var(--red)">&#x2193; Declining</span>' : r.trend === 'stable' ? '<span style="color:var(--cyan)">&#x2192; Stable</span>' : '';
-      const confColor = r.confidence === 'HIGH' ? 'var(--green)' : r.confidence === 'MEDIUM' ? 'var(--amber)' : 'var(--text-dim)';
-
-      body.innerHTML = `
-        <div class="health-score">
-          <div class="score-label">// AGENT HEALTH SCORE</div>
-          <div class="score-number ${ahsClass}" style="color:${ahsColor}">${ahs}<span style="font-size:2rem;opacity:0.4">/100</span></div>
-          <div class="score-tier ${gradeClass}">${gradeLetter} <span style="font-size:0.7em; opacity:0.7">${gradeLabel}</span></div>
-          <div class="score-bar-container">
-            <div class="score-bar-fill ${ahsClass}" style="width:${ahs}%; background:${ahsColor}"></div>
-          </div>
-        </div>
-
-        <div style="display:flex; gap:0.5rem; flex-wrap:wrap; margin-bottom:1rem; align-items:center">
-          ${modeBadge}
-          <span style="border:1px solid ${confColor}; color:${confColor}; padding:0.15rem 0.4rem; font-size:0.6rem; font-family:var(--mono); letter-spacing:0.1em">CONFIDENCE: ${r.confidence ?? 'N/A'}</span>
-          <span style="border:1px solid var(--border); color:var(--text-dim); padding:0.15rem 0.4rem; font-size:0.6rem; font-family:var(--mono)">${r.model_version ?? 'AHS-v1'}</span>
-          ${trendIcon ? '<span style="font-family:var(--mono); font-size:0.7rem; margin-left:0.25rem">' + trendIcon + '</span>' : ''}
-        </div>
-
-        <div style="font-family:var(--mono); font-size:0.6rem; letter-spacing:0.2em; color:var(--text-dim); margin-bottom:0.5rem">// DIMENSION SCORES</div>
-        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:0.5rem; margin-bottom:1rem">
-          ${(r.dimensions ?? []).map(d => {
-            const ds = d.score;
-            const dColor = ds >= 80 ? 'var(--green)' : ds >= 60 ? 'var(--cyan)' : ds >= 40 ? 'var(--amber)' : 'var(--red)';
-            return `<div style="border:1px solid var(--border); padding:0.6rem; background:rgba(0,0,0,0.2)">
-              <div style="font-family:var(--mono); font-size:0.55rem; color:var(--text-dim); letter-spacing:0.15em; margin-bottom:0.3rem">${d.dimension}</div>
-              <div style="display:flex; align-items:baseline; gap:0.5rem; margin-bottom:0.3rem">
-                <span style="font-family:var(--display); font-size:1.5rem; color:${dColor}">${ds}</span>
-                <span style="font-family:var(--mono); font-size:0.6rem; color:var(--text-dim)">/ 100</span>
-                <span style="font-family:var(--mono); font-size:0.55rem; color:var(--text-dim); margin-left:auto">weight: ${(d.weight * 100).toFixed(0)}%</span>
-              </div>
-              <div style="height:3px; background:var(--border); margin-bottom:0.4rem"><div style="height:100%; width:${ds}%; background:${dColor}"></div></div>
-              ${(d.contributing_factors ?? []).map(f => '<div style="font-family:var(--mono); font-size:0.6rem; color:var(--text); padding:0.1rem 0; border-left:2px solid ' + dColor + '; padding-left:0.4rem; margin-bottom:0.15rem">' + f + '</div>').join('')}
-            </div>`;
-          }).join('')}
-        </div>
-
-        ${(r.patterns_detected ?? []).length > 0 ? `
-        <div style="margin-bottom:1rem">
-          <div style="font-family:var(--mono); font-size:0.6rem; letter-spacing:0.2em; color:var(--text-dim); margin-bottom:0.5rem">// CROSS-DIMENSIONAL PATTERNS (${r.patterns_detected.length})</div>
-          ${r.patterns_detected.map(p => {
-            const pColor = p.severity === 'critical' ? 'var(--red)' : p.severity === 'warning' ? 'var(--amber)' : 'var(--green)';
-            return `<div style="border-left:3px solid ${pColor}; padding:0.4rem 0.6rem; margin-bottom:0.4rem; background:rgba(0,0,0,0.2); font-family:var(--mono); font-size:0.7rem">
-              <div style="display:flex; gap:0.5rem; align-items:center; margin-bottom:0.2rem">
-                <span style="color:${pColor}; text-transform:uppercase; font-size:0.6rem; letter-spacing:0.1em">${p.severity}</span>
-                <span style="color:var(--text-bright); font-weight:bold">${p.name}</span>
-              </div>
-              <div style="color:var(--text); font-size:0.65rem">${p.description}</div>
-            </div>`;
-          }).join('')}
-        </div>` : ''}
-
-        ${(r.recommendations ?? []).length > 0 ? `
-        <div style="margin-bottom:1rem">
-          <div style="font-family:var(--mono); font-size:0.6rem; letter-spacing:0.2em; color:var(--text-dim); margin-bottom:0.5rem">// RECOMMENDATIONS</div>
-          ${r.recommendations.map((rec, i) => `
-            <div style="border:1px solid var(--cyan-dim); padding:0.5rem 0.75rem; margin-bottom:0.4rem; background:rgba(0,245,255,0.03); font-family:var(--mono); font-size:0.75rem">
-              <span style="color:var(--cyan); margin-right:0.5rem">#${i + 1}</span>
-              <span style="color:var(--text)">${rec}</span>
-            </div>
-          `).join('')}
-        </div>` : ''}
-
-        <div style="font-family:var(--mono); font-size:0.7rem; color:var(--cyan); border:1px solid var(--cyan-dim); padding:0.5rem 0.75rem; margin-bottom:1rem; background:rgba(0,245,255,0.03)">
-          Next scan recommended: <strong>${r.next_scan_recommended ?? '14 days'}</strong>
-        </div>
-
-        ${r.ahs_token ? `
-        <details style="margin-bottom:1rem">
-          <summary style="font-family:var(--mono); font-size:0.65rem; color:var(--text-dim); cursor:pointer; letter-spacing:0.1em">AHS TOKEN (for temporal scoring)</summary>
-          <div style="margin-top:0.5rem; background:rgba(0,0,0,0.3); padding:0.5rem; border:1px solid var(--border); word-break:break-all; font-family:var(--mono); font-size:0.55rem; color:var(--text-dim)">${r.ahs_token}</div>
-          <div style="font-family:var(--mono); font-size:0.55rem; color:var(--text-dim); margin-top:0.25rem; opacity:0.7">Pass this token in the X-AHS-Previous header on your next scan for temporal trend analysis.</div>
-        </details>` : ''}
-
-        <button class="toggle-raw" onclick="toggleRaw()">&#x25B6; VIEW RAW JSON</button>
-        <pre class="raw-json" id="raw-json">${JSON.stringify(data, null, 2)}</pre>
-      `;
-      panel.classList.add('active');
-      panel.classList.toggle('elite-glow', ahs >= 90);
-      document.getElementById('chat-panel').style.display = 'block';
-      return;
-    }
-
-    const score = r.health_score ?? r.score ?? null;
-    const priority = r.optimization_priority ?? r.priority ?? null;
-    const scoreClass = score >= 70 ? 'high' : score >= 40 ? 'medium' : 'low';
-    const wallet = (r.address ?? document.getElementById('wallet-input').value.trim()).toLowerCase();
-
-    // Tier calculation
-    const tier = score >= 85 ? 'ELITE' : score >= 70 ? 'HEALTHY' : score >= 50 ? 'AT RISK' : 'CRITICAL';
-    const tierClass = score >= 85 ? 'tier-elite' : score >= 70 ? 'tier-healthy' : score >= 50 ? 'tier-atrisk' : 'tier-critical';
-
-    // Score history
-    const historyKey = `ahm_history_${wallet}`;
-    const history = JSON.parse(localStorage.getItem(historyKey) || '[]');
-    const prevEntry = history.length > 0 ? history[history.length - 1] : null;
-    const isFirstEver = history.length === 0;
-    const prevBestTier = history.reduce((best, h) => {
-      const t = h.tier;
-      if (t === 'ELITE' || t === 'HEALTHY') return true;
-      return best;
-    }, false);
-
-    // Save current score
-    history.push({ score, tier, date: new Date().toISOString().slice(0, 10) });
-    if (history.length > 20) history.splice(0, history.length - 20);
-    localStorage.setItem(historyKey, JSON.stringify(history));
-
-    // Delta display
-    let deltaHtml = '';
-    if (prevEntry) {
-      const delta = score - prevEntry.score;
-      const arrow = delta > 0 ? '\u2191' : delta < 0 ? '\u2193' : '\u2192';
-      const cls = delta > 0 ? 'up' : delta < 0 ? 'down' : 'same';
-      deltaHtml = `<div class="score-delta ${cls}">PREVIOUS: ${prevEntry.score.toFixed(1)} \u2192 TODAY: ${score.toFixed(1)} ${arrow}${Math.abs(delta).toFixed(1)}</div>`;
-    }
-
-    // Elite celebration
-    const isElite = score >= 85;
-    panel.classList.toggle('elite-glow', isElite);
-
-    // Milestone toasts
-    if (isFirstEver) showToast('FIRST SCAN COMPLETE');
-    if ((tier === 'HEALTHY' || tier === 'ELITE') && !prevBestTier) {
-      setTimeout(() => showToast('STATUS: HEALTHY ACHIEVED', true), isFirstEver ? 3200 : 0);
-    }
-
-    let html = '';
-
-    if (score !== null) {
-      html += `
-        <div class="health-score">
-          <div class="score-label">// HEALTH SCORE</div>
-          <div class="score-number ${scoreClass}">${score.toFixed(1)}<span style="font-size:2rem;opacity:0.4">/100</span></div>
-          <div class="score-tier ${tierClass}">${tier}</div>
-          <div class="score-bar-container">
-            <div class="score-bar-fill ${scoreClass}" style="width:${score}%"></div>
-          </div>
-          ${deltaHtml}
-          ${priority ? `<div class="score-priority priority-${priority}">${priority} PRIORITY</div>` : ''}
-        </div>`;
-    }
-
-    // Key metrics grid
-    const metrics = [];
-    if (r.total_transactions !== undefined) metrics.push(['Total Txns', r.total_transactions]);
-    if (r.successful !== undefined) metrics.push(['Successful', r.successful]);
-    if (r.failed !== undefined) metrics.push(['Failed', r.failed]);
-    if (r.success_rate_pct !== undefined) metrics.push(['Success Rate', r.success_rate_pct.toFixed(1) + '%']);
-    if (r.total_gas_spent_eth !== undefined) metrics.push(['Gas Spent', r.total_gas_spent_eth.toFixed(6) + ' ETH']);
-    if (r.wasted_gas_eth !== undefined) metrics.push(['Wasted Gas', r.wasted_gas_eth.toFixed(6) + ' ETH']);
-    if (r.estimated_monthly_waste_usd !== undefined) metrics.push(['Monthly Waste', '$' + r.estimated_monthly_waste_usd.toFixed(2)]);
-    if (r.avg_gas_efficiency_pct !== undefined) metrics.push(['Gas Efficiency', r.avg_gas_efficiency_pct.toFixed(1) + '%']);
-    if (r.out_of_gas_count !== undefined) metrics.push(['Out of Gas', r.out_of_gas_count]);
-    if (r.reverted_count !== undefined) metrics.push(['Reverted', r.reverted_count]);
-    if (r.nonce_gap_count !== undefined) metrics.push(['Nonce Gaps', r.nonce_gap_count]);
-    if (r.top_failure_type !== undefined) metrics.push(['Top Failure', r.top_failure_type]);
-
-    if (metrics.length) {
-      html += `<div class="result-grid">` +
-        metrics.map(([l, v]) => `
-          <div class="result-item">
-            <div class="result-item-label">${l}</div>
-            <div class="result-item-val">${v}</div>
-          </div>`).join('') +
-        `</div>`;
-    }
-
-    // Recommendations
-    const recs = r.recommendations ?? data.alerts ?? [];
-    if (recs.length) {
-      html += `<div style="margin-bottom:1rem">` +
-        recs.map(a => {
-          const msg = a.message ?? (typeof a === 'string' ? a : JSON.stringify(a));
-          const sev = a.severity ?? 'info';
-          const color = sev === 'critical' ? 'var(--red)' : sev === 'high' ? 'var(--amber)' : 'var(--cyan-dim)';
-          return `<div style="padding:0.5rem 0.75rem; border-left:2px solid ${color}; margin-bottom:0.5rem; font-family:var(--mono); font-size:0.75rem; color:var(--text)">
-            <span style="color:${color};font-size:0.6rem;letter-spacing:0.1em">${(a.category ?? '').toUpperCase()} // ${sev.toUpperCase()}</span><br>
-            ${msg}
-          </div>`;
-        }).join('') +
-        `</div>`;
-    }
-
-    // Token balances
-    const balances = data.token_balances ?? [];
-    const totalPortfolio = data.total_portfolio_usd ?? 0;
-    if (balances.length > 0) {
-      html += `
-        <div style="margin-bottom:1rem">
-          <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:0.5rem">
-            <div style="font-family:var(--mono); font-size:0.6rem; letter-spacing:0.2em; color:var(--text-dim)">// TOKEN BALANCES</div>
-            <div style="font-family:var(--mono); font-size:0.85rem; color:var(--cyan); font-weight:bold">$${totalPortfolio.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
-          </div>
-          <table style="width:100%; border-collapse:collapse; font-family:var(--mono); font-size:0.7rem">
-            <thead>
-              <tr style="border-bottom:1px solid var(--cyan-dim); color:var(--text-dim); font-size:0.6rem; letter-spacing:0.1em">
-                <th style="text-align:left; padding:0.3rem 0.5rem">CHAIN</th>
-                <th style="text-align:left; padding:0.3rem 0.5rem">SYMBOL</th>
-                <th style="text-align:right; padding:0.3rem 0.5rem">AMOUNT</th>
-                <th style="text-align:right; padding:0.3rem 0.5rem">USD VALUE</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${balances.map(b => `
-                <tr style="border-bottom:1px solid rgba(0,245,255,0.08)">
-                  <td style="padding:0.3rem 0.5rem; color:var(--text-dim)">${b.chain}</td>
-                  <td style="padding:0.3rem 0.5rem; color:var(--cyan)">${b.symbol}</td>
-                  <td style="padding:0.3rem 0.5rem; text-align:right; color:var(--text)">${Number(b.amount).toLocaleString(undefined, {maximumFractionDigits: 6})}</td>
-                  <td style="padding:0.3rem 0.5rem; text-align:right; color:var(--text)">$${Number(b.usd_value).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
-                </tr>`).join('')}
-            </tbody>
-          </table>
-        </div>`;
-    }
-
-    // Raw JSON toggle
-    html += `
-      <button class="toggle-raw" onclick="toggleRaw()">▶ VIEW RAW JSON</button>
-      <pre class="raw-json" id="raw-json">${JSON.stringify(data, null, 2)}</pre>
-    `;
-
-    body.innerHTML = html;
-    panel.classList.add('active');
-    document.getElementById('chat-panel').style.display = 'block';
-    chatTurn = 0;
-    recommendedEndpoint = null;
-
-    // Update initial chat message for elite scores
-    const chatMsg = document.querySelector('#chat-messages .msg.assistant .msg-content');
-    if (chatMsg) {
-      chatMsg.textContent = isElite
-        ? 'Outstanding health score! Top tier performance. Run /alerts ($2 USDC) to maintain this status with automated monitoring.'
-        : 'Analysis complete. Ask me anything about this health report \u2014 I can explain scores, suggest improvements, or dig into specific issues.';
-    }
-
-    renderSuggestions();
-
-    // Animate score bar
-    setTimeout(() => {
-      const bar = document.querySelector('.score-bar-fill');
-      if (bar) bar.style.width = (score || 0) + '%';
-    }, 50);
-  }
-
-  function toggleRaw() {
-    const el = document.getElementById('raw-json');
-    el.classList.toggle('visible');
-    document.querySelector('.toggle-raw').textContent =
-      el.classList.contains('visible') ? '▼ HIDE RAW JSON' : '▶ VIEW RAW JSON';
-  }
-
-  // ─── CHAT ───
-  let chatTurn = 0;
-  let recommendedEndpoint = null;
-
-  function renderSuggestions() {
-    const box = document.getElementById('chat-suggestions');
-    const r = lastResults?.report ?? lastResults ?? {};
-    box.innerHTML = '';
-
-    if (chatTurn === 0) {
-      // Initial suggestion
-      addSuggestionBtn(box, '💡 What should I do to improve this score?');
-    } else if (chatTurn === 1) {
-      // Contextual follow-ups based on report
-      if ((r.reverted_count ?? 0) > 50) {
-        addSuggestionBtn(box, 'Fix my failed transactions with /retry ($10)');
-        recommendedEndpoint = 'retry';
-      }
-      if ((r.wasted_gas_eth ?? 0) > 0.001) {
-        addSuggestionBtn(box, 'Optimise gas usage with /optimize ($5)');
-        recommendedEndpoint = recommendedEndpoint || 'optimize';
-      }
-      addSuggestionBtn(box, 'Run full protection suite /protect ($25)');
-      recommendedEndpoint = recommendedEndpoint || 'protect';
-    } else if (chatTurn === 2) {
-      // Final CTA button
-      const ep = recommendedEndpoint || 'protect';
-      const btn = document.createElement('button');
-      btn.textContent = `Run /${ep} now →`;
-      btn.style.cssText = 'background:var(--cyan); border:none; color:var(--bg); font-family:var(--display); font-size:0.7rem; font-weight:700; padding:0.4rem 1rem; cursor:pointer; letter-spacing:0.15em; text-transform:uppercase; transition:all 0.2s;';
-      btn.onmouseover = () => { btn.style.boxShadow = '0 0 20px rgba(0,245,255,0.5)'; };
-      btn.onmouseout = () => { btn.style.boxShadow = 'none'; };
-      btn.onclick = () => {
-        const card = document.querySelector(`.endpoint-card[data-endpoint="${ep}"]`);
-        if (card) {
-          selectEndpoint(card);
-          card.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }
-      };
-      box.appendChild(btn);
-    }
-  }
-
-  function addSuggestionBtn(container, text) {
-    const btn = document.createElement('button');
-    btn.textContent = text;
-    btn.style.cssText = 'background:none; border:1px solid var(--cyan-dim); color:var(--cyan); font-family:var(--mono); font-size:0.6rem; padding:0.3rem 0.6rem; cursor:pointer; transition:all 0.2s; letter-spacing:0.05em; white-space:nowrap;';
-    btn.onmouseover = () => { btn.style.borderColor = 'var(--cyan)'; btn.style.background = 'rgba(0,245,255,0.08)'; };
-    btn.onmouseout = () => { btn.style.borderColor = 'var(--cyan-dim)'; btn.style.background = 'none'; };
-    btn.onclick = () => suggestPrompt(text);
-    container.appendChild(btn);
-  }
-
-  async function sendChat() {
-    const input = document.getElementById('chat-input');
-    const msg = input.value.trim();
-    if (!msg) return;
-
-    appendMsg('user', msg);
-    input.value = '';
-
-    const typingEl = appendMsg('assistant', '<span class="loader"></span> Analysing...');
-
-    try {
-      const res = await fetch(`${API_BASE}/chat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: msg,
-          context: lastResults
-        })
-      });
-
-      const data = await res.json();
-      const reply = data.reply ?? 'Unable to get response.';
-      typingEl.innerHTML = mdToHtml(reply);
-      chatTurn++;
-      renderSuggestions();
-
-    } catch (e) {
-      typingEl.innerHTML = `<span style="color:var(--red)">Error: ${e.message}</span>`;
-    }
-
-    document.getElementById('chat-messages').scrollTop = 9999;
-  }
-
-  function mdToHtml(text) {
-    return text
-      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-      .replace(/\*(.+?)\*/g, '<em>$1</em>')
-      .replace(/`(.+?)`/g, '<code style="background:var(--bg3);padding:0.1rem 0.3rem;font-size:0.8em">$1</code>')
-      .replace(/^(\d+)\.\s+/gm, '<br>$1. ')
-      .replace(/^[-•]\s+/gm, '<br>• ')
-      .replace(/\n\n/g, '<br><br>')
-      .replace(/\n/g, ' ');
-  }
-
-  function appendMsg(role, content) {
-    const container = document.getElementById('chat-messages');
-    const div = document.createElement('div');
-    div.className = `msg ${role}`;
-    const formatted = role === 'assistant' ? mdToHtml(content) : content;
-    div.innerHTML = `
-      <div class="msg-avatar">${role === 'assistant' ? 'AI' : 'YOU'}</div>
-      <div class="msg-content">${formatted}</div>`;
-    container.appendChild(div);
-    container.scrollTop = 9999;
-    return div.querySelector('.msg-content');
-  }
-
-  function suggestPrompt(text) {
-    document.getElementById('chat-input').value = text;
-    sendChat();
-  }
-
-  function showToast(text, green) {
-    const el = document.createElement('div');
-    el.className = 'toast' + (green ? ' green' : '');
-    el.textContent = text;
-    document.body.appendChild(el);
-    setTimeout(() => el.remove(), 3000);
-  }
-
-  // ─── INIT ───
-  document.getElementById('wallet-input').addEventListener('keydown', e => {
-    if (e.key === 'Enter') execute();
-  });
-
-  // Handle URL params from dashboard CTA (?service=report-card&address=0x...)
-  (function() {
-    var params = new URLSearchParams(window.location.search);
-    var svc = params.get('service');
-    var addr = params.get('address');
-    if (svc) {
-      selectService(svc);
-      if (addr) {
-        document.getElementById('wallet-input').value = addr;
-      }
-      // Clean URL without reload
-      if (window.history.replaceState) {
-        window.history.replaceState({}, '', '/');
-      }
-    }
-  })();
+  fetch(API)
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      // Hero score
+      var avgAhs = data.avg_ahs || 0;
+      animateCount(document.getElementById('hero-score'), avgAhs, '', 2000);
+
+      // Stats strip
+      var total = data.total_scanned || 0;
+      animateCount(document.getElementById('stat-scanned'), total, '', 1500);
+
+      var patterns = data.pattern_distribution || {};
+      var zombie = patterns['Zombie Agent'] || 0;
+      var zombiePct = total > 0 ? Math.round(zombie / total * 100) : 0;
+      animateCount(document.getElementById('stat-zombie'), zombiePct, '%', 1500);
+    })
+    .catch(function() {
+      document.getElementById('hero-score').textContent = '--';
+    });
+})();
 </script>
+
 </body>
 </html>

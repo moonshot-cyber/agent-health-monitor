@@ -55,6 +55,66 @@
     z-index: 1;
   }
 
+  /* Site Nav */
+  .site-nav {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 2rem;
+    height: 60px;
+    background: rgba(6,10,16,0.85);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--border);
+  }
+  .site-nav-logo {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: var(--accent);
+    letter-spacing: 0.12em;
+    text-decoration: none;
+    text-shadow: 0 0 20px rgba(0,255,200,0.4);
+  }
+  .site-nav-links { display: flex; align-items: center; gap: 0.25rem; }
+  .site-nav-link {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.6rem;
+    letter-spacing: 0.1em;
+    color: var(--text-muted);
+    padding: 0.5rem 0.85rem;
+    text-decoration: none;
+    transition: color 0.2s;
+  }
+  .site-nav-link:hover { color: var(--accent); }
+  .site-nav-link.active { color: var(--accent); }
+  .site-nav-cta {
+    color: var(--bg);
+    background: var(--accent);
+    border-radius: 3px;
+    font-weight: 700;
+    margin-left: 0.5rem;
+    transition: background 0.2s, transform 0.2s;
+  }
+  .site-nav-cta:hover { background: #e0e0e0; color: var(--bg); transform: translateY(-1px); }
+  .site-footer-links {
+    display: flex;
+    justify-content: center;
+    gap: 1.5rem;
+    margin-bottom: 0.75rem;
+  }
+  .site-footer-link {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.55rem;
+    letter-spacing: 0.12em;
+    color: var(--text-muted);
+    text-decoration: none;
+    transition: color 0.2s;
+  }
+  .site-footer-link:hover { color: var(--accent); }
+
   /* Header */
   .header {
     text-align: center;
@@ -304,7 +364,17 @@
 </head>
 <body>
 
-<div class="container">
+<nav class="site-nav">
+  <a href="/" class="site-nav-logo">AGENT HEALTH MONITOR</a>
+  <div class="site-nav-links">
+    <a href="/dashboard" class="site-nav-link">DASHBOARD</a>
+    <a href="/endpoints/ahs" class="site-nav-link">ENDPOINTS</a>
+    <a href="/roadmap" class="site-nav-link active">ROADMAP</a>
+    <a href="/app" class="site-nav-link site-nav-cta">TRY IT &rarr;</a>
+  </div>
+</nav>
+
+<div class="container" style="padding-top: 80px;">
 
   <div class="header">
     <div class="header-label">// Roadmap</div>
@@ -466,6 +536,13 @@
   </div>
 
   <div class="footer">
+    <div class="site-footer-links">
+      <a href="/" class="site-footer-link">HOME</a>
+      <a href="/dashboard" class="site-footer-link">DASHBOARD</a>
+      <a href="/endpoints/ahs" class="site-footer-link">ENDPOINTS</a>
+      <a href="/roadmap" class="site-footer-link">ROADMAP</a>
+      <a href="/app" class="site-footer-link">TRY IT</a>
+    </div>
     <p><a href="https://agenthealthmonitor.xyz">agenthealthmonitor.xyz</a></p>
     <div class="version">AHM ROADMAP v1 · MARCH 2026</div>
   </div>
