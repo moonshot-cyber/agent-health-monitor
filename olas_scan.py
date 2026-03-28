@@ -261,6 +261,7 @@ def scan_olas_services(max_scans: int = 200) -> list[dict]:
     eth_price = get_eth_price()
     scan_count = 0
     error_count = 0
+    scan_results: list[dict] = []  # collect per-wallet scores for batch quality
 
     for wallet in new_wallets:
         if scan_count >= max_scans:
@@ -331,6 +332,13 @@ def scan_olas_services(max_scans: int = 200) -> list[dict]:
                 },
             )
 
+            scan_results.append({
+                "ahs_score": ahs.agent_health_score,
+                "grade": ahs.grade,
+                "d1_score": ahs.d1_score,
+                "d2_score": ahs.d2_score,
+            })
+
             logger.info("           AHS %d/%s | D1=%s D2=%s | %d txs",
                          ahs.agent_health_score, ahs.grade,
                          ahs.d1_score, ahs.d2_score, ahs.tx_count)
@@ -345,6 +353,33 @@ def scan_olas_services(max_scans: int = 200) -> list[dict]:
         "  Wallets discovered: %d | Scanned: %d | Errors: %d",
         elapsed, len(wallets), scan_count, error_count,
     )
+
+    # Phase 4: Batch quality tracking
+    try:
+        scored = [r for r in scan_results if r.get("ahs_score") is not None]
+        if scored:
+            scores = [r["ahs_score"] for r in scored]
+            grades: dict[str, int] = {}
+            for r in scored:
+                g = r.get("grade", "?")
+                grades[g] = grades.get(g, 0) + 1
+            d1_scores = [r["d1_score"] for r in scored if r.get("d1_score") is not None]
+            d2_scores = [r["d2_score"] for r in scored if r.get("d2_score") is not None]
+
+            db.log_batch_quality(
+                source="olas",
+                wallets_scanned=len(scored),
+                average_ahs=round(sum(scores) / len(scores), 1),
+                min_ahs=min(scores),
+                max_ahs=max(scores),
+                grade_distribution=grades,
+                avg_d1=round(sum(d1_scores) / len(d1_scores), 1) if d1_scores else None,
+                avg_d2=round(sum(d2_scores) / len(d2_scores), 1) if d2_scores else None,
+            )
+            logger.info("Batch quality logged: %d wallets, avg AHS %.1f",
+                         len(scored), sum(scores) / len(scores))
+    except Exception:
+        logger.exception("Failed to log batch quality (non-fatal)")
 
     return wallets
 
