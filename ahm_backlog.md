@@ -70,6 +70,7 @@ ERC-8004 deployed on Ethereum mainnet Jan 29 2026. Identity + reputation standar
 - [ ] **Wash Phase 2** — Token approvals scan + dead contract detection (deferred from wash MVP, see wash_spike_results.md)
 - [ ] **ERC-8183 integration** — Pre-flight health check before a client funds an ERC-8183 job escrow. Add to product backlog as agentic commerce verification layer
 - [ ] **ERC-8183 provider integration** — 3-4 day build, additive via new `acp_worker.py` module. Event listener watches ACP contract for jobs where provider=AHM, routes to existing `calculate_ahs()`, submits result hash on-chain. Reuses ERC-8004 identity (#32328). Build when ERC-8183 deploys to Base mainnet and first real jobs appear. Technical assessment complete — see session notes
+- [ ] **/ahs/batch endpoint** — Design partner validated (Alfred Zhang, httppay.xyz, 307 endpoints). POST `/ahs/batch` scores multiple agent wallets in a single API call. Accepts array of wallet addresses in request body. Default cap 10 wallets per call, max 25. Supports pagination for aggregators needing 10+ wallets. Pricing: $1.00 USDC per wallet via x402, or 1 call credit per wallet for API key users. Returns array of AHS results in same format as single `/ahs` endpoint. Partial results supported — if API key user has fewer credits than addresses requested, score as many as credits allow and return warning. Use case: pre-routing counterparty health checks (3-5 wallets per transaction on httppay, 10+ for aggregators)
 
 ### Long-term Product Visions
 
