@@ -18,6 +18,8 @@ Environment variables:
     NETWORK          - CAIP-2 network ID (optional, default: Base mainnet)
     PORT             - Server port (optional, default: 4021)
     INTERNAL_API_KEY - Secret key for ACP bridge bypass (optional, auto-generated if not set)
+    STRIPE_SECRET_KEY   - Stripe secret key for fiat API key system (optional)
+    STRIPE_WEBHOOK_SECRET - Stripe webhook signing secret (optional)
 """
 
 import asyncio
@@ -39,8 +41,11 @@ from pathlib import Path
 from typing import Optional
 from urllib.parse import quote as url_quote, urlparse
 
+import hashlib
+
 import httpx as httpx_client
 import jwt
+import stripe
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -115,6 +120,12 @@ if not INTERNAL_API_KEY:
         "INTERNAL_API_KEY not set. Generated random key (not shown in logs). "
         "Set INTERNAL_API_KEY in .env to persist across restarts."
     )
+
+# -- Stripe Configuration ---------------------------------------------------
+STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY", "")
+STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET", "")
+if STRIPE_SECRET_KEY:
+    stripe.api_key = STRIPE_SECRET_KEY
 
 ADDRESS_RE = re.compile(r"^0x[0-9a-fA-F]{40}$")
 
@@ -1409,6 +1420,63 @@ class InternalKeyBypassMiddleware:
             await self.app(scope, receive, send)
 
 
+class ApiKeyBypassMiddleware:
+    """
+    ASGI middleware that skips x402 payment when a valid X-API-Key header is present.
+
+    Validates the key exists and is active (hash lookup only — lightweight).
+    Full validation (calls_remaining decrement, usage logging) happens inside
+    each endpoint handler to keep accounting per-endpoint.
+    """
+    # Paths where X-API-Key can bypass x402 payment
+    _FIAT_PATHS = (
+        "/risk/premium/", "/risk/", "/counterparties/", "/network-map/",
+        "/health/", "/wash/", "/ahs/", "/optimize/", "/retry/",
+        "/report-card/", "/alerts/subscribe/", "/agent/protect/",
+    )
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        path = scope.get("path", "")
+
+        # Only apply to paid endpoint paths
+        is_fiat_path = any(path.startswith(p) for p in self._FIAT_PATHS)
+        if not is_fiat_path:
+            await self.app(scope, receive, send)
+            return
+
+        headers = dict(scope.get("headers", []))
+        api_key = headers.get(b"x-api-key", b"").decode()
+
+        if api_key and api_key.startswith("ahm_live_"):
+            # Looks like an AHM API key — validate hash exists and is active
+            key_hash = hashlib.sha256(api_key.encode()).hexdigest()
+            import db as _db
+            conn = _db.get_connection()
+            try:
+                row = conn.execute(
+                    "SELECT 1 FROM api_keys WHERE key_hash = ? AND is_active = 1",
+                    (key_hash,),
+                ).fetchone()
+            finally:
+                conn.close()
+
+            if row:
+                # Valid key — skip x402 by jumping to inner app
+                inner_app = getattr(self.app, "app", self.app)
+                await inner_app(scope, receive, send)
+                return
+
+        # No valid API key — normal flow through x402
+        await self.app(scope, receive, send)
+
+
 # -- x402 Payment Middleware -------------------------------------------------
 
 
@@ -2194,7 +2262,10 @@ x402_routes = {
 
 app.add_middleware(PaymentMiddlewareASGI, routes=x402_routes, server=server)
 
-# Add internal key bypass AFTER x402 — last added = outermost = runs first.
+# Add API key bypass AFTER x402 — X-API-Key (Stripe fiat customers) skips x402.
+app.add_middleware(ApiKeyBypassMiddleware)
+
+# Add internal key bypass AFTER API key bypass — last added = outermost = runs first.
 # When valid X-Internal-Key is present, skips x402 entirely.
 app.add_middleware(InternalKeyBypassMiddleware)
 
@@ -2221,6 +2292,36 @@ async def global_exception_handler(request: Request, exc: Exception):
         status_code=500,
         content={"error": "Internal server error"},
     )
+
+
+# -- API Key (Fiat) Access Helpers ------------------------------------------
+
+def validate_fiat_request(request: Request) -> dict | None:
+    """Check for X-API-Key header and validate.
+
+    Returns the key record dict if valid, None if no X-API-Key header present.
+    Raises HTTPException 401/429 if the key is present but invalid or exhausted.
+    """
+    api_key = request.headers.get("X-API-Key")
+    if not api_key:
+        return None
+
+    record = scan_db.validate_api_key(api_key)
+    if record is None:
+        # Key present but invalid — could be expired, inactive, or wrong
+        raise HTTPException(status_code=401, detail="Invalid or expired API key")
+
+    if record["calls_remaining"] is not None and record["calls_remaining"] <= 0:
+        raise HTTPException(status_code=429, detail="API key calls exhausted")
+
+    return record
+
+
+def consume_api_key(record: dict, endpoint: str, wallet: str | None = None) -> None:
+    """Decrement calls and log usage for a validated API key. Fire-and-forget."""
+    key_hash = record["key_hash"]
+    scan_db.decrement_api_key(key_hash)
+    scan_db.log_api_key_usage(key_hash, endpoint, wallet)
 
 
 # -- Routes ------------------------------------------------------------------
@@ -2741,12 +2842,12 @@ async def up():
 
 
 @app.get("/risk/premium/{address}", response_model=PremiumRiskResponse)
-async def get_premium_risk_score(address: str):
+async def get_premium_risk_score(address: str, request: Request):
     """
     Premium risk score enriched with Nansen wallet intelligence, PnL data,
     and operational health metrics (transaction failure rate analysis).
 
-    Requires x402 payment ($0.05 USDC on Base) OR valid X-Internal-Key header.
+    Requires x402 payment ($0.05 USDC on Base) OR valid X-API-Key / X-Internal-Key header.
 
     Returns a 0-100 risk score plus Nansen smart money tags,
     entity labels, behavioral signals, PnL summary, and operational
@@ -2762,6 +2863,11 @@ async def get_premium_risk_score(address: str):
         )
 
     address = address.lower()
+
+    # Fiat API key path
+    fiat_key = validate_fiat_request(request)
+    if fiat_key:
+        consume_api_key(fiat_key, "risk/premium", address)
     loop = asyncio.get_running_loop()
 
     # Run risk analysis in parallel with Nansen labels (Corbits, safe to overlap)
@@ -2895,11 +3001,11 @@ async def get_premium_risk_score(address: str):
 
 
 @app.get("/counterparties/{address}", response_model=CounterpartyResponse)
-async def get_counterparties(address: str):
+async def get_counterparties(address: str, request: Request):
     """
     Know Your Counterparty — top wallets/contracts this address interacts with.
 
-    Requires x402 payment ($0.10 USDC on Base) OR valid X-Internal-Key header.
+    Requires x402 payment ($0.10 USDC on Base) OR valid X-API-Key / X-Internal-Key header.
 
     Returns the top counterparties ranked by interaction count, enriched
     with Nansen labels where available.
@@ -2911,6 +3017,11 @@ async def get_counterparties(address: str):
         )
 
     address = address.lower()
+
+    # Fiat API key path
+    fiat_key = validate_fiat_request(request)
+    if fiat_key:
+        consume_api_key(fiat_key, "counterparties", address)
 
     raw = await fetch_nansen_counterparties(address)
 
@@ -2965,11 +3076,11 @@ async def get_counterparties(address: str):
 
 
 @app.get("/network-map/{address}", response_model=RelatedWalletsResponse)
-async def get_network_map(address: str, chain: str = "ethereum"):
+async def get_network_map(address: str, request: Request, chain: str = "ethereum"):
     """
     Wallet Network Map — related wallets linked by funding, deployment, or multisig.
 
-    Requires x402 payment ($0.10 USDC on Base) OR valid X-Internal-Key header.
+    Requires x402 payment ($0.10 USDC on Base) OR valid X-API-Key / X-Internal-Key header.
 
     Returns wallets connected to this address via first-funder relationships,
     contract deployments, and multisig co-signer links, enriched with Nansen labels.
@@ -2992,6 +3103,11 @@ async def get_network_map(address: str, chain: str = "ethereum"):
         )
 
     address = address.lower()
+
+    # Fiat API key path
+    fiat_key = validate_fiat_request(request)
+    if fiat_key:
+        consume_api_key(fiat_key, "network-map", address)
 
     raw = await fetch_nansen_related_wallets(address, chain=chain)
 
@@ -3039,11 +3155,11 @@ async def get_network_map(address: str, chain: str = "ethereum"):
 
 
 @app.get("/risk/{address}", response_model=RiskResponse)
-async def get_risk_score(address: str):
+async def get_risk_score(address: str, request: Request):
     """
     Quick risk score for agent pre-flight checks.
 
-    Requires x402 payment ($0.001 USDC on Base) OR valid X-Internal-Key header.
+    Requires x402 payment ($0.001 USDC on Base) OR valid X-API-Key / X-Internal-Key header.
 
     Returns a 0-100 risk score derived from transaction failure rate,
     wallet age, and contract interaction patterns. Designed for
@@ -3056,6 +3172,12 @@ async def get_risk_score(address: str):
         )
 
     address = address.lower()
+
+    # Fiat API key path
+    fiat_key = validate_fiat_request(request)
+    if fiat_key:
+        consume_api_key(fiat_key, "risk", address)
+
     loop = asyncio.get_running_loop()
 
     eth_price, transactions = await asyncio.gather(
@@ -3119,11 +3241,11 @@ async def get_risk_score(address: str):
 
 
 @app.get("/health/{address}", response_model=HealthResponse)
-async def get_health_report(address: str):
+async def get_health_report(address: str, request: Request):
     """
     Analyze a Base wallet address and return a health report.
 
-    Requires x402 payment ($0.50 USDC on Base) OR valid X-Internal-Key header.
+    Requires x402 payment ($0.50 USDC on Base) OR valid X-API-Key / X-Internal-Key header.
 
     - Fetches transaction history from Blockscout
     - Calculates success rate, gas efficiency, nonce health
@@ -3137,6 +3259,11 @@ async def get_health_report(address: str):
         )
 
     address = address.lower()
+
+    # Fiat API key path
+    fiat_key = validate_fiat_request(request)
+    if fiat_key:
+        consume_api_key(fiat_key, "health", address)
 
     # Run blocking I/O and Nansen enrichment in parallel.
     # Nansen labels + balances share a single x402 session (serialised)
@@ -3220,11 +3347,11 @@ async def get_health_report(address: str):
 
 
 @app.post("/wash/{address}", response_model=WashResponse)
-async def get_wash_report(address: str):
+async def get_wash_report(address: str, request: Request):
     """
     Agent Wash: Hygiene scan for Base wallet addresses.
 
-    Requires x402 payment ($0.50 USDC on Base) OR valid X-Internal-Key header.
+    Requires x402 payment ($0.50 USDC on Base) OR valid X-API-Key / X-Internal-Key header.
 
     Scans for:
     - Dust tokens (< $0.01 value)
@@ -3242,6 +3369,12 @@ async def get_wash_report(address: str):
         )
 
     address = address.lower()
+
+    # Fiat API key path
+    fiat_key = validate_fiat_request(request)
+    if fiat_key:
+        consume_api_key(fiat_key, "wash", address)
+
     loop = asyncio.get_running_loop()
 
     # Parallel fetch: tokens (V2 API), transactions (etherscan-compat), ETH price
@@ -3293,7 +3426,7 @@ async def get_ahs_report(address: str, request: Request):
     """
     Agent Health Score: Composite 0-100 index for on-chain agent wallets.
 
-    Requires x402 payment ($1.00 USDC on Base) OR valid X-Internal-Key header.
+    Requires x402 payment ($1.00 USDC on Base) OR valid X-API-Key / X-Internal-Key header.
 
     Three dimensions:
     - D1 Wallet Hygiene (dust, spam, gas efficiency, failure rate, nonce gaps)
@@ -3310,6 +3443,12 @@ async def get_ahs_report(address: str, request: Request):
         )
 
     address = address.lower()
+
+    # Fiat API key path
+    fiat_key = validate_fiat_request(request)
+    if fiat_key:
+        consume_api_key(fiat_key, "ahs", address)
+
     loop = asyncio.get_running_loop()
 
     # Optional agent_url for D3 probing
@@ -3447,7 +3586,7 @@ async def get_report_card(address: str, request: Request):
     """
     Agent Report Card: Visual health report card with ecosystem benchmarks.
 
-    Requires x402 payment ($2.00 USDC on Base) OR valid X-Internal-Key header.
+    Requires x402 payment ($2.00 USDC on Base) OR valid X-API-Key / X-Internal-Key header.
 
     Runs a full AHS scan, pulls ecosystem comparison data, and generates
     a personalised 1200x675 PNG report card image. Returns JSON with scores,
@@ -3460,6 +3599,12 @@ async def get_report_card(address: str, request: Request):
         )
 
     address = address.lower()
+
+    # Fiat API key path
+    fiat_key = validate_fiat_request(request)
+    if fiat_key:
+        consume_api_key(fiat_key, "report-card", address)
+
     loop = asyncio.get_running_loop()
 
     # Parallel fetch: tokens, transactions, ETH price (same as AHS)
@@ -3608,11 +3753,11 @@ def _report_card_percentile(score: int, percentiles: dict) -> int:
 
 
 @app.get("/optimize/{address}", response_model=OptimizeResponse)
-async def get_optimization_report(address: str):
+async def get_optimization_report(address: str, request: Request):
     """
     Analyze a Base wallet and return a gas optimization report.
 
-    Requires x402 payment ($5.00 USDC on Base) OR valid X-Internal-Key header.
+    Requires x402 payment ($5.00 USDC on Base) OR valid X-API-Key / X-Internal-Key header.
 
     - Groups transactions by type (contract + method)
     - Calculates optimal gas limits per type
@@ -3626,6 +3771,11 @@ async def get_optimization_report(address: str):
         )
 
     address = address.lower()
+
+    # Fiat API key path
+    fiat_key = validate_fiat_request(request)
+    if fiat_key:
+        consume_api_key(fiat_key, "optimize", address)
 
     loop = asyncio.get_running_loop()
 
@@ -3741,11 +3891,11 @@ async def protection_preview(address: str):
 
 
 @app.get("/agent/protect/{address}", response_model=ProtectionResponse)
-async def get_protection_report(address: str):
+async def get_protection_report(address: str, request: Request):
     """
     Autonomous protection agent — full wallet analysis and action plan.
 
-    Requires x402 payment ($25.00 USDC on Base) OR valid X-Internal-Key header.
+    Requires x402 payment ($25.00 USDC on Base) OR valid X-API-Key / X-Internal-Key header.
 
     Triages wallet risk and runs the appropriate services:
     - Score 90-100: Low risk — health report + recommend alerts
@@ -3763,6 +3913,12 @@ async def get_protection_report(address: str):
         )
 
     address = address.lower()
+
+    # Fiat API key path
+    fiat_key = validate_fiat_request(request)
+    if fiat_key:
+        consume_api_key(fiat_key, "protect", address)
+
     loop = asyncio.get_running_loop()
 
     eth_price, transactions, is_contract = await asyncio.gather(
@@ -3923,11 +4079,11 @@ async def retry_preview(address: str):
 
 
 @app.get("/retry/{address}", response_model=RetryResponse)
-async def get_retry_transactions(address: str):
+async def get_retry_transactions(address: str, request: Request):
     """
     Analyze failed transactions and return optimized retry transactions.
 
-    Requires x402 payment ($10.00 USDC on Base) OR valid X-Internal-Key header.
+    Requires x402 payment ($10.00 USDC on Base) OR valid X-API-Key / X-Internal-Key header.
 
     Non-custodial: returns ready-to-sign transaction objects.
     The agent signs and submits the transactions themselves.
@@ -3945,6 +4101,12 @@ async def get_retry_transactions(address: str):
         )
 
     address = address.lower()
+
+    # Fiat API key path
+    fiat_key = validate_fiat_request(request)
+    if fiat_key:
+        consume_api_key(fiat_key, "retry", address)
+
     loop = asyncio.get_running_loop()
 
     eth_price, transactions = await asyncio.gather(
@@ -3987,11 +4149,11 @@ async def get_retry_transactions(address: str):
 # -- Alert Endpoints ---------------------------------------------------------
 
 @app.get("/alerts/subscribe/{address}")
-async def subscribe_alerts(address: str):
+async def subscribe_alerts(address: str, request: Request):
     """
     Subscribe a wallet to automated health monitoring (30 days).
 
-    Requires x402 payment ($2.00 USDC on Base).
+    Requires x402 payment ($2.00 USDC on Base) OR valid X-API-Key header.
 
     After payment, configure your webhook via POST /alerts/configure.
     Health checks run every 6 hours and send alerts when thresholds are breached.
@@ -4000,6 +4162,11 @@ async def subscribe_alerts(address: str):
         raise HTTPException(status_code=400, detail=f"Invalid Ethereum address format: {address}")
 
     address = address.lower()
+
+    # Fiat API key path
+    fiat_key = validate_fiat_request(request)
+    if fiat_key:
+        consume_api_key(fiat_key, "alerts/subscribe", address)
     now = datetime.now(timezone.utc)
 
     existing = subscriptions.get(address)
@@ -4087,6 +4254,133 @@ async def unsubscribe_alerts(address: str):
 
     del subscriptions[address]
     return {"status": "ok", "message": f"Subscription removed for {address}."}
+
+
+# -- Stripe Webhook & API Key Endpoints --------------------------------------
+
+@app.post("/stripe/webhook")
+async def stripe_webhook(request: Request):
+    """
+    Stripe webhook handler for checkout.session.completed events.
+
+    Verifies the Stripe webhook signature, extracts customer email and
+    product metadata (tier, type, calls), generates an API key, and logs it.
+    Email delivery is not implemented yet — the raw key is logged for manual
+    retrieval during early access.
+    """
+    if not STRIPE_WEBHOOK_SECRET:
+        raise HTTPException(status_code=503, detail="Stripe webhooks not configured")
+
+    payload = await request.body()
+    sig_header = request.headers.get("stripe-signature", "")
+
+    try:
+        event = stripe.Webhook.construct_event(
+            payload, sig_header, STRIPE_WEBHOOK_SECRET
+        )
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid payload")
+    except stripe.SignatureVerificationError:
+        raise HTTPException(status_code=400, detail="Invalid signature")
+
+    if event["type"] != "checkout.session.completed":
+        return {"status": "ignored", "event_type": event["type"]}
+
+    session = event["data"]["object"]
+    email = session.get("customer_email") or session.get("customer_details", {}).get("email", "")
+    stripe_customer_id = session.get("customer")
+    metadata = session.get("metadata", {})
+
+    tier = metadata.get("tier", "starter")
+    key_type = metadata.get("type", "payg")
+    calls = int(metadata.get("calls", "100"))
+
+    if not email:
+        logger.error("Stripe webhook: no email found in session %s", session.get("id"))
+        return {"status": "error", "detail": "No customer email in session"}
+
+    raw_key = scan_db.create_api_key(
+        customer_email=email,
+        stripe_customer_id=stripe_customer_id,
+        key_type=key_type,
+        tier=tier,
+        calls_total=calls,
+    )
+
+    # Log prominently — email delivery not yet implemented
+    logger.info(
+        "API KEY ISSUED: %s for %s (tier=%s, type=%s, calls=%d)",
+        raw_key, email, tier, key_type, calls,
+    )
+
+    return {"status": "ok", "message": f"API key issued for {email}"}
+
+
+class TestWebhookRequest(BaseModel):
+    email: str
+    tier: str = "starter"
+    key_type: str = "payg"
+    calls: int = 100
+
+
+@app.post("/stripe/webhook/test")
+async def stripe_webhook_test(req: TestWebhookRequest, request: Request):
+    """
+    Test endpoint: simulate a Stripe checkout.session.completed event.
+
+    Protected by X-Internal-Key header. For development/testing only.
+    Generates a real API key for the given email without requiring Stripe.
+    """
+    internal_key = request.headers.get("X-Internal-Key", "")
+    if not INTERNAL_API_KEY or not hmac.compare_digest(internal_key, INTERNAL_API_KEY):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    raw_key = scan_db.create_api_key(
+        customer_email=req.email,
+        stripe_customer_id=None,
+        key_type=req.key_type,
+        tier=req.tier,
+        calls_total=req.calls,
+    )
+
+    logger.info(
+        "TEST API KEY ISSUED: %s for %s (tier=%s, type=%s, calls=%d)",
+        raw_key, req.email, req.tier, req.key_type, req.calls,
+    )
+
+    return {
+        "status": "ok",
+        "api_key": raw_key,
+        "email": req.email,
+        "tier": req.tier,
+        "type": req.key_type,
+        "calls": req.calls,
+    }
+
+
+@app.get("/api/key/status")
+async def api_key_status(request: Request):
+    """
+    Check the status of an API key.
+
+    Requires X-API-Key header. Returns tier, remaining calls, and key metadata.
+    """
+    api_key = request.headers.get("X-API-Key")
+    if not api_key:
+        raise HTTPException(status_code=401, detail="X-API-Key header required")
+
+    record = scan_db.validate_api_key(api_key)
+    if record is None:
+        raise HTTPException(status_code=401, detail="Invalid or expired API key")
+
+    return {
+        "tier": record["tier"],
+        "calls_remaining": record["calls_remaining"],
+        "calls_total": record["calls_total"],
+        "type": record["type"],
+        "created_at": record["created_at"],
+        "is_active": bool(record["is_active"]),
+    }
 
 
 # -- Trust Registry Endpoint -------------------------------------------------
