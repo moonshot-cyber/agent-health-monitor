@@ -474,6 +474,100 @@
     line-height: 1.5;
   }
 
+  /* ── PRICING ── */
+  .pricing-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem; }
+
+  .price-card {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 2.5rem 2rem;
+    text-align: center;
+    position: relative;
+    transition: border-color 0.3s, transform 0.2s;
+    display: flex;
+    flex-direction: column;
+  }
+  .price-card:hover { border-color: var(--cyan); transform: translateY(-3px); }
+
+  .price-card--popular { border-color: var(--cyan); }
+
+  .price-badge {
+    position: absolute;
+    top: -1px; left: 50%;
+    transform: translateX(-50%);
+    font-family: var(--mono);
+    font-size: 0.55rem;
+    font-weight: 700;
+    letter-spacing: 0.2em;
+    color: var(--bg);
+    background: var(--cyan);
+    padding: 0.25rem 1rem;
+    border-radius: 0 0 4px 4px;
+  }
+
+  .price-tier {
+    font-family: var(--display);
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--text-bright);
+    letter-spacing: 0.15em;
+    margin-bottom: 1.25rem;
+  }
+
+  .price-amount {
+    font-family: var(--display);
+    font-size: 2.5rem;
+    font-weight: 900;
+    color: var(--cyan);
+    text-shadow: 0 0 30px rgba(0,245,255,0.3);
+    line-height: 1;
+    margin-bottom: 0.25rem;
+  }
+
+  .price-period {
+    font-family: var(--mono);
+    font-size: 0.6rem;
+    color: var(--text-dim);
+    letter-spacing: 0.15em;
+    margin-bottom: 1.5rem;
+  }
+
+  .price-detail {
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    color: var(--text-dim);
+    letter-spacing: 0.1em;
+    line-height: 2;
+    margin-bottom: 2rem;
+    flex-grow: 1;
+  }
+
+  .price-detail span { color: var(--text); }
+
+  .price-cta {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    padding: 0.85rem 1.75rem;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    color: var(--text);
+    background: transparent;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .price-cta:hover { border-color: var(--cyan); color: var(--cyan); transform: translateY(-1px); }
+
+  .price-card--popular .price-cta {
+    background: var(--cyan);
+    color: var(--bg);
+    border-color: var(--cyan);
+  }
+  .price-card--popular .price-cta:hover { background: var(--text-bright); border-color: var(--text-bright); color: var(--bg); }
+
   /* ── ROADMAP TEASER ── */
   .roadmap-teaser {
     text-align: center;
@@ -528,7 +622,7 @@
     header { padding: 0 1rem; }
     .nav-link { padding: 0.5rem 0.5rem; font-size: 0.6rem; }
     .stats-strip { gap: 1.5rem; flex-wrap: wrap; }
-    .pillars, .quotes, .mechanic-grid { grid-template-columns: 1fr; }
+    .pillars, .quotes, .mechanic-grid, .pricing-grid { grid-template-columns: 1fr; }
     .endpoints-grid { grid-template-columns: repeat(2, 1fr); }
     .hero-status { display: none; }
     .heartbeat-svg { width: 300px; }
@@ -693,6 +787,48 @@
       <div class="ep-card-price">$2.00</div>
       <div class="ep-card-desc">See where you rank</div>
     </a>
+  </div>
+</section>
+
+<!-- PRICING -->
+<section class="section">
+  <div class="section-title">API ACCESS</div>
+  <div class="section-tag">// NO WALLET REQUIRED</div>
+  <div class="pricing-grid">
+    <div class="price-card">
+      <div class="price-tier">AHM STARTER</div>
+      <div class="price-amount">&pound;9</div>
+      <div class="price-period">ONE-TIME</div>
+      <div class="price-detail">
+        <span>100</span> API CALLS<br>
+        ALL ENDPOINTS<br>
+        X-API-KEY AUTH
+      </div>
+      <a href="https://buy.stripe.com/test_4gM8wObie10Iapmg5jfw400" class="price-cta">GET STARTED &rarr;</a>
+    </div>
+    <div class="price-card price-card--popular">
+      <div class="price-badge">POPULAR</div>
+      <div class="price-tier">AHM PRO</div>
+      <div class="price-amount">&pound;39</div>
+      <div class="price-period">ONE-TIME</div>
+      <div class="price-detail">
+        <span>500</span> API CALLS<br>
+        ALL ENDPOINTS<br>
+        X-API-KEY AUTH
+      </div>
+      <a href="https://buy.stripe.com/test_eVqaEW2LIeRyfJG06lfw401" class="price-cta">GET PRO &rarr;</a>
+    </div>
+    <div class="price-card">
+      <div class="price-tier">AHM UNLIMITED</div>
+      <div class="price-amount">&pound;99<span style="font-size:0.4em;color:var(--text-dim)">/MO</span></div>
+      <div class="price-period">MONTHLY SUBSCRIPTION</div>
+      <div class="price-detail">
+        <span>UNLIMITED</span> API CALLS<br>
+        ALL ENDPOINTS<br>
+        X-API-KEY AUTH
+      </div>
+      <a href="https://buy.stripe.com/test_eVq3cu9a66l21SQ2etf" class="price-cta">GET UNLIMITED &rarr;</a>
+    </div>
   </div>
 </section>
 
