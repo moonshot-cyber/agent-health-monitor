@@ -4,9 +4,11 @@ SQLite-backed append-only scan log. All database logic lives here
 so a future PostgreSQL migration only touches this file.
 """
 
+import hashlib
 import json
 import logging
 import os
+import secrets
 import sqlite3
 import time
 from datetime import datetime, timezone
@@ -15,7 +17,7 @@ logger = logging.getLogger("ahm.db")
 
 DB_PATH = os.getenv("DB_PATH", "./ahm_history.db")
 
-_SCHEMA_VERSION = 3
+_SCHEMA_VERSION = 4
 
 _SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS scans (
@@ -89,6 +91,33 @@ CREATE TABLE IF NOT EXISTS scan_batch_log (
     avg_d2             REAL,
     created_at         TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
 );
+
+CREATE TABLE IF NOT EXISTS api_keys (
+    id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+    key_hash                TEXT UNIQUE NOT NULL,
+    key_prefix              TEXT NOT NULL,
+    customer_email          TEXT NOT NULL,
+    stripe_customer_id      TEXT,
+    stripe_subscription_id  TEXT,
+    type                    TEXT NOT NULL,
+    tier                    TEXT NOT NULL,
+    calls_remaining         INTEGER,
+    calls_total             INTEGER,
+    created_at              TEXT NOT NULL,
+    expires_at              TEXT,
+    is_active               INTEGER DEFAULT 1
+);
+
+CREATE TABLE IF NOT EXISTS api_key_usage (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    key_hash        TEXT NOT NULL,
+    endpoint        TEXT NOT NULL,
+    called_at       TEXT NOT NULL,
+    wallet_queried  TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_api_keys_hash ON api_keys(key_hash);
+CREATE INDEX IF NOT EXISTS idx_api_key_usage_hash ON api_key_usage(key_hash, called_at DESC);
 """
 
 
@@ -124,6 +153,9 @@ def init_db():
 
         # v3: Add scan_batch_log table (created via _SCHEMA_SQL above)
         # No ALTER needed — table is created by CREATE TABLE IF NOT EXISTS.
+
+        # v4: Add api_keys and api_key_usage tables (created via _SCHEMA_SQL above)
+        # No ALTER needed — tables are created by CREATE TABLE IF NOT EXISTS.
 
         if current < _SCHEMA_VERSION:
             conn.execute("INSERT INTO schema_version (version) VALUES (?)", (_SCHEMA_VERSION,))
@@ -584,5 +616,118 @@ def get_batch_quality_history(days: int = 30) -> list[dict]:
                     pass
             result.append(entry)
         return result
+    finally:
+        conn.close()
+
+
+# ---------------------------------------------------------------------------
+# API Key management (Stripe fiat access path)
+# ---------------------------------------------------------------------------
+
+def generate_api_key() -> tuple[str, str, str]:
+    """Generate a new API key. Returns (raw_key, key_hash, key_prefix).
+
+    Raw key format: "ahm_live_" + 32 random hex bytes (64 hex chars).
+    Only the SHA-256 hash is stored — the raw key is returned once and never persisted.
+    """
+    raw_hex = secrets.token_hex(32)
+    raw_key = f"ahm_live_{raw_hex}"
+    key_hash = hashlib.sha256(raw_key.encode()).hexdigest()
+    key_prefix = f"ahm_live_{raw_hex[:8]}..."
+    return raw_key, key_hash, key_prefix
+
+
+def create_api_key(
+    customer_email: str,
+    stripe_customer_id: str | None = None,
+    key_type: str = "payg",
+    tier: str = "starter",
+    calls_total: int | None = 100,
+) -> str:
+    """Create an API key record. Returns the raw key (only time it's available)."""
+    raw_key, key_hash, key_prefix = generate_api_key()
+    now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    conn = get_connection()
+    try:
+        conn.execute(
+            """INSERT INTO api_keys
+               (key_hash, key_prefix, customer_email, stripe_customer_id,
+                type, tier, calls_remaining, calls_total, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (key_hash, key_prefix, customer_email, stripe_customer_id,
+             key_type, tier, calls_total, calls_total, now_iso),
+        )
+        conn.commit()
+        logger.info("API key created: prefix=%s email=%s tier=%s calls=%s",
+                     key_prefix, customer_email, tier, calls_total)
+        return raw_key
+    finally:
+        conn.close()
+
+
+def validate_api_key(raw_key: str) -> dict | None:
+    """Validate a raw API key. Returns key record dict or None if invalid.
+
+    Checks: key exists, is_active=1, calls_remaining > 0 (or NULL for unlimited).
+    """
+    key_hash = hashlib.sha256(raw_key.encode()).hexdigest()
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            """SELECT id, key_hash, key_prefix, customer_email,
+                      stripe_customer_id, stripe_subscription_id,
+                      type, tier, calls_remaining, calls_total,
+                      created_at, expires_at, is_active
+               FROM api_keys
+               WHERE key_hash = ? AND is_active = 1""",
+            (key_hash,),
+        ).fetchone()
+        if not row:
+            return None
+
+        record = dict(row)
+
+        # Check expiry
+        if record["expires_at"]:
+            now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            if now_iso > record["expires_at"]:
+                return None
+
+        # Check calls remaining (NULL means unlimited)
+        if record["calls_remaining"] is not None and record["calls_remaining"] <= 0:
+            return None
+
+        return record
+    finally:
+        conn.close()
+
+
+def decrement_api_key(key_hash: str) -> None:
+    """Decrement calls_remaining by 1 if not NULL (unlimited keys are unaffected)."""
+    conn = get_connection()
+    try:
+        conn.execute(
+            """UPDATE api_keys
+               SET calls_remaining = calls_remaining - 1
+               WHERE key_hash = ? AND calls_remaining IS NOT NULL""",
+            (key_hash,),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def log_api_key_usage(key_hash: str, endpoint: str, wallet_queried: str | None = None) -> None:
+    """Log an API key usage event."""
+    now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    conn = get_connection()
+    try:
+        conn.execute(
+            """INSERT INTO api_key_usage (key_hash, endpoint, called_at, wallet_queried)
+               VALUES (?, ?, ?, ?)""",
+            (key_hash, endpoint, now_iso, wallet_queried),
+        )
+        conn.commit()
     finally:
         conn.close()
