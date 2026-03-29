@@ -30,6 +30,13 @@ import re
 import secrets
 import time
 
+# Configure logging at module level so it works under both
+# `python api.py` and `uvicorn api:app` (Railway deploy path).
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
+)
+
 import db as scan_db
 from generate_report_card import generate_report_card
 from contextlib import asynccontextmanager
@@ -4679,5 +4686,4 @@ async def rescan_loop():
 if __name__ == "__main__":
     import uvicorn
 
-    logging.basicConfig(level=logging.INFO)
     uvicorn.run(app, host="0.0.0.0", port=PORT)

@@ -284,7 +284,10 @@ def scan_olas_services(max_scans: int = 200) -> list[dict]:
     """
     import db
 
-    logger.info("=== Olas Protocol Scan — START ===")
+    logger.info(
+        "=== Olas Protocol Scan — ENTERED (max_scans=%d, rpc=%s) ===",
+        max_scans, BASE_RPC_URL,
+    )
     start_time = time.time()
 
     # Phase 1: Discovery
