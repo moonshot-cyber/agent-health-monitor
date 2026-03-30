@@ -4,16 +4,19 @@
 
 ---
 
-## Current State (as of Mar 17 2026)
+## Current State (as of Mar 30 2026)
 
 - **11 endpoints** live on Base mainnet at agenthealthmonitor.xyz
+- **Stripe fiat access layer LIVE** — Digital Intensity Ltd account, 3 products: Starter (£9/100 calls), Pro (£39/500 calls), Unlimited (£99/one-time). Live payment links on homepage, live webhook at /stripe/webhook
+- **Olas scanner operational** — Nightly scan at 02:30 UTC via APScheduler. ServiceRegistryL2 contract `0x3C1fF68f5aa342D296d4DEe4Bb1cACCA912D95fE` on Base mainnet. 389 Olas agents in trust registry
+- **Trust registries: 2** — ERC-8004 + Olas (ServiceRegistryL2 on Base)
 - **ERC-8004 registered** — agentId #32328 on Base mainnet
 - **Nansen integration** — 4 direct API connections (labels, counterparties, PnL, related wallets)
 - **Listed on:** Virtuals ACP (11 offerings), x402scan, Bankr Skills, agdp.io, 8004scan.io
-- **Stack:** FastAPI, x402 SDK v2, Nansen API, Blockscout API, Base Mainnet, Railway
+- **Stack:** FastAPI, x402 SDK v2, Nansen API, Blockscout API, Stripe, Base Mainnet, Railway
 - **Repo:** github.com/moonshot-cyber/agent-health-monitor
 - **Calibration dataset:** 245 wallets scanned (24 seed + 26 ERC-8004 IDs 1-352 + 183 ERC-8004 IDs 30000+ + 12 Virtuals TBA shards)
-- **Cross-registry tracking:** `registries` column in `known_wallets` (schema v2), tracks erc8004/virtuals/etc per wallet
+- **Cross-registry tracking:** `registries` column in `known_wallets` (schema v2), tracks erc8004/virtuals/olas/etc per wallet
 
 ---
 
@@ -222,6 +225,13 @@ Approach: don't cold pitch — show up in their threads with genuine insight fir
 - [x] RetryBot with non-custodial ready-to-sign transactions
 - [x] Protection Agent autonomous triage
 - [x] Wash API spike completed (see wash_spike_results.md)
+
+### Completed Mar 30 2026
+
+- [x] **Stripe fiat access layer — LIVE** — Live Stripe account active under Digital Intensity Ltd. Three live products: AHM Starter (£9/100 calls), AHM Pro (£39/500 calls), AHM Unlimited (£99/one-time). Live payment links deployed to homepage (PR #39). Live webhook configured at /stripe/webhook. STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET updated in Railway with live keys. API key issuance flow confirmed working end-to-end in sandbox, live test pending
+- [x] **Olas scanner operational** — OLAS_RPC_URL env var added to Railway (Alchemy Base mainnet endpoint). Logging fix deployed (PR #37 — logging.basicConfig moved to module level). Olas nightly scan scheduled at 02:30 UTC via APScheduler. ServiceRegistryL2 contract: `0x3C1fF68f5aa342D296d4DEe4Bb1cACCA912D95fE` on Base mainnet. 389 Olas agents already in trust registry
+- [x] **Trust registry expanded to 2 sources** — ERC-8004 + Olas (ServiceRegistryL2 on Base)
+- [x] Live Stripe payment links on homepage (PR #39) — replaced test URLs with live URLs for Starter, Pro, Unlimited. Updated Unlimited tier from monthly subscription to one-time purchase
 
 ### Completed Mar 17 2026
 

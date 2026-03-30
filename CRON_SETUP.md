@@ -1,4 +1,15 @@
-# ACP Nightly Scan — Automated Scheduling
+# Nightly Scans — Automated Scheduling
+
+## Scan Schedule Overview
+
+| Scanner | Schedule | Mechanism | Details |
+|---------|----------|-----------|---------|
+| **ACP** | 02:00 UTC daily | Railway cron service | `cron_acp_scan.py`, up to 500 agents / 100 wallets per run |
+| **Olas** | 02:30 UTC daily | APScheduler (in-process) | `olas_scan.py`, ServiceRegistryL2 contract `0x3C1fF68f5aa342D296d4DEe4Bb1cACCA912D95fE` on Base mainnet |
+
+---
+
+## ACP Nightly Scan
 
 Automated nightly scanning of the ACP (agdp.io) agent ecosystem.
 Runs `acp_proactive_scan.py` daily at **02:00 UTC**, scanning up to 500 agents and 100 wallets per run.
