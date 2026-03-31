@@ -318,3 +318,110 @@ class TestGitignore:
         assert ".env.*" in gitignore
         assert "*.pem" in gitignore
         assert "*.key" in gitignore
+
+
+class TestBatchChecksummedAddresses:
+    """Verify POST /ahs/batch accepts EIP-55 checksummed addresses and
+    preserves their original case in results."""
+
+    # Two real EIP-55 checksummed addresses (mixed case)
+    CHECKSUMMED = [
+        "0x23A2e9Cd7F0a602A3FcFFaf8074113A9205726E5",
+        "0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B",
+    ]
+
+    def _mock_ahs_result(self, address, **kwargs):
+        from monitor import AHSResult
+        return AHSResult(
+            address=address,
+            agent_health_score=72,
+            grade="Good",
+            grade_label="Healthy",
+            d1_score=65,
+            d2_score=78,
+            patterns_detected=[
+                {"name": "Healthy Operator", "detected": True,
+                 "severity": "positive", "description": "ok", "modifier": 3},
+            ],
+            recommendations=["No issues detected"],
+            scan_timestamp="2026-03-31T00:00:00Z",
+        )
+
+    def _make_mock_conn(self):
+        """Create a mock DB connection that validates any API key as active."""
+        from unittest.mock import MagicMock
+        mock_conn = MagicMock()
+        mock_conn.execute.return_value.fetchone.return_value = (1,)
+        return mock_conn
+
+    def test_checksummed_accepted_and_preserved(self, client):
+        """Mixed-case EIP-55 addresses must not be rejected and must appear
+        in results with their original casing intact."""
+        from unittest.mock import patch, MagicMock
+
+        mock_fiat = {"key_hash": "testhash", "calls_remaining": 100}
+
+        with patch("api.validate_fiat_request", return_value=mock_fiat), \
+             patch("db.get_connection", return_value=self._make_mock_conn()), \
+             patch("api.get_eth_price", return_value=2500.0), \
+             patch("api.fetch_transactions", return_value=[]), \
+             patch("api.fetch_tokens_v2", return_value=[]), \
+             patch("api.calculate_ahs", side_effect=self._mock_ahs_result), \
+             patch("api.scan_db") as mock_db:
+
+            mock_db.log_scan = MagicMock()
+            mock_db.decrement_api_key = MagicMock()
+            mock_db.log_api_key_usage = MagicMock()
+
+            resp = client.post("/ahs/batch", json={
+                "addresses": self.CHECKSUMMED,
+            }, headers={"X-API-Key": "ahm_live_test123"})
+
+        assert resp.status_code == 200, (
+            f"Batch endpoint rejected checksummed addresses: {resp.text}"
+        )
+        data = resp.json()
+        assert data["total_scored"] == 2, (
+            f"Expected 2 scored, got {data['total_scored']}. Errors: {data['errors']}"
+        )
+        returned = [r["address"] for r in data["results"]]
+        for original in self.CHECKSUMMED:
+            assert original in returned, (
+                f"Address {original} not found with original case in results. "
+                f"Got: {returned}"
+            )
+
+    def test_case_insensitive_dedup(self, client):
+        """Same address in different cases should be deduplicated to one entry,
+        keeping whichever form appeared first."""
+        from unittest.mock import patch, MagicMock
+
+        addr = self.CHECKSUMMED[0]
+        lower = addr.lower()
+
+        mock_fiat = {"key_hash": "testhash", "calls_remaining": 100}
+
+        with patch("api.validate_fiat_request", return_value=mock_fiat), \
+             patch("db.get_connection", return_value=self._make_mock_conn()), \
+             patch("api.get_eth_price", return_value=2500.0), \
+             patch("api.fetch_transactions", return_value=[]), \
+             patch("api.fetch_tokens_v2", return_value=[]), \
+             patch("api.calculate_ahs", side_effect=self._mock_ahs_result), \
+             patch("api.scan_db") as mock_db:
+
+            mock_db.log_scan = MagicMock()
+            mock_db.decrement_api_key = MagicMock()
+            mock_db.log_api_key_usage = MagicMock()
+
+            resp = client.post("/ahs/batch", json={
+                "addresses": [addr, lower],
+            }, headers={"X-API-Key": "ahm_live_test123"})
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total_addresses"] == 1, (
+            f"Duplicate addresses should be deduped to 1, got {data['total_addresses']}"
+        )
+        assert data["total_scored"] == 1
+        # The first occurrence (checksummed) should win
+        assert data["results"][0]["address"] == addr
