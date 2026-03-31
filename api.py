@@ -473,6 +473,14 @@ class AHSCrossDimensionalPattern(BaseModel):
     severity: str
     description: str
 
+class AHSShadowSignals(BaseModel):
+    session_continuity_score: Optional[int] = None
+    abrupt_sessions: int = 0
+    budget_exhaustion_count: int = 0
+    total_sessions: int = 0
+    avg_session_length: float = 0.0
+    shadow_patterns: list[dict] = []
+
 class AHSReport(BaseModel):
     address: str
     agent_health_score: int
@@ -487,6 +495,7 @@ class AHSReport(BaseModel):
     model_version: str
     scan_timestamp: str
     next_scan_recommended: str
+    shadow_signals: Optional[AHSShadowSignals] = None
 
 class AHSResponse(BaseModel):
     status: str
@@ -3612,6 +3621,17 @@ async def get_ahs_report(address: str, request: Request):
     }
     ahs_token = jwt.encode(token_payload, AHS_JWT_SECRET, algorithm="HS256")
 
+    # Extract shadow signals for monitoring
+    sigs = result._signals
+    shadow = AHSShadowSignals(
+        session_continuity_score=sigs.get("session_continuity_score"),
+        abrupt_sessions=sigs.get("abrupt_sessions", 0),
+        budget_exhaustion_count=sigs.get("budget_exhaustion_count", 0),
+        total_sessions=sigs.get("total_sessions", 0),
+        avg_session_length=sigs.get("avg_session_length", 0.0),
+        shadow_patterns=sigs.get("shadow_patterns", []),
+    )
+
     report = AHSReport(
         address=address,
         agent_health_score=result.agent_health_score,
@@ -3626,6 +3646,7 @@ async def get_ahs_report(address: str, request: Request):
         model_version=result.model_version,
         scan_timestamp=result.scan_timestamp,
         next_scan_recommended=result.next_scan_recommended,
+        shadow_signals=shadow,
     )
 
     asyncio.get_running_loop().run_in_executor(None, lambda: scan_db.log_scan(
