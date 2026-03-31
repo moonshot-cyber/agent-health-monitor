@@ -1380,6 +1380,8 @@ class AddressValidationMiddleware:
         "/alerts/subscribe/", "/alerts/status/", "/alerts/unsubscribe/",
         "/report-card/",
     ], key=len, reverse=True))
+    # Exact paths under address prefixes that are NOT address endpoints
+    _SKIP_PATHS = frozenset({"/ahs/batch"})
 
     def __init__(self, app):
         self.app = app
@@ -1390,6 +1392,11 @@ class AddressValidationMiddleware:
             return
 
         path = scope.get("path", "")
+
+        # Skip non-address endpoints that share a prefix (e.g. /ahs/batch)
+        if path in self._SKIP_PATHS:
+            await self.app(scope, receive, send)
+            return
 
         # Check direct endpoint patterns: /prefix/{address}
         for prefix in self._ADDRESS_PREFIXES:
