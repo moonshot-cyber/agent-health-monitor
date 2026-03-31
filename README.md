@@ -10,7 +10,7 @@
 
 | Endpoint | Price (x402) | Purpose |
 |---|---|---|
-| `GET /risk/{address}` | $0.001 USDC | Quick risk score for agent pre-flight checks |
+| `GET /risk/{address}` | $0.01 USDC | Quick risk score for agent pre-flight checks |
 | `GET /risk/premium/{address}` | $0.05 USDC | Premium risk score with Nansen labels + PnL profitability summary |
 | `GET /counterparties/{address}` | $0.10 USDC | Know Your Counterparty — top interactions enriched with Nansen |
 | `GET /network-map/{address}` | $0.10 USDC | Wallet network map — funding, deployer & multisig links via Nansen |
@@ -30,9 +30,9 @@ No wallet required. Purchase an API key at [agenthealthmonitor.xyz](https://agen
 
 | Plan | Price | Credits |
 |---|---|---|
-| Starter | $9 | 100 calls |
-| Pro | $29 | 500 calls |
-| Enterprise | $99 | 2,500 calls |
+| Starter | $9 | 100 calls (one-time) |
+| Pro | $39 | 500 calls (one-time) |
+| Unlimited | $99/mo | Unlimited calls (subscription) |
 
 `/ahs/batch` via API key: 1 credit per wallet, up to 25 wallets per request.
 
@@ -301,7 +301,7 @@ GET /agent/protect/preview/{wallet_address}
 
 ```
   Screen    Profile    Investigate   Diagnose     Clean      Score     Batch     Report    Monitor      Fix       Retry     Protect
-  $0.001    $0.05    $0.10 each     $0.50      $0.50      $1.00     $10.00    $2.00    $2.00/mo    $5.00     $10.00     $25.00
+  $0.01     $0.05    $0.10 each     $0.50      $0.50      $1.00     $10.00    $2.00    $2.00/mo    $5.00     $10.00     $25.00
 
 GET /risk  /premium  /counterparties  /health  POST /wash  /ahs   POST /ahs/  /report  /alerts/sub /optimize  /retry  /agent/protect
     |          |     /network-map        |          |        |     batch       card       |          |         |         |
@@ -351,7 +351,7 @@ from x402.mechanisms.evm.exact import ExactEvmScheme
 client = x402Client()
 client.register("eip155:*", ExactEvmScheme(signer=your_wallet))
 
-# Quick risk screen ($0.001)
+# Quick risk screen ($0.01)
 risk = client.get("https://agenthealthmonitor.xyz/risk/0x1234...")
 
 # Agent Health Score ($1.00)
@@ -408,7 +408,7 @@ uvicorn api:app --host 0.0.0.0 --port 4021
 | `FACILITATOR_URL` | No | `https://x402.org/facilitator` | x402 facilitator endpoint |
 | `STRIPE_SECRET_KEY` | No | — | Stripe secret key for fiat API key system |
 | `STRIPE_WEBHOOK_SECRET` | No | — | Stripe webhook signing secret |
-| `RISK_PRICE_USD` | No | `$0.001` | Price per quick risk check |
+| `RISK_PRICE_USD` | No | `$0.01` | Price per quick risk check |
 | `PREMIUM_RISK_PRICE_USD` | No | `$0.05` | Price per premium risk + Nansen + PnL |
 | `COUNTERPARTY_PRICE_USD` | No | `$0.10` | Price per counterparty analysis |
 | `NETWORK_MAP_PRICE_USD` | No | `$0.10` | Price per network map |
