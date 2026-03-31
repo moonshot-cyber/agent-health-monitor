@@ -1239,6 +1239,15 @@ def generate_recommendations(health) -> list[Recommendation]:
 async def lifespan(app: FastAPI):
     import db as _db
     _db.init_db()
+
+    # Verify critical static assets exist at startup
+    _log = logging.getLogger("ahm")
+    og_img = Path(__file__).parent / "static" / "ahm-og-banner.png"
+    if og_img.is_file():
+        _log.info("Static OG image verified: %s (%d bytes)", og_img, og_img.stat().st_size)
+    else:
+        _log.error("OG image MISSING at %s — social previews will be broken", og_img)
+
     # One-time backfill: populate Zombie Agent patterns for low-D2 scans
     try:
         filled = _db.backfill_zombie_patterns()
@@ -2336,7 +2345,7 @@ def consume_api_key(record: dict, endpoint: str, wallet: str | None = None) -> N
 STATIC_DIR = Path(__file__).parent / "static"
 
 
-@app.get("/")
+@app.api_route("/", methods=["GET", "HEAD"])
 async def root():
     """Serve the marketing homepage."""
     index = STATIC_DIR / "index.html"
@@ -2363,7 +2372,7 @@ async def roadmap():
 @app.get("/.well-known/agent-registration.json")
 async def agent_registration():
     """ERC-8004 agent registration document."""
-    return FileResponse("static/agent-registration.json", media_type="application/json")
+    return FileResponse(STATIC_DIR / "agent-registration.json", media_type="application/json")
 
 
 @app.get("/.well-known/402index-verify.txt")
@@ -3657,7 +3666,7 @@ async def get_report_card(address: str, request: Request):
 
     # Save PNG to static directory
     img_filename = f"{address}.png"
-    img_path = Path("static/report-cards") / img_filename
+    img_path = STATIC_DIR / "report-cards" / img_filename
     await loop.run_in_executor(None, lambda: img_path.write_bytes(png_bytes))
     image_url = f"/static/report-cards/{img_filename}"
 
@@ -4489,8 +4498,9 @@ async def olas_scan_status(request: Request):
 
 
 # -- Static file serving (must be after all route definitions) ----------------
-os.makedirs("static/report-cards", exist_ok=True)
-app.mount("/static", StaticFiles(directory="static"), name="static")
+# Use absolute path (STATIC_DIR) so serving works regardless of working directory.
+os.makedirs(STATIC_DIR / "report-cards", exist_ok=True)
+app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
 # -- ACP Nightly Scan (replaces Railway cron service) -----------------------
