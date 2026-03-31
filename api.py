@@ -110,6 +110,7 @@ COUNTERPARTY_PRICE = os.getenv("COUNTERPARTY_PRICE_USD", "$0.10")
 NETWORK_MAP_PRICE = os.getenv("NETWORK_MAP_PRICE_USD", "$0.10")
 WASH_PRICE = os.getenv("WASH_PRICE_USD", "$0.50")
 AHS_PRICE = os.getenv("AHS_PRICE_USD", "$1.00")
+AHS_BATCH_PRICE = os.getenv("AHS_BATCH_PRICE_USD", "$10.00")
 REPORT_CARD_PRICE = os.getenv("REPORT_CARD_PRICE_USD", "$2.00")
 AHS_JWT_SECRET = os.getenv("AHS_JWT_SECRET", secrets.token_urlsafe(32))
 NANSEN_PAYER_PRIVATE_KEY = os.getenv("NANSEN_PAYER_PRIVATE_KEY", "")
@@ -490,6 +491,33 @@ class AHSReport(BaseModel):
 class AHSResponse(BaseModel):
     status: str
     report: AHSReport
+
+
+# -- AHS Batch models -------------------------------------------------------
+
+class AHSBatchRequest(BaseModel):
+    addresses: list[str]
+    page: int = 1
+    page_size: int = 10
+
+class AHSBatchResultItem(BaseModel):
+    address: str
+    ahs_score: int
+    grade: str
+    d1_score: int
+    d2_score: int
+    pattern: str
+    verdict: str
+
+class AHSBatchResponse(BaseModel):
+    results: list[AHSBatchResultItem]
+    page: int
+    page_size: int
+    total_addresses: int
+    total_scored: int
+    credits_used: int
+    credits_remaining: Optional[int] = None
+    errors: list[str]
 
 
 # -- Report Card models ------------------------------------------------------
@@ -2150,6 +2178,21 @@ x402_routes = {
             },
         },
     ),
+    "POST /ahs/batch": RouteConfig(
+        accepts=[
+            PaymentOption(
+                scheme="exact",
+                pay_to=PAYMENT_ADDRESS,
+                price=AHS_BATCH_PRICE,
+                network=NETWORK,
+            ),
+        ],
+        mime_type="application/json",
+        description=(
+            "AHS Batch: Score multiple agent wallets in a single call. "
+            "Up to 10 wallets per x402 payment ($10.00), or up to 25 via API key."
+        ),
+    ),
     "GET /report-card/*": RouteConfig(
         accepts=[
             PaymentOption(
@@ -2465,6 +2508,7 @@ async def api_info():
             "GET /health/{address}": f"{PRICE} USDC — wallet health diagnosis",
             "POST /wash/{address}": f"{WASH_PRICE} USDC — agent hygiene scan (dust, spam, gas efficiency, failure patterns)",
             "GET /ahs/{address}": f"{AHS_PRICE} USDC — Agent Health Score (composite 0-100 index across wallet hygiene, behavioural patterns, and infrastructure health)",
+            "POST /ahs/batch": f"{AHS_BATCH_PRICE} USDC — batch AHS scoring (up to 10 wallets per x402 call, up to 25 via API key at {AHS_PRICE}/wallet)",
             "GET /alerts/subscribe/{address}": f"{ALERT_PRICE} USDC/month — automated monitoring & webhook alerts",
             "GET /optimize/{address}": f"{OPTIMIZE_PRICE} USDC — gas optimization report",
             "GET /retry/{address}": f"{RETRY_PRICE} USDC — optimized retry transactions for recent failures",
@@ -3593,6 +3637,189 @@ async def get_ahs_report(address: str, request: Request):
                        "d1_score": result.d1_score, "d2_score": result.d2_score},
     ))
     return AHSResponse(status="ok", report=report)
+
+
+# ── AHS Batch endpoint ─────────────────────────────────────────────────────
+
+_BATCH_SEMAPHORE = asyncio.Semaphore(3)  # max 3 concurrent RPC calls
+
+
+@app.post("/ahs/batch", response_model=AHSBatchResponse)
+async def get_ahs_batch(body: AHSBatchRequest, request: Request):
+    """
+    Batch Agent Health Score: score multiple wallets in a single call.
+
+    Accepts up to 25 wallet addresses. Pricing:
+    - **x402 path:** $10.00 USDC flat for up to 10 wallets per call.
+    - **API key path:** 1 credit per wallet scored. Supports partial results
+      if credits are insufficient (scores as many as credits allow).
+
+    Results include the same AHS scoring as the single GET /ahs/{address}
+    endpoint — composite 0-100 score with D1/D2 dimension breakdown,
+    pattern detection, and recommendations.
+    """
+    # ── Validate & normalise input ──────────────────────────────────────
+    if not body.addresses:
+        raise HTTPException(status_code=400, detail="addresses array is required and must not be empty")
+
+    page_size = max(1, min(25, body.page_size))
+    page = max(1, body.page)
+
+    # Deduplicate, lowercase, preserve order
+    seen: set[str] = set()
+    unique: list[str] = []
+    for a in body.addresses:
+        low = a.strip().lower()
+        if low not in seen:
+            seen.add(low)
+            unique.append(low)
+    addresses = unique
+    total_addresses = len(addresses)
+
+    # Validate all addresses upfront
+    invalid = [a for a in addresses if not ADDRESS_RE.match(a)]
+    if invalid:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid Ethereum address(es): {', '.join(invalid[:5])}",
+        )
+
+    # Paginate
+    start = (page - 1) * page_size
+    page_addrs = addresses[start:start + page_size]
+
+    if not page_addrs:
+        return AHSBatchResponse(
+            results=[], page=page, page_size=page_size,
+            total_addresses=total_addresses, total_scored=0,
+            credits_used=0, errors=["Page out of range"],
+        )
+
+    # ── Payment logic ───────────────────────────────────────────────────
+    fiat_key = validate_fiat_request(request)
+    errors: list[str] = []
+    credits_remaining: int | None = None
+
+    if fiat_key:
+        # API key path: cap to available credits if needed
+        available = fiat_key.get("calls_remaining")
+        if available is not None:
+            if available < len(page_addrs):
+                scored_count = max(0, available)
+                page_addrs = page_addrs[:scored_count]
+                if not page_addrs:
+                    return AHSBatchResponse(
+                        results=[], page=page, page_size=page_size,
+                        total_addresses=total_addresses, total_scored=0,
+                        credits_used=0, credits_remaining=0,
+                        errors=["Insufficient credits: 0 remaining"],
+                    )
+                errors.append(
+                    f"Partial results: only {len(page_addrs)} of "
+                    f"{total_addresses} addresses scored ({available} credits remaining)"
+                )
+    else:
+        # x402 path: payment already settled by middleware for $10 (up to 10 wallets)
+        if len(page_addrs) > 10:
+            page_addrs = page_addrs[:10]
+            errors.append(
+                "x402 batch limited to 10 wallets per call. "
+                "Use an API key (X-API-Key header) for batches of up to 25."
+            )
+
+    # ── Score wallets concurrently ──────────────────────────────────────
+    loop = asyncio.get_running_loop()
+
+    async def _score_one(addr: str) -> tuple[str, object | None, str | None]:
+        """Score a single wallet, respecting the concurrency semaphore."""
+        async with _BATCH_SEMAPHORE:
+            try:
+                eth_price, txs, tokens = await asyncio.gather(
+                    loop.run_in_executor(None, partial(get_eth_price, BASESCAN_API_KEY)),
+                    loop.run_in_executor(None, partial(fetch_transactions, addr, BASESCAN_API_KEY)),
+                    loop.run_in_executor(None, partial(fetch_tokens_v2, addr)),
+                )
+                result = await loop.run_in_executor(
+                    None,
+                    partial(
+                        calculate_ahs,
+                        address=addr,
+                        tokens=tokens,
+                        transactions=txs,
+                        eth_price=eth_price,
+                    ),
+                )
+                return addr, result, None
+            except Exception as exc:
+                return addr, None, f"{addr}: {exc}"
+
+    raw = await asyncio.gather(*[_score_one(a) for a in page_addrs])
+
+    # ── Assemble results ────────────────────────────────────────────────
+    results: list[AHSBatchResultItem] = []
+    scored = 0
+
+    for addr, result, err in raw:
+        if err or result is None:
+            if err:
+                errors.append(err)
+            continue
+        scored += 1
+
+        # Primary detected pattern
+        primary_pattern = "No Pattern"
+        if result.patterns_detected:
+            for p in result.patterns_detected:
+                if p.get("detected"):
+                    primary_pattern = p["name"]
+                    break
+
+        results.append(AHSBatchResultItem(
+            address=addr,
+            ahs_score=result.agent_health_score,
+            grade=f"{result.grade} — {result.grade_label}",
+            d1_score=result.d1_score,
+            d2_score=result.d2_score,
+            pattern=primary_pattern,
+            verdict=result.recommendations[0] if result.recommendations else "No issues detected",
+        ))
+
+        # Fire-and-forget: persist scan to DB
+        loop.run_in_executor(None, lambda a=addr, r=result: scan_db.log_scan(
+            address=a, endpoint="ahs",
+            scan_timestamp=r.scan_timestamp,
+            ahs_score=r.agent_health_score,
+            grade=r.grade, grade_label=r.grade_label,
+            confidence=r.confidence, mode=r.mode,
+            d1_score=r.d1_score, d2_score=r.d2_score,
+            d3_score=r.d3_score, cdp_modifier=r.cdp_modifier,
+            patterns=[{"name": p.get("name", ""), "severity": p.get("severity", ""),
+                       "description": p.get("description", ""), "modifier": p.get("modifier")}
+                      for p in r.patterns_detected] if r.patterns_detected else None,
+            tx_count=r.tx_count, history_days=r.history_days,
+            response_data={"agent_health_score": r.agent_health_score, "grade": r.grade,
+                           "d1_score": r.d1_score, "d2_score": r.d2_score},
+        ))
+
+    # ── Consume API key credits ─────────────────────────────────────────
+    if fiat_key and scored > 0:
+        key_hash = fiat_key["key_hash"]
+        for i, item in enumerate(results):
+            scan_db.decrement_api_key(key_hash)
+            scan_db.log_api_key_usage(key_hash, "ahs_batch", item.address)
+        available = fiat_key.get("calls_remaining")
+        credits_remaining = max(0, available - scored) if available is not None else None
+
+    return AHSBatchResponse(
+        results=results,
+        page=page,
+        page_size=page_size,
+        total_addresses=total_addresses,
+        total_scored=scored,
+        credits_used=scored,
+        credits_remaining=credits_remaining,
+        errors=errors,
+    )
 
 
 # ── Report Card endpoint ────────────────────────────────────────────────────
