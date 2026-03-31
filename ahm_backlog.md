@@ -218,6 +218,24 @@ Approach: don't cold pitch — show up in their threads with genuine insight fir
 
 ---
 
+## Scheduled Reviews
+
+### Session Continuity Shadow Mode Review — 7 April 2026
+
+Review shadow_signals data across the trust registry and decide whether to promote
+session continuity scoring from shadow mode to live D2 weighting.
+
+Checklist:
+- [ ] Query scan results for distribution of session_continuity_score across all wallets
+- [ ] Confirm score distribution is stable (not causing unexpected AHS shifts)
+- [ ] Check how many wallets are triggering Budget Exhaustion shadow pattern
+- [ ] Review whether session_continuity_score correlates with existing D2 scores
+- [ ] If distribution looks stable, implement live D2 weighting (weight ~0.10,
+      redistribute from timing_regularity and retry_storm)
+- [ ] Update AHS model version to AHS-v2 when promoted to live
+
+---
+
 ## Completed
 
 - [x] 11 endpoints live (risk, premium, counterparties, network-map, health, wash, ahs, alerts, optimize, retry, agent/protect)
