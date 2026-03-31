@@ -1633,8 +1633,11 @@ def analyze_wash(
 
 # -- Agent Health Score (AHS) Scoring Engine ---------------------------------
 
+import logging
 import statistics
 from dataclasses import dataclass, field
+
+_ahs_logger = logging.getLogger("ahm.ahs")
 from typing import Optional
 
 
@@ -2149,6 +2152,163 @@ def _calc_activity_gap_score(transactions: list[dict]) -> tuple[int, float]:
     return score, gap_ratio
 
 
+def _calc_session_continuity_score(
+    transactions: list[dict],
+) -> dict:
+    """Session continuity analysis (SHADOW MODE — not in composite D2 score).
+
+    Detects the "2am problem": agents probe several endpoints, authorize the
+    first 402 payment, then bail mid-session when USDC budget runs dry.  This
+    shows up as partial-activity bursts — a cluster of transactions that stops
+    abruptly after successes followed by failures.
+
+    Returns a dict of shadow signals (all values or None if threshold not met).
+    """
+    _SESSION_GAP = 300       # 5 minutes — max gap between txs in one session
+    _MIN_SESSION_SIZE = 3    # sessions shorter than this are ignored
+    _MIN_TX_COUNT = 20       # wallet must have 20+ txs to be scored
+    _MIN_SESSIONS = 3        # need 3+ detected sessions to score
+    _SILENCE_AFTER = 1800    # 30 minutes of silence = abrupt end
+
+    none_result = {
+        "session_continuity_score": None,
+        "abrupt_sessions": 0,
+        "budget_exhaustion_count": 0,
+        "total_sessions": 0,
+        "avg_session_length": 0.0,
+        "shadow_patterns": [],
+    }
+
+    if len(transactions) < _MIN_TX_COUNT:
+        return none_result
+
+    # Sort transactions by timestamp
+    sorted_txs = sorted(transactions, key=lambda tx: int(tx.get("timeStamp", 0)))
+
+    # -- Build sessions: consecutive txs with inter-gap < 300s ---------------
+    sessions: list[list[dict]] = []
+    current_session: list[dict] = [sorted_txs[0]]
+
+    for tx in sorted_txs[1:]:
+        prev_ts = int(current_session[-1].get("timeStamp", 0))
+        curr_ts = int(tx.get("timeStamp", 0))
+        if curr_ts - prev_ts <= _SESSION_GAP:
+            current_session.append(tx)
+        else:
+            if len(current_session) >= _MIN_SESSION_SIZE:
+                sessions.append(current_session)
+            current_session = [tx]
+    # Don't forget the last session
+    if len(current_session) >= _MIN_SESSION_SIZE:
+        sessions.append(current_session)
+
+    if len(sessions) < _MIN_SESSIONS:
+        return none_result
+
+    # -- Analyse each session for abrupt termination / budget exhaustion -----
+    all_timestamps = sorted(int(tx.get("timeStamp", 0)) for tx in sorted_txs)
+
+    abrupt_sessions = 0
+    budget_exhaustion_count = 0
+    shadow_patterns: list[dict] = []
+
+    for session in sessions:
+        session_end_ts = int(session[-1].get("timeStamp", 0))
+
+        # Check silence after session: no tx within 30 min after session end
+        next_tx_after = None
+        for ts in all_timestamps:
+            if ts > session_end_ts:
+                next_tx_after = ts
+                break
+        has_silence = (
+            next_tx_after is None
+            or (next_tx_after - session_end_ts) >= _SILENCE_AFTER
+        )
+
+        if not has_silence:
+            continue
+
+        # Check for multi-counterparty probing (3+ distinct "to" addresses)
+        counterparties = set()
+        for tx in session:
+            to_addr = (tx.get("to") or "").lower()
+            if to_addr:
+                counterparties.add(to_addr)
+        if len(counterparties) < 3:
+            continue
+
+        # Check if the final 1-2 txs are failures
+        tail = session[-2:] if len(session) >= 2 else session[-1:]
+        tail_failed = any(
+            tx.get("isError") == "1" or tx.get("txreceipt_status") == "0"
+            for tx in tail
+        )
+        if not tail_failed:
+            continue
+
+        # This session is abruptly terminated
+        abrupt_sessions += 1
+
+        # Check for budget exhaustion: success(es) then failure(s)
+        has_success_before_fail = False
+        seen_success = False
+        for tx in session:
+            is_fail = (
+                tx.get("isError") == "1" or tx.get("txreceipt_status") == "0"
+            )
+            if not is_fail:
+                seen_success = True
+            elif seen_success:
+                has_success_before_fail = True
+                break
+
+        if has_success_before_fail:
+            budget_exhaustion_count += 1
+            shadow_patterns.append({
+                "name": "Budget Exhaustion",
+                "detected": True,
+                "severity": "warning",
+                "description": (
+                    f"Session of {len(session)} txs to {len(counterparties)} "
+                    f"counterparties ended abruptly after successful txs "
+                    f"followed by failure — possible USDC budget exhaustion"
+                ),
+                "shadow": True,
+            })
+
+    # -- Score ---------------------------------------------------------------
+    total_sessions = len(sessions)
+    avg_session_length = (
+        sum(len(s) for s in sessions) / total_sessions if total_sessions else 0.0
+    )
+    clean_sessions = total_sessions - abrupt_sessions
+    clean_ratio = clean_sessions / total_sessions if total_sessions else 1.0
+
+    score = 100
+    score -= abrupt_sessions * 15
+    score -= budget_exhaustion_count * 10
+    if clean_ratio > 0.80:
+        score += 10
+    score = max(0, min(100, score))
+
+    _ahs_logger.debug(
+        "Session continuity shadow: score=%d, abrupt_sessions=%d, "
+        "avg_length=%.1f, total_sessions=%d, budget_exhaustion=%d",
+        score, abrupt_sessions, avg_session_length,
+        total_sessions, budget_exhaustion_count,
+    )
+
+    return {
+        "session_continuity_score": score,
+        "abrupt_sessions": abrupt_sessions,
+        "budget_exhaustion_count": budget_exhaustion_count,
+        "total_sessions": total_sessions,
+        "avg_session_length": round(avg_session_length, 1),
+        "shadow_patterns": shadow_patterns,
+    }
+
+
 def calculate_d2_score(transactions: list[dict]) -> tuple[int, list, dict]:
     """Calculate Dimension 2 (Behavioural Patterns) score.
 
@@ -2201,6 +2361,9 @@ def calculate_d2_score(transactions: list[dict]) -> tuple[int, list, dict]:
     if not factors:
         factors.append("Behavioural patterns are healthy")
 
+    # Shadow mode: session continuity (not included in composite score)
+    session_shadow = _calc_session_continuity_score(transactions)
+
     raw_signals = {
         "repeated_failure_score": rep_score,
         "max_consecutive_failures": max_consec,
@@ -2223,6 +2386,7 @@ def calculate_d2_score(transactions: list[dict]) -> tuple[int, list, dict]:
         "unique_contracts": unique_contracts,
         "activity_gap_score": gap_score,
         "activity_gap_ratio": activity_gap_ratio,
+        **session_shadow,
     }
 
     return score, factors[:3], raw_signals
@@ -2289,6 +2453,13 @@ def calculate_d2_score_from_transfers(transfers: list[dict]) -> tuple[int, list,
         "unique_contracts": unique_contracts,
         "activity_gap_score": gap_score,
         "activity_gap_ratio": activity_gap_ratio,
+        # Shadow session-continuity fields (not computable from tokentx)
+        "session_continuity_score": None,
+        "abrupt_sessions": 0,
+        "budget_exhaustion_count": 0,
+        "total_sessions": 0,
+        "avg_session_length": 0.0,
+        "shadow_patterns": [],
         "d2_data_source": "tokentx",
         "d2_signals_used": 4,
     }
