@@ -51,6 +51,17 @@ Based on ERC-8004 registry scan of IDs 30000-30355 (183 wallets, avg AHS 59.5, r
 - [ ] **Con+ Audits** (#30237, #30263) — Auditing platform, AHS 65/C
 - [ ] **Bob Suite** — 5 agents (BobDeFi, BobPrompt, BobCompliance, BobGrowth, BobThumbnail), same owner `0x955ab7...`
 
+### Update all references to endpoint count and add /ahs/batch to documentation
+
+Now that /ahs/batch is live, the following need updating:
+- [ ] static/index.html — endpoint count shows "12 endpoints", update to 13
+- [ ] static/ahm-roadmap.html — add /ahs/batch to live endpoints list
+- [ ] Any endpoint showcase cards or marketing copy referencing endpoint count
+- [ ] openapi.json / API docs — confirm /ahs/batch appears correctly
+- [ ] 402index.io — manually register /ahs/batch endpoint (manual step, $10.00 for up to 10 wallets)
+- [ ] PARTNERSHIPS.md or any outreach docs referencing endpoint count
+- [ ] README if it lists endpoints
+
 ### ERC-8004 (added Mar 13-16)
 
 ERC-8004 deployed on Ethereum mainnet Jan 29 2026. Identity + reputation standard for agents, complements x402. AHM health scoring sits naturally on top of this stack.
@@ -70,7 +81,7 @@ ERC-8004 deployed on Ethereum mainnet Jan 29 2026. Identity + reputation standar
 - [ ] **Wash Phase 2** — Token approvals scan + dead contract detection (deferred from wash MVP, see wash_spike_results.md)
 - [ ] **ERC-8183 integration** — Pre-flight health check before a client funds an ERC-8183 job escrow. Add to product backlog as agentic commerce verification layer
 - [ ] **ERC-8183 provider integration** — 3-4 day build, additive via new `acp_worker.py` module. Event listener watches ACP contract for jobs where provider=AHM, routes to existing `calculate_ahs()`, submits result hash on-chain. Reuses ERC-8004 identity (#32328). Build when ERC-8183 deploys to Base mainnet and first real jobs appear. Technical assessment complete — see session notes
-- [ ] **/ahs/batch endpoint** — Design partner validated (Alfred Zhang, httppay.xyz, 307 endpoints). POST `/ahs/batch` scores multiple agent wallets in a single API call. Accepts array of wallet addresses in request body. Default cap 10 wallets per call, max 25. Supports pagination for aggregators needing 10+ wallets. Pricing: $1.00 USDC per wallet via x402, or 1 call credit per wallet for API key users. Returns array of AHS results in same format as single `/ahs` endpoint. Partial results supported — if API key user has fewer credits than addresses requested, score as many as credits allow and return warning. Use case: pre-routing counterparty health checks (3-5 wallets per transaction on httppay, 10+ for aggregators)
+- [x] **/ahs/batch endpoint** (completed Mar 31) — POST `/ahs/batch` scores multiple agent wallets in a single API call. Up to 10 wallets per x402 call ($10.00 flat), up to 25 via API key (1 credit/wallet, partial results supported). Concurrent scoring with semaphore-limited RPC. PRs #42, #43, #44. Design partner validated (Alfred Zhang, httppay.xyz)
 
 ### Long-term Product Visions
 
