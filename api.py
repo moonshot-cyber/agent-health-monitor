@@ -3665,24 +3665,25 @@ async def get_ahs_batch(body: AHSBatchRequest, request: Request):
     page_size = max(1, min(25, body.page_size))
     page = max(1, body.page)
 
-    # Deduplicate, lowercase, preserve order
-    seen: set[str] = set()
-    unique: list[str] = []
-    for a in body.addresses:
-        low = a.strip().lower()
-        if low not in seen:
-            seen.add(low)
-            unique.append(low)
-    addresses = unique
-    total_addresses = len(addresses)
-
-    # Validate all addresses upfront
-    invalid = [a for a in addresses if not ADDRESS_RE.match(a)]
+    # Validate all addresses upfront (before normalisation, so errors show raw input)
+    stripped = [a.strip() for a in body.addresses]
+    invalid = [a for a in stripped if not ADDRESS_RE.match(a)]
     if invalid:
         raise HTTPException(
             status_code=400,
             detail=f"Invalid Ethereum address(es): {', '.join(invalid[:5])}",
         )
+
+    # Deduplicate (case-insensitive) while preserving original form
+    seen: set[str] = set()
+    unique: list[str] = []
+    for a in stripped:
+        key = a.lower()
+        if key not in seen:
+            seen.add(key)
+            unique.append(a)
+    addresses = unique
+    total_addresses = len(addresses)
 
     # Paginate
     start = (page - 1) * page_size
