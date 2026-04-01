@@ -2719,5 +2719,23 @@
     }
   })();
 </script>
+<script>
+// Hydrate hardcoded counts with live values from /api/ecosystem-stats
+(function() {
+  fetch(window.location.origin + '/api/ecosystem-stats')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      var total = data.total_scanned || 0;
+      var agentLabel = total.toLocaleString() + '+ AGENTS VERIFIED';
+      var statusBar = document.querySelector('.status-bar');
+      if (statusBar) statusBar.innerHTML = '<div class="status-dot"></div>LIVE // ' + agentLabel;
+
+      var epCount = data.endpoint_count || 13;
+      var heroSub = document.querySelector('.hero-sub');
+      if (heroSub) heroSub.innerHTML = heroSub.innerHTML.replace(/\d+ endpoints/i, epCount + ' endpoints');
+    })
+    .catch(function() { /* keep hardcoded fallback */ });
+})();
+</script>
 </body>
 </html>

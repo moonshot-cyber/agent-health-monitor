@@ -890,6 +890,20 @@
       var zombie = patterns['Zombie Agent'] || 0;
       var zombiePct = total > 0 ? Math.round(zombie / total * 100) : 0;
       animateCount(document.getElementById('stat-zombie'), zombiePct, '%', 1500);
+
+      // Hydrate hardcoded counts with live values
+      var agentLabel = total.toLocaleString() + '+ AGENTS VERIFIED';
+      var statusEl = document.querySelector('.hero-status');
+      if (statusEl) statusEl.innerHTML = '<div class="status-dot"></div>LIVE // ' + agentLabel;
+
+      var epCount = data.endpoint_count || 13;
+      var heroSub = document.querySelector('.hero-sub');
+      if (heroSub) heroSub.textContent = heroSub.textContent.replace(/\d+ endpoints/i, epCount + ' endpoints');
+
+      var pillarStat = document.querySelector('.pillar-stat');
+      if (pillarStat && /endpoints/i.test(pillarStat.textContent)) {
+        pillarStat.textContent = epCount + ' endpoints';
+      }
     })
     .catch(function() {
       document.getElementById('hero-score').textContent = '--';
