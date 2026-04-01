@@ -1456,11 +1456,21 @@ class InternalKeyBypassMiddleware:
     Must be added AFTER PaymentMiddlewareASGI so it wraps the outside
     (last added = outermost in Starlette's middleware stack).
 
-    When the key matches, we call self.app.app — the inner app that
-    PaymentMiddlewareASGI wraps — skipping the payment check entirely.
+    When the key matches, we walk the middleware chain to find
+    PaymentMiddlewareASGI and jump past it to the inner app,
+    regardless of how many middleware layers sit between us.
     """
     def __init__(self, app):
-        self.app = app  # This is PaymentMiddlewareASGI
+        self.app = app
+        # Walk the middleware chain once at startup to find the app
+        # on the other side of PaymentMiddlewareASGI.
+        inner = app
+        while inner is not None:
+            if isinstance(inner, PaymentMiddlewareASGI):
+                inner = getattr(inner, "app", inner)
+                break
+            inner = getattr(inner, "app", None)
+        self._bypass_app = inner or app
 
     async def __call__(self, scope, receive, send):
         if scope["type"] != "http":
@@ -1473,9 +1483,7 @@ class InternalKeyBypassMiddleware:
 
         if internal_key and hmac.compare_digest(internal_key, INTERNAL_API_KEY):
             # Valid key — skip x402 by jumping past PaymentMiddlewareASGI
-            # to the inner app it wraps (self.app.app)
-            inner_app = getattr(self.app, "app", self.app)
-            await inner_app(scope, receive, send)
+            await self._bypass_app(scope, receive, send)
         else:
             # No valid key — normal flow through x402
             await self.app(scope, receive, send)
