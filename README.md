@@ -1,6 +1,6 @@
 # Agent Health Monitor
 
-13-endpoint wallet intelligence API for the autonomous agent economy. Risk scores, health diagnostics, counterparty analysis, network mapping, wallet hygiene, composite Agent Health Score, batch scoring, visual report cards, and autonomous protection — with 2,860+ agents scanned across the trust registry.
+Trust and health verification for the autonomous agent economy. Before an agent delegates a task, routes a payment, or enters a contract — it needs to know: **is this counterparty solvent, reliable, and operational?** AHM answers that with 13 diagnostic endpoints, 3,000+ agents in the trust registry, and composite scoring across three dimensions.
 
 **Pay how you want:** [x402 protocol](https://x402.org) (USDC on Base, pay-per-call) or [Stripe](https://agenthealthmonitor.xyz) (fiat API key, no wallet required).
 
@@ -10,16 +10,16 @@
 
 | Endpoint | Price (x402) | Purpose |
 |---|---|---|
-| `GET /risk/{address}` | $0.01 USDC | Quick risk score for agent pre-flight checks |
+| `GET /risk/{address}` | $0.01 USDC | Pre-transaction trust check — is this agent safe to interact with? |
 | `GET /risk/premium/{address}` | $0.05 USDC | Premium risk score with Nansen labels + PnL profitability summary |
 | `GET /counterparties/{address}` | $0.10 USDC | Know Your Counterparty — top interactions enriched with Nansen |
 | `GET /network-map/{address}` | $0.10 USDC | Wallet network map — funding, deployer & multisig links via Nansen |
-| `GET /health/{address}` | $0.50 USDC | Full wallet health score with risk analysis |
-| `POST /wash/{address}` | $0.50 USDC | Wallet hygiene scan — dust, spam, gas waste, failed tx patterns |
-| `GET /ahs/{address}` | $1.00 USDC | Agent Health Score — composite 0-100 blending wallet, behaviour & infra |
+| `GET /health/{address}` | $0.50 USDC | Full health diagnostic with solvency and operational analysis |
+| `POST /wash/{address}` | $0.50 USDC | Financial health scan — portfolio quality, efficiency, and failure patterns |
+| `GET /ahs/{address}` | $1.00 USDC | Agent Health Score — composite 0-100 blending solvency, behavioural consistency & operational stability |
 | `GET /report-card/{address}` | $2.00 USDC | Visual report card with ecosystem benchmarks and shareable PNG |
 | `GET /alerts/subscribe/{address}` | $2.00 USDC/month | Automated monitoring — webhook alerts every 6 hours |
-| `GET /optimize/{address}` | $5.00 USDC | Per-transaction-type gas optimization report |
+| `GET /optimize/{address}` | $5.00 USDC | Operational efficiency report — per-transaction cost optimization |
 | `POST /ahs/batch` | $10.00 USDC | Batch AHS scoring — up to 10 wallets per x402 call |
 | `GET /retry/{address}` | $10.00 USDC | Retry failed transactions — ready-to-sign replacements |
 | `GET /agent/protect/{address}` | $25.00 USDC | Full autonomous protection — triages risk, runs all needed services |
@@ -45,7 +45,7 @@ No wallet required. Purchase an API key at [agenthealthmonitor.xyz](https://agen
 
 ## Trust Registry
 
-2,860+ agent wallets scanned and tracked across multiple discovery sources:
+3,000+ agent wallets scanned and tracked across multiple discovery sources:
 
 | Source | Description |
 |---|---|
@@ -130,7 +130,7 @@ GET /ahs/{wallet_address}
 curl https://agenthealthmonitor.xyz/ahs/0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045
 ```
 
-Proprietary composite 0-100 diagnostic blending wallet hygiene (D1), behavioural patterns (D2), and infrastructure health (D3). Scores both EOA and smart contract wallets — smart contract wallets are automatically scored via token transfer analysis.
+Proprietary composite 0-100 diagnostic blending solvency & financial health (D1), behavioural consistency (D2), and operational stability (D3). Scores both EOA and smart contract wallets — smart contract wallets are automatically scored via token transfer analysis.
 
 #### 3D Mode (with infrastructure probing)
 
@@ -176,8 +176,8 @@ curl "https://agenthealthmonitor.xyz/ahs/0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96
 ```
 
 **Modes:**
-- **2D** (default) — wallet hygiene + behavioural patterns only
-- **3D** (with `agent_url`) — adds infrastructure health probing (uptime, latency, error rates)
+- **2D** (default) — solvency & financial health + behavioural consistency only
+- **3D** (with `agent_url`) — adds operational stability probing (uptime, latency, error rates)
 
 **Cross-dimensional patterns** detected include: Zombie Agent, Cascading Infrastructure Failure, Stale Strategy, Gas War Casualty, Healthy Operator, and more.
 
@@ -227,7 +227,7 @@ curl -X POST https://agenthealthmonitor.xyz/ahs/batch \
 GET /report-card/{wallet_address}
 ```
 
-Generates a personalised 1200x675 PNG report card showing AHS score, grade, dimension breakdown, and percentile ranking against all 2,860+ scanned agents. Includes a pre-built share URL for X/Twitter.
+Generates a personalised 1200x675 PNG report card showing AHS score, grade, dimension breakdown, and percentile ranking against all 3,000+ scanned agents. Includes a pre-built share URL for X/Twitter.
 
 ### 5. Alert Monitoring ($2.00/month) — Stay on top of it
 
@@ -384,7 +384,7 @@ resp = httpx.post("https://agenthealthmonitor.xyz/ahs/batch", headers=headers,
 - **x402 SDK v2** — payment middleware with Bazaar discovery
 - **Nansen API** — wallet intelligence (labels, counterparties, PnL, related wallets)
 - **Blockscout API** — on-chain transaction data
-- **Base Mainnet** — Ethereum L2 (payment network + chain analyzed)
+- **Base Mainnet** — Ethereum L2 (implementation layer for payments and on-chain analysis)
 - **Railway** — cloud deployment
 - **SQLite (WAL)** — trust registry, scan history, API key management
 

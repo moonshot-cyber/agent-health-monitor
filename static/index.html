@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Agent Health Monitor — The Health Layer for the Agent Economy</title>
 <meta property="og:title" content="Agent Health Monitor — The Health Layer for the Agent Economy">
-<meta property="og:description" content="Pay-per-call diagnostics for autonomous agents on Base. No accounts. Just USDC.">
+<meta property="og:description" content="Trust and health verification for autonomous agents. 13 diagnostic endpoints. Pay-per-call.">
 <meta property="og:image" content="https://agenthealthmonitor.xyz/static/ahm-og-banner.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
@@ -13,7 +13,7 @@
 <meta property="og:type" content="website">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Agent Health Monitor — The Health Layer for the Agent Economy">
-<meta name="twitter:description" content="Pay-per-call diagnostics for autonomous agents on Base. No accounts. Just USDC.">
+<meta name="twitter:description" content="Trust and health verification for autonomous agents. 13 diagnostic endpoints. Pay-per-call.">
 <meta name="twitter:image" content="https://agenthealthmonitor.xyz/static/ahm-og-banner.png">
 <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
 <link rel="icon" type="image/png" sizes="32x32" href="/static/ahm-favicon-32.png">
@@ -656,7 +656,7 @@
 <section class="hero">
   <div class="hero-status">
     <div class="status-dot"></div>
-    LIVE // BASE MAINNET // USDC
+    LIVE // 2,860+ AGENTS VERIFIED
   </div>
 
   <div class="hero-score-wrap">
@@ -668,7 +668,7 @@
   </div>
 
   <h1>The health layer for the agent economy</h1>
-  <p class="hero-sub">Diagnostics for autonomous agents. Pay-per-call. No accounts. USDC on Base.</p>
+  <p class="hero-sub">Trust and health verification for the autonomous agent economy. 13 endpoints. Pay-per-call.</p>
 
   <div class="hero-ctas">
     <a href="/dashboard" class="btn btn-primary">View Dashboard &rarr;</a>
@@ -699,7 +699,7 @@
   <div class="pillars">
     <a href="/endpoints/ahs" class="pillar">
       <div class="pillar-title">DIAGNOSE</div>
-      <div class="pillar-stat">12 endpoints</div>
+      <div class="pillar-stat">13 endpoints</div>
       <div class="pillar-desc">$0.01 &ndash; $25 PER CALL</div>
     </a>
     <a href="/dashboard" class="pillar">
@@ -745,18 +745,18 @@
   <div class="mechanic-grid">
     <div class="dim-card">
       <div class="dim-label">D1</div>
-      <div class="dim-title">Wallet Hygiene</div>
-      <div class="dim-desc">DUST, SPAM, GAS EFFICIENCY, FAILED TX PATTERNS</div>
+      <div class="dim-title">Solvency &amp; Financial Health</div>
+      <div class="dim-desc">IS THE AGENT FINANCIALLY SOUND? TOKEN PORTFOLIO, GAS EFFICIENCY, TX SUCCESS RATES</div>
     </div>
     <div class="dim-card">
       <div class="dim-label">D2</div>
-      <div class="dim-title">Behavioural Patterns</div>
-      <div class="dim-desc">TIMING, DIVERSITY, COUNTERPARTIES, ACTIVITY CLUSTERS</div>
+      <div class="dim-title">Behavioural Consistency</div>
+      <div class="dim-desc">IS THE AGENT RELIABLE? TIMING REGULARITY, COUNTERPARTY DIVERSITY, ADAPTATION PATTERNS</div>
     </div>
     <div class="dim-card">
       <div class="dim-label">D3</div>
-      <div class="dim-title">Infrastructure Health</div>
-      <div class="dim-desc">API RELIABILITY, UPTIME, RESPONSE QUALITY</div>
+      <div class="dim-title">Operational Stability</div>
+      <div class="dim-desc">IS THE INFRASTRUCTURE RESPONSIVE? ENDPOINT AVAILABILITY, RESPONSE TIMES, ERROR RATES</div>
     </div>
   </div>
   <div class="formula"><span>D1</span> + <span>D2</span> + <span>D3</span> = <span>Agent Health Score</span></div>
@@ -765,7 +765,7 @@
 <!-- ENDPOINT SHOWCASE -->
 <section class="section">
   <div class="section-title">ENDPOINTS</div>
-  <div class="section-tag">// PAY-PER-CALL VIA x402</div>
+  <div class="section-tag">// PAY-PER-CALL DIAGNOSTICS</div>
   <div class="endpoints-grid">
     <a href="/endpoints/ahs" class="ep-card">
       <div class="ep-card-name">AGENT HEALTH SCORE</div>
@@ -846,7 +846,7 @@
     <a href="/roadmap" class="footer-link">ROADMAP</a>
     <a href="/app" class="footer-link">TRY IT</a>
   </div>
-  <div class="footer-sub">POWERED BY x402 &middot; USDC &middot; BASE MAINNET &middot; @AHMprotocol</div>
+  <div class="footer-sub">TRUST LAYER FOR THE AGENT ECONOMY &middot; @AHMprotocol</div>
 </footer>
 
 <script>
@@ -890,6 +890,20 @@
       var zombie = patterns['Zombie Agent'] || 0;
       var zombiePct = total > 0 ? Math.round(zombie / total * 100) : 0;
       animateCount(document.getElementById('stat-zombie'), zombiePct, '%', 1500);
+
+      // Hydrate hardcoded counts with live values
+      var agentLabel = total.toLocaleString() + '+ AGENTS VERIFIED';
+      var statusEl = document.querySelector('.hero-status');
+      if (statusEl) statusEl.innerHTML = '<div class="status-dot"></div>LIVE // ' + agentLabel;
+
+      var epCount = data.endpoint_count || 13;
+      var heroSub = document.querySelector('.hero-sub');
+      if (heroSub) heroSub.textContent = heroSub.textContent.replace(/\d+ endpoints/i, epCount + ' endpoints');
+
+      var pillarStat = document.querySelector('.pillar-stat');
+      if (pillarStat && /endpoints/i.test(pillarStat.textContent)) {
+        pillarStat.textContent = epCount + ' endpoints';
+      }
     })
     .catch(function() {
       document.getElementById('hero-score').textContent = '--';

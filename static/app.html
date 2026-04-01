@@ -6,7 +6,7 @@
 <meta name="base:app_id" content="699881c46768b2f53f686a78" />
 <title>Agent Health Monitor // Diagnostics for the Agent Economy</title>
 <meta property="og:title" content="Agent Health Monitor — Diagnostics for the Agent Economy">
-<meta property="og:description" content="Pay-per-call agent health diagnostics on Base. 11 x402 endpoints. No accounts. Just USDC.">
+<meta property="og:description" content="Agent trust and health diagnostics. 13 endpoints from $0.01. Pay-per-call.">
 <meta property="og:image" content="https://agenthealthmonitor.xyz/static/ahm-og-banner.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
@@ -14,7 +14,7 @@
 <meta property="og:type" content="website">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Agent Health Monitor — Diagnostics for the Agent Economy">
-<meta name="twitter:description" content="Pay-per-call agent health diagnostics on Base. 11 x402 endpoints. No accounts. Just USDC.">
+<meta name="twitter:description" content="Agent trust and health diagnostics. 13 endpoints from $0.01. Pay-per-call.">
 <meta name="twitter:image" content="https://agenthealthmonitor.xyz/static/ahm-og-banner.png">
 <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
 <link rel="icon" type="image/png" sizes="32x32" href="/static/ahm-favicon-32.png">
@@ -968,15 +968,15 @@
   </div>
   <div class="status-bar">
     <div class="status-dot"></div>
-    LIVE // BASE MAINNET // USDC
+    LIVE // 2,860+ AGENTS VERIFIED
   </div>
 </header>
 
 <!-- HERO (compact) -->
 <section class="hero">
-  <div class="hero-tag">Blockchain Intelligence Protocol</div>
+  <div class="hero-tag">Agent Trust &amp; Health Protocol</div>
   <h1>AGENT <span>HEALTH</span> MONITOR</h1>
-  <p class="hero-sub">// Diagnostics for the agent economy &middot; 12 endpoints from $0.01 &middot; USDC on Base</p>
+  <p class="hero-sub">// Trust verification for the agent economy &middot; 13 endpoints from $0.01</p>
 </section>
 
 <!-- ENDPOINT NAV -->
@@ -1128,12 +1128,12 @@
         <div class="endpoint-card" data-endpoint="wash" data-price="0.50" data-path="/wash" data-method="POST" onclick="selectEndpoint(this)">
           <div class="ep-price">$0.50</div>
           <div class="ep-name">/wash</div>
-          <div class="ep-desc">Agent hygiene scan — dust, spam, gas efficiency, failure patterns</div>
+          <div class="ep-desc">Financial health scan — portfolio quality, efficiency, failure patterns</div>
         </div>
         <div class="endpoint-card" data-endpoint="ahs" data-price="1.00" data-path="/ahs" onclick="selectEndpoint(this)">
           <div class="ep-price">$1.00</div>
           <div class="ep-name">/ahs</div>
-          <div class="ep-desc">Agent Health Score — composite 0-100 index across wallet hygiene, behaviour &amp; infrastructure</div>
+          <div class="ep-desc">Agent Health Score — composite 0-100 index across solvency, behavioural consistency &amp; operational stability</div>
         </div>
         <div class="endpoint-card" data-endpoint="report-card" data-price="2.00" data-path="/report-card" onclick="selectEndpoint(this)">
           <div class="ep-price">$2.00</div>
@@ -2718,6 +2718,24 @@
       }
     }
   })();
+</script>
+<script>
+// Hydrate hardcoded counts with live values from /api/ecosystem-stats
+(function() {
+  fetch(window.location.origin + '/api/ecosystem-stats')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      var total = data.total_scanned || 0;
+      var agentLabel = total.toLocaleString() + '+ AGENTS VERIFIED';
+      var statusBar = document.querySelector('.status-bar');
+      if (statusBar) statusBar.innerHTML = '<div class="status-dot"></div>LIVE // ' + agentLabel;
+
+      var epCount = data.endpoint_count || 13;
+      var heroSub = document.querySelector('.hero-sub');
+      if (heroSub) heroSub.innerHTML = heroSub.innerHTML.replace(/\d+ endpoints/i, epCount + ' endpoints');
+    })
+    .catch(function() { /* keep hardcoded fallback */ });
+})();
 </script>
 </body>
 </html>

@@ -6,7 +6,7 @@
 
 ## Current State (as of Mar 17 2026)
 
-- **11 endpoints** live on Base mainnet at agenthealthmonitor.xyz
+- **13 endpoints** live on Base mainnet at agenthealthmonitor.xyz
 - **ERC-8004 registered** — agentId #32328 on Base mainnet
 - **Nansen integration** — 4 direct API connections (labels, counterparties, PnL, related wallets)
 - **Listed on:** Virtuals ACP (11 offerings), x402scan, Bankr Skills, agdp.io, 8004scan.io

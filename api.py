@@ -114,6 +114,7 @@ AHS_BATCH_PRICE = os.getenv("AHS_BATCH_PRICE_USD", "$10.00")
 REPORT_CARD_PRICE = os.getenv("REPORT_CARD_PRICE_USD", "$2.00")
 AHS_JWT_SECRET = os.getenv("AHS_JWT_SECRET", secrets.token_urlsafe(32))
 NANSEN_PAYER_PRIVATE_KEY = os.getenv("NANSEN_PAYER_PRIVATE_KEY", "")
+ENDPOINT_COUNT = 13  # single source of truth — update here when adding endpoints
 NETWORK = os.getenv("NETWORK", "eip155:8453")  # Base mainnet
 VALID_COUPONS = set(c.strip().upper() for c in os.getenv("VALID_COUPONS", "").split(",") if c.strip())
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
@@ -2542,6 +2543,7 @@ async def ecosystem_stats():
     """Public aggregate ecosystem stats for the dashboard. No auth required."""
     loop = asyncio.get_running_loop()
     stats = await loop.run_in_executor(None, scan_db.get_ecosystem_dashboard_stats)
+    stats["endpoint_count"] = ENDPOINT_COUNT
     return stats
 
 
