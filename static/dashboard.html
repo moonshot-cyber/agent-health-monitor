@@ -559,9 +559,14 @@
   }
 
   .source-chip strong {
-    color: var(--cyan);
     font-weight: normal;
   }
+
+  .source-chip[data-source="ACP"] strong { color: #00ff88; }
+  .source-chip[data-source="Olas"] strong { color: #4da6ff; }
+  .source-chip[data-source="ERC-8004"] strong { color: #b388ff; }
+  .source-chip[data-source="Arc"] strong { color: #ff8c42; }
+  .source-chip[data-source="API"] strong { color: #6a7a8a; }
 
   /* ─── RESPONSIVE ─── */
   @media (max-width: 768px) {
@@ -795,11 +800,25 @@
     // Data sources
     var srcEl = document.getElementById('sources-row');
     var sources = d.data_sources || {};
+    var sourceOrder = ['ACP', 'Olas', 'ERC-8004', 'Arc', 'API'];
+    sourceOrder.forEach(function(key) {
+      if (sources[key] !== undefined) {
+        var chip = document.createElement('div');
+        chip.className = 'source-chip';
+        chip.setAttribute('data-source', key);
+        chip.innerHTML = key + ': <strong>' + sources[key].toLocaleString() + '</strong> agents';
+        srcEl.appendChild(chip);
+      }
+    });
+    // Any remaining sources not in the predefined order
     for (var key in sources) {
-      var chip = document.createElement('div');
-      chip.className = 'source-chip';
-      chip.innerHTML = key + ': <strong>' + sources[key].toLocaleString() + '</strong> agents';
-      srcEl.appendChild(chip);
+      if (sourceOrder.indexOf(key) === -1) {
+        var chip = document.createElement('div');
+        chip.className = 'source-chip';
+        chip.setAttribute('data-source', key);
+        chip.innerHTML = key + ': <strong>' + sources[key].toLocaleString() + '</strong> agents';
+        srcEl.appendChild(chip);
+      }
     }
 
     // Grade distribution chart
