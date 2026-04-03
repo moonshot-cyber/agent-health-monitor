@@ -38,6 +38,7 @@ logging.basicConfig(
 )
 
 import db as scan_db
+import erc8183_worker
 from generate_report_card import generate_report_card
 from contextlib import asynccontextmanager
 from dataclasses import asdict, dataclass, field
@@ -1296,6 +1297,11 @@ async def lifespan(app: FastAPI):
     alert_task = asyncio.create_task(alert_monitor_loop())
     rescan_task = asyncio.create_task(rescan_loop())
 
+    # ERC-8183 evaluator worker (Arc testnet)
+    erc8183_task = None
+    if erc8183_worker.can_start():
+        erc8183_task = asyncio.create_task(erc8183_worker.erc8183_worker_loop())
+
     # -- APScheduler: nightly scans --
     scheduler = AsyncIOScheduler()
     scheduler.add_job(
@@ -1319,14 +1325,22 @@ async def lifespan(app: FastAPI):
     scheduler.start()
     app.state.scheduler = scheduler
 
-    logger.info("Background tasks started: alert_monitor, rescan_loop, acp_scheduler, olas_scheduler")
+    bg_names = "alert_monitor, rescan_loop, acp_scheduler, olas_scheduler"
+    if erc8183_task:
+        bg_names += ", erc8183_worker"
+    logger.info("Background tasks started: %s", bg_names)
     yield
 
     # -- Shutdown --
     scheduler.shutdown(wait=False)
     alert_task.cancel()
     rescan_task.cancel()
-    for t in [alert_task, rescan_task]:
+    if erc8183_task:
+        erc8183_task.cancel()
+    tasks_to_await = [alert_task, rescan_task]
+    if erc8183_task:
+        tasks_to_await.append(erc8183_task)
+    for t in tasks_to_await:
         try:
             await t
         except asyncio.CancelledError:
@@ -4761,6 +4775,21 @@ async def olas_scan_status(request: Request):
         "running": _olas_scan_lock.locked(),
         "next_scheduled_run": next_run,
     }
+
+
+# -- ERC-8183 Worker Status --------------------------------------------------
+
+@app.get("/erc8183/status")
+async def erc8183_status(request: Request):
+    """Check ERC-8183 evaluator worker status on Arc testnet.
+
+    Protected by X-Internal-Key header.
+    """
+    internal_key = request.headers.get("X-Internal-Key", "")
+    if not INTERNAL_API_KEY or not hmac.compare_digest(internal_key, INTERNAL_API_KEY):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    return erc8183_worker.get_status()
 
 
 # -- Static file serving (must be after all route definitions) ----------------
