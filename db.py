@@ -468,6 +468,8 @@ def get_ecosystem_dashboard_stats() -> dict:
                 data_sources["Olas"] = data_sources.get("Olas", 0) + r["cnt"]
             elif key and "erc8004" in key.lower():
                 data_sources["ERC-8004"] = data_sources.get("ERC-8004", 0) + r["cnt"]
+            elif key and "arc" in key.lower():
+                data_sources["Arc"] = data_sources.get("Arc", 0) + r["cnt"]
             else:
                 data_sources["API"] = data_sources.get("API", 0) + r["cnt"]
 
