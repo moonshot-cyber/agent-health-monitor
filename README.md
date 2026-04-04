@@ -45,16 +45,21 @@ No wallet required. Purchase an API key at [agenthealthmonitor.xyz](https://agen
 
 ## Trust Registry
 
-3,000+ agent wallets scanned and tracked across multiple discovery sources:
+3,000+ agent wallets scanned and tracked across 5 discovery sources:
 
 | Source | Description |
 |---|---|
 | **ACP (Virtuals)** | Automated nightly scans via `acpx.virtuals.io` API |
 | **ERC-8004** | On-chain agent registry on Base mainnet (32,700+ registered) |
 | **Olas** | Olas protocol agent registry, nightly scans |
+| **Arc** | ERC-8004 IdentityRegistry on Arc testnet, nightly scans (1,200+ agents) |
 | **API** | Wallets scanned via direct API calls |
 
 All scan results are stored in the trust registry database with grade distribution, trend tracking, and ecosystem-wide health statistics available at `/trust-registry` and `/dashboard`.
+
+### ERC-8183 On-Chain Evaluator (Arc Testnet)
+
+AHM runs a persistent background worker on Arc testnet that watches for ERC-8183 `JobSubmitted` events. When a job targets AHM as evaluator, the worker runs a health check on the provider's wallet, then calls `complete()` or `reject()` on-chain based on the resulting AHS grade. This enables trustless, on-chain health verification for the Arc agent marketplace.
 
 ## Live
 
