@@ -16,5 +16,7 @@ from fastapi.testclient import TestClient
 @pytest.fixture
 def client():
     """TestClient with x402 middleware active (real app)."""
+    import db as _db
+    _db.init_db()  # Ensure DB tables exist (lifespan may not trigger in CI)
     from api import app
     return TestClient(app, raise_server_exceptions=False)

@@ -17,7 +17,7 @@ logger = logging.getLogger("ahm.db")
 
 DB_PATH = os.getenv("DB_PATH", "./ahm_history.db")
 
-_SCHEMA_VERSION = 4
+_SCHEMA_VERSION = 5
 
 _SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS scans (
@@ -118,6 +118,17 @@ CREATE TABLE IF NOT EXISTS api_key_usage (
 
 CREATE INDEX IF NOT EXISTS idx_api_keys_hash ON api_keys(key_hash);
 CREATE INDEX IF NOT EXISTS idx_api_key_usage_hash ON api_key_usage(key_hash, called_at DESC);
+
+CREATE TABLE IF NOT EXISTS security_events (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_type  TEXT NOT NULL,
+    ip_address  TEXT NOT NULL,
+    details     TEXT,
+    created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_security_events_ip   ON security_events(ip_address, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_security_events_type ON security_events(event_type, created_at DESC);
 """
 
 
@@ -156,6 +167,9 @@ def init_db():
 
         # v4: Add api_keys and api_key_usage tables (created via _SCHEMA_SQL above)
         # No ALTER needed — tables are created by CREATE TABLE IF NOT EXISTS.
+
+        # v5: Add security_events table (created via _SCHEMA_SQL above)
+        # No ALTER needed — table is created by CREATE TABLE IF NOT EXISTS.
 
         if current < _SCHEMA_VERSION:
             conn.execute("INSERT INTO schema_version (version) VALUES (?)", (_SCHEMA_VERSION,))
@@ -731,5 +745,52 @@ def log_api_key_usage(key_hash: str, endpoint: str, wallet_queried: str | None =
             (key_hash, endpoint, now_iso, wallet_queried),
         )
         conn.commit()
+    finally:
+        conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Security event logging
+# ---------------------------------------------------------------------------
+
+def log_security_event(event_type: str, ip_address: str, details: str | None = None) -> None:
+    """Log a security event (rate limit hit, suspicious pattern, etc.)."""
+    conn = get_connection()
+    try:
+        conn.execute(
+            """INSERT INTO security_events (event_type, ip_address, details)
+               VALUES (?, ?, ?)""",
+            (event_type, ip_address, details),
+        )
+        conn.commit()
+    except Exception:
+        logger.exception("Failed to log security event: %s from %s", event_type, ip_address)
+    finally:
+        conn.close()
+
+
+def get_security_events(
+    limit: int = 100,
+    event_type: str | None = None,
+) -> list[dict]:
+    """Retrieve recent security events, optionally filtered by type."""
+    conn = get_connection()
+    try:
+        if event_type:
+            rows = conn.execute(
+                """SELECT id, event_type, ip_address, details, created_at
+                   FROM security_events
+                   WHERE event_type = ?
+                   ORDER BY created_at DESC LIMIT ?""",
+                (event_type, limit),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                """SELECT id, event_type, ip_address, details, created_at
+                   FROM security_events
+                   ORDER BY created_at DESC LIMIT ?""",
+                (limit,),
+            ).fetchall()
+        return [dict(r) for r in rows]
     finally:
         conn.close()

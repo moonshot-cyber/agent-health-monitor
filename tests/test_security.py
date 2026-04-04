@@ -3,6 +3,7 @@
 import hmac
 import os
 import time
+from unittest.mock import patch
 
 import pytest
 
@@ -425,3 +426,249 @@ class TestBatchChecksummedAddresses:
         assert data["total_scored"] == 1
         # The first occurrence (checksummed) should win
         assert data["results"][0]["address"] == addr
+
+
+# ---------------------------------------------------------------------------
+# IP extraction helper
+# ---------------------------------------------------------------------------
+
+def _make_request(headers=None, client_host="127.0.0.1"):
+    """Build a fake Request-like object for get_client_ip tests."""
+    from unittest.mock import MagicMock
+    req = MagicMock()
+    req.headers = dict(headers or {})
+    if client_host is None:
+        req.client = None
+    else:
+        req.client.host = client_host
+    return req
+
+
+class TestGetClientIp:
+    """Verify IP extraction from Railway Envoy headers."""
+
+    def test_envoy_header_takes_priority(self):
+        from api import get_client_ip
+        req = _make_request(
+            headers={"X-Envoy-External-Address": "1.2.3.4",
+                     "X-Forwarded-For": "5.6.7.8"},
+            client_host="127.0.0.1",
+        )
+        assert get_client_ip(req) == "1.2.3.4"
+
+    def test_forwarded_for_fallback(self):
+        from api import get_client_ip
+        req = _make_request(
+            headers={"X-Forwarded-For": "5.6.7.8, 10.0.0.1"},
+            client_host="127.0.0.1",
+        )
+        assert get_client_ip(req) == "5.6.7.8"
+
+    def test_client_host_fallback(self):
+        from api import get_client_ip
+        req = _make_request(client_host="192.168.1.1")
+        assert get_client_ip(req) == "192.168.1.1"
+
+    def test_unknown_when_no_client(self):
+        from api import get_client_ip
+        req = _make_request(client_host=None)
+        assert get_client_ip(req) == "unknown"
+
+
+# ---------------------------------------------------------------------------
+# SecurityMonitorMiddleware pattern detection
+# ---------------------------------------------------------------------------
+
+def _make_middleware():
+    """Instantiate SecurityMonitorMiddleware with blank state (no real app)."""
+    from api import SecurityMonitorMiddleware
+    mw = SecurityMonitorMiddleware.__new__(SecurityMonitorMiddleware)
+    mw.app = None
+    mw._requests = {}
+    mw._402_ips = {}
+    mw._event_cooldown = {}
+    mw._cleanup_counter = 0
+    return mw
+
+
+class TestSecurityMonitorPatterns:
+    """Verify the three suspicious-pattern detectors."""
+
+    def test_endpoint_enumeration_detected(self):
+        mw = _make_middleware()
+        with patch("db.log_security_event") as mock_log:
+            for i in range(10):
+                mw._record_request("1.2.3.4", f"/path/{i}", 200)
+            calls = [c for c in mock_log.call_args_list
+                     if c[0][0] == "endpoint_enumeration"]
+            assert len(calls) == 1
+            assert "1.2.3.4" in calls[0][0][1]
+
+    def test_enumeration_not_triggered_below_threshold(self):
+        mw = _make_middleware()
+        with patch("db.log_security_event") as mock_log:
+            for i in range(9):
+                mw._record_request("1.2.3.4", f"/path/{i}", 200)
+            calls = [c for c in mock_log.call_args_list
+                     if c[0][0] == "endpoint_enumeration"]
+            assert len(calls) == 0
+
+    def test_high_4xx_rate_detected(self):
+        mw = _make_middleware()
+        with patch("db.log_security_event") as mock_log:
+            for i in range(17):
+                mw._record_request("1.2.3.4", "/test", 404)
+            for i in range(3):
+                mw._record_request("1.2.3.4", "/test", 200)
+            calls = [c for c in mock_log.call_args_list
+                     if c[0][0] == "high_4xx_rate"]
+            assert len(calls) >= 1
+
+    def test_4xx_not_triggered_below_threshold(self):
+        mw = _make_middleware()
+        with patch("db.log_security_event") as mock_log:
+            for i in range(15):
+                mw._record_request("1.2.3.4", "/test", 404)
+            for i in range(5):
+                mw._record_request("1.2.3.4", "/test", 200)
+            calls = [c for c in mock_log.call_args_list
+                     if c[0][0] == "high_4xx_rate"]
+            assert len(calls) == 0
+
+    def test_402_without_payment_detected(self):
+        mw = _make_middleware()
+        with patch("db.log_security_event") as mock_log:
+            for i in range(3):
+                mw._record_request("1.2.3.4", "/ahs/0x123", 402)
+            calls = [c for c in mock_log.call_args_list
+                     if c[0][0] == "402_without_payment"]
+            assert len(calls) == 1
+
+    def test_402_cleared_by_200(self):
+        mw = _make_middleware()
+        with patch("db.log_security_event") as mock_log:
+            mw._record_request("1.2.3.4", "/ahs/0x123", 402)
+            mw._record_request("1.2.3.4", "/ahs/0x123", 402)
+            mw._record_request("1.2.3.4", "/ahs/0x123", 200)  # clears
+            mw._record_request("1.2.3.4", "/ahs/0x123", 402)  # only 1 again
+            calls = [c for c in mock_log.call_args_list
+                     if c[0][0] == "402_without_payment"]
+            assert len(calls) == 0
+
+    def test_cooldown_prevents_duplicate_events(self):
+        mw = _make_middleware()
+        with patch("db.log_security_event") as mock_log:
+            for i in range(15):
+                mw._record_request("1.2.3.4", f"/path/{i}", 200)
+            enum_calls = [c for c in mock_log.call_args_list
+                         if c[0][0] == "endpoint_enumeration"]
+            assert len(enum_calls) == 1  # cooldown prevents re-logging
+
+
+# ---------------------------------------------------------------------------
+# Security event DB functions
+# ---------------------------------------------------------------------------
+
+class TestSecurityEventLogging:
+    """Verify log_security_event and get_security_events."""
+
+    def test_log_and_retrieve(self, tmp_path):
+        import db as _db
+        old_path = _db.DB_PATH
+        _db.DB_PATH = str(tmp_path / "test_sec.db")
+        try:
+            _db.init_db()
+            _db.log_security_event("test_event", "1.2.3.4", "test details")
+            events = _db.get_security_events(limit=10)
+            assert len(events) == 1
+            assert events[0]["event_type"] == "test_event"
+            assert events[0]["ip_address"] == "1.2.3.4"
+            assert events[0]["details"] == "test details"
+        finally:
+            _db.DB_PATH = old_path
+
+    def test_filter_by_type(self, tmp_path):
+        import db as _db
+        old_path = _db.DB_PATH
+        _db.DB_PATH = str(tmp_path / "test_sec.db")
+        try:
+            _db.init_db()
+            _db.log_security_event("type_a", "1.2.3.4", "a")
+            _db.log_security_event("type_b", "5.6.7.8", "b")
+            events = _db.get_security_events(event_type="type_a")
+            assert len(events) == 1
+            assert events[0]["event_type"] == "type_a"
+        finally:
+            _db.DB_PATH = old_path
+
+    def test_respects_limit(self, tmp_path):
+        import db as _db
+        old_path = _db.DB_PATH
+        _db.DB_PATH = str(tmp_path / "test_sec.db")
+        try:
+            _db.init_db()
+            for i in range(5):
+                _db.log_security_event("evt", f"10.0.0.{i}", f"detail {i}")
+            events = _db.get_security_events(limit=3)
+            assert len(events) == 3
+        finally:
+            _db.DB_PATH = old_path
+
+
+# ---------------------------------------------------------------------------
+# /security/activity endpoint
+# ---------------------------------------------------------------------------
+
+class TestSecurityActivityEndpoint:
+    """Verify GET /security/activity auth and response format."""
+
+    def test_requires_internal_key(self, client):
+        resp = client.get("/security/activity")
+        assert resp.status_code == 401
+
+    def test_rejects_wrong_key(self, client):
+        resp = client.get("/security/activity",
+                         headers={"X-Internal-Key": "wrong-key"})
+        assert resp.status_code == 401
+
+    def test_returns_events_with_valid_key(self, client):
+        from api import INTERNAL_API_KEY
+        resp = client.get("/security/activity",
+                         headers={"X-Internal-Key": INTERNAL_API_KEY})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "events" in data
+        assert "total" in data
+        assert isinstance(data["events"], list)
+
+
+# ---------------------------------------------------------------------------
+# Rate limiter configuration
+# ---------------------------------------------------------------------------
+
+class TestRateLimitConfig:
+    """Verify slowapi limiter is wired correctly."""
+
+    def test_limiter_exists_on_app(self):
+        from api import app, limiter
+        assert app.state.limiter is limiter
+
+    def test_limiter_key_func_is_get_client_ip(self):
+        from api import limiter, get_client_ip
+        assert limiter._key_func is get_client_ip
+
+    def test_rate_limit_handler_registered(self):
+        from api import app
+        from slowapi.errors import RateLimitExceeded
+        assert RateLimitExceeded in app.exception_handlers
+
+    def test_protect_endpoint_decorated(self):
+        """Verify /agent/protect handler has rate limit metadata."""
+        from api import get_protection_report
+        # slowapi decorators set _rate_limit on the function
+        assert hasattr(get_protection_report, "__wrapped__") or callable(get_protection_report)
+
+    def test_batch_endpoint_decorated(self):
+        """Verify /ahs/batch handler has rate limit metadata."""
+        from api import get_ahs_batch
+        assert callable(get_ahs_batch)

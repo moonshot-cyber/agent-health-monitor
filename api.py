@@ -63,6 +63,8 @@ from pydantic import BaseModel
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
+from slowapi import Limiter
+from slowapi.errors import RateLimitExceeded
 from x402.http import FacilitatorConfig, HTTPFacilitatorClient, PaymentOption
 from x402.http.middleware.fastapi import PaymentMiddlewareASGI
 from x402.http.types import RouteConfig
@@ -138,6 +140,22 @@ if STRIPE_SECRET_KEY:
     stripe.api_key = STRIPE_SECRET_KEY
 
 ADDRESS_RE = re.compile(r"^0x[0-9a-fA-F]{40}$")
+
+
+# -- Client IP Extraction ---------------------------------------------------
+
+def get_client_ip(request: Request) -> str:
+    """Extract real client IP. Railway's Envoy proxy sets X-Envoy-External-Address."""
+    return (
+        request.headers.get("X-Envoy-External-Address")
+        or request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
+        or (request.client.host if request.client else "unknown")
+    )
+
+
+# -- Rate Limiter (slowapi) -------------------------------------------------
+
+limiter = Limiter(key_func=get_client_ip)
 
 # -- Nansen API Routing ------------------------------------------------------
 # Labels & balances: only available via Corbits x402 proxy (Nansen returns 401
@@ -1472,6 +1490,152 @@ class AddressValidationMiddleware:
         })
 
 
+class SecurityMonitorMiddleware:
+    """ASGI middleware that observes all responses and detects suspicious patterns.
+
+    Must be the outermost middleware (last added via add_middleware).
+
+    Detects:
+    1. Endpoint enumeration: 10+ distinct paths from same IP in 60s
+    2. High 4xx rate: >80% of last 20 requests are 4xx
+    3. 402 without payment: 3+ 402s with no subsequent 200 in 5min
+    """
+
+    _ENUM_THRESHOLD = 10
+    _ENUM_WINDOW = 60
+    _4XX_THRESHOLD = 0.8
+    _4XX_SAMPLE = 20
+    _402_THRESHOLD = 3
+    _402_WINDOW = 300
+    _COOLDOWN = 300  # Don't re-log same event type for same IP within 5 min
+
+    def __init__(self, app):
+        self.app = app
+        self._requests: dict[str, list[tuple[float, str, int]]] = {}
+        self._402_ips: dict[str, list[float]] = {}
+        self._event_cooldown: dict[str, float] = {}
+        self._cleanup_counter = 0
+
+    @staticmethod
+    def _extract_ip(scope: dict) -> str:
+        """Extract client IP from ASGI scope headers."""
+        headers = dict(scope.get("headers", []))
+        ip = headers.get(b"x-envoy-external-address", b"").decode()
+        if ip:
+            return ip
+        xff = headers.get(b"x-forwarded-for", b"").decode()
+        if xff:
+            return xff.split(",")[0].strip()
+        client = scope.get("client")
+        if client:
+            return client[0]
+        return "unknown"
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        path = scope.get("path", "")
+        ip = self._extract_ip(scope)
+        status_code = None
+
+        async def send_wrapper(message):
+            nonlocal status_code
+            if message["type"] == "http.response.start":
+                status_code = message.get("status", 0)
+            await send(message)
+
+        await self.app(scope, receive, send_wrapper)
+
+        if status_code is not None:
+            self._record_request(ip, path, status_code)
+
+    def _record_request(self, ip: str, path: str, status_code: int):
+        now = time.time()
+
+        if ip not in self._requests:
+            self._requests[ip] = []
+        self._requests[ip].append((now, path, status_code))
+
+        # Trim to 5 minutes and 100 entries max
+        cutoff = now - 300
+        entries = [(t, p, s) for t, p, s in self._requests[ip] if t > cutoff]
+        if len(entries) > 100:
+            entries = entries[-100:]
+        self._requests[ip] = entries
+
+        # Pattern 1: Endpoint enumeration (10+ distinct paths in 60s)
+        window_entries = [(t, p, s) for t, p, s in entries if now - t < self._ENUM_WINDOW]
+        distinct = set(p for _, p, _ in window_entries)
+        if len(distinct) >= self._ENUM_THRESHOLD:
+            self._log_event(
+                "endpoint_enumeration", ip,
+                f"{len(distinct)} distinct paths in {self._ENUM_WINDOW}s",
+            )
+
+        # Pattern 2: High 4xx rate (>80% of last 20 requests)
+        recent = entries[-self._4XX_SAMPLE:]
+        if len(recent) >= self._4XX_SAMPLE:
+            n_4xx = sum(1 for _, _, s in recent if 400 <= s < 500)
+            if n_4xx / len(recent) > self._4XX_THRESHOLD:
+                self._log_event(
+                    "high_4xx_rate", ip,
+                    f"{n_4xx}/{len(recent)} requests returned 4xx",
+                )
+
+        # Pattern 3: 402 without payment (3+ 402s, no 200, within 5min)
+        if status_code == 402:
+            if ip not in self._402_ips:
+                self._402_ips[ip] = []
+            self._402_ips[ip].append(now)
+        elif status_code == 200 and ip in self._402_ips:
+            self._402_ips.pop(ip, None)
+
+        if ip in self._402_ips:
+            window = [t for t in self._402_ips[ip] if now - t < self._402_WINDOW]
+            self._402_ips[ip] = window
+            if len(window) >= self._402_THRESHOLD:
+                self._log_event(
+                    "402_without_payment", ip,
+                    f"{len(window)} unpaid 402 responses in {self._402_WINDOW}s",
+                )
+                self._402_ips.pop(ip, None)
+
+        # Periodic cleanup
+        self._cleanup_counter += 1
+        if self._cleanup_counter >= 500:
+            self._cleanup_counter = 0
+            self._cleanup()
+
+    def _log_event(self, event_type: str, ip: str, details: str):
+        key = f"{event_type}:{ip}"
+        now = time.time()
+        if key in self._event_cooldown and now - self._event_cooldown[key] < self._COOLDOWN:
+            return
+        self._event_cooldown[key] = now
+        try:
+            import db as _db
+            _db.log_security_event(event_type, ip, details)
+        except Exception:
+            pass
+
+    def _cleanup(self):
+        now = time.time()
+        cutoff = now - 300
+        stale = [ip for ip, reqs in self._requests.items()
+                 if not reqs or reqs[-1][0] < cutoff]
+        for ip in stale:
+            del self._requests[ip]
+        stale_402 = [ip for ip, ts in self._402_ips.items()
+                     if not ts or max(ts) < cutoff]
+        for ip in stale_402:
+            del self._402_ips[ip]
+        stale_cd = [k for k, t in self._event_cooldown.items() if now - t > self._COOLDOWN]
+        for k in stale_cd:
+            del self._event_cooldown[k]
+
+
 class InternalKeyBypassMiddleware:
     """
     ASGI middleware that skips x402 payment when X-Internal-Key header is valid.
@@ -2380,6 +2544,13 @@ app.add_middleware(InternalKeyBypassMiddleware)
 # before x402 or internal key bypass can process them.
 app.add_middleware(AddressValidationMiddleware)
 
+# Security monitor: outermost — observes all response status codes and
+# detects endpoint enumeration, high 4xx rates, and 402 without payment.
+app.add_middleware(SecurityMonitorMiddleware)
+
+# Rate limiter state (slowapi reads app.state.limiter for decorator checks)
+app.state.limiter = limiter
+
 
 # -- Global Exception Handler ------------------------------------------------
 
@@ -2398,6 +2569,20 @@ async def global_exception_handler(request: Request, exc: Exception):
     return JSONResponse(
         status_code=500,
         content={"error": "Internal server error"},
+    )
+
+
+@app.exception_handler(RateLimitExceeded)
+async def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded):
+    """Return JSON 429 and log to security_events."""
+    ip = get_client_ip(request)
+    try:
+        scan_db.log_security_event("rate_limit_exceeded", ip, str(exc.detail))
+    except Exception:
+        pass
+    return JSONResponse(
+        status_code=429,
+        content={"error": "Rate limit exceeded", "detail": str(exc.detail)},
     )
 
 
@@ -2951,6 +3136,7 @@ async def up():
 
 
 @app.get("/risk/premium/{address}", response_model=PremiumRiskResponse)
+@limiter.limit("60/minute")
 async def get_premium_risk_score(address: str, request: Request):
     """
     Premium risk score enriched with Nansen wallet intelligence, PnL data,
@@ -3110,6 +3296,7 @@ async def get_premium_risk_score(address: str, request: Request):
 
 
 @app.get("/counterparties/{address}", response_model=CounterpartyResponse)
+@limiter.limit("60/minute")
 async def get_counterparties(address: str, request: Request):
     """
     Know Your Counterparty — top wallets/contracts this address interacts with.
@@ -3185,6 +3372,7 @@ async def get_counterparties(address: str, request: Request):
 
 
 @app.get("/network-map/{address}", response_model=RelatedWalletsResponse)
+@limiter.limit("60/minute")
 async def get_network_map(address: str, request: Request, chain: str = "ethereum"):
     """
     Wallet Network Map — related wallets linked by funding, deployment, or multisig.
@@ -3264,6 +3452,7 @@ async def get_network_map(address: str, request: Request, chain: str = "ethereum
 
 
 @app.get("/risk/{address}", response_model=RiskResponse)
+@limiter.limit("60/minute")
 async def get_risk_score(address: str, request: Request):
     """
     Quick risk score for agent pre-flight checks.
@@ -3350,6 +3539,7 @@ async def get_risk_score(address: str, request: Request):
 
 
 @app.get("/health/{address}", response_model=HealthResponse)
+@limiter.limit("60/minute")
 async def get_health_report(address: str, request: Request):
     """
     Analyze a Base wallet address and return a health report.
@@ -3456,6 +3646,7 @@ async def get_health_report(address: str, request: Request):
 
 
 @app.post("/wash/{address}", response_model=WashResponse)
+@limiter.limit("60/minute")
 async def get_wash_report(address: str, request: Request):
     """
     Agent Wash: Hygiene scan for Base wallet addresses.
@@ -3531,6 +3722,7 @@ async def get_wash_report(address: str, request: Request):
 # -- Agent Health Score (AHS) Endpoint --------------------------------------
 
 @app.get("/ahs/{address}", response_model=AHSResponse)
+@limiter.limit("60/minute")
 async def get_ahs_report(address: str, request: Request):
     """
     Agent Health Score: Composite 0-100 index for on-chain agent wallets.
@@ -3706,6 +3898,7 @@ _BATCH_SEMAPHORE = asyncio.Semaphore(3)  # max 3 concurrent RPC calls
 
 
 @app.post("/ahs/batch", response_model=AHSBatchResponse)
+@limiter.limit("20/minute")
 async def get_ahs_batch(body: AHSBatchRequest, request: Request):
     """
     Batch Agent Health Score: score multiple wallets in a single call.
@@ -3887,6 +4080,7 @@ async def get_ahs_batch(body: AHSBatchRequest, request: Request):
 # ── Report Card endpoint ────────────────────────────────────────────────────
 
 @app.get("/report-card/{address}", response_model=ReportCardResponse)
+@limiter.limit("10/minute")
 async def get_report_card(address: str, request: Request):
     """
     Agent Report Card: Visual health report card with ecosystem benchmarks.
@@ -4058,6 +4252,7 @@ def _report_card_percentile(score: int, percentiles: dict) -> int:
 
 
 @app.get("/optimize/{address}", response_model=OptimizeResponse)
+@limiter.limit("60/minute")
 async def get_optimization_report(address: str, request: Request):
     """
     Analyze a Base wallet and return a gas optimization report.
@@ -4196,6 +4391,7 @@ async def protection_preview(address: str):
 
 
 @app.get("/agent/protect/{address}", response_model=ProtectionResponse)
+@limiter.limit("10/minute")
 async def get_protection_report(address: str, request: Request):
     """
     Autonomous protection agent — full wallet analysis and action plan.
@@ -4384,6 +4580,7 @@ async def retry_preview(address: str):
 
 
 @app.get("/retry/{address}", response_model=RetryResponse)
+@limiter.limit("60/minute")
 async def get_retry_transactions(address: str, request: Request):
     """
     Analyze failed transactions and return optimized retry transactions.
@@ -4454,6 +4651,7 @@ async def get_retry_transactions(address: str, request: Request):
 # -- Alert Endpoints ---------------------------------------------------------
 
 @app.get("/alerts/subscribe/{address}")
+@limiter.limit("60/minute")
 async def subscribe_alerts(address: str, request: Request):
     """
     Subscribe a wallet to automated health monitoring (30 days).
@@ -4686,6 +4884,28 @@ async def api_key_status(request: Request):
         "created_at": record["created_at"],
         "is_active": bool(record["is_active"]),
     }
+
+
+# -- Security Activity Endpoint -----------------------------------------------
+
+@app.get("/security/activity")
+async def security_activity(request: Request):
+    """Recent security events (rate limits, suspicious patterns).
+
+    Protected by X-Internal-Key header. Not accessible via x402 payment.
+    """
+    internal_key = request.headers.get("X-Internal-Key", "")
+    if not INTERNAL_API_KEY or not hmac.compare_digest(internal_key, INTERNAL_API_KEY):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    event_type = request.query_params.get("type")
+    limit = min(int(request.query_params.get("limit", "100")), 500)
+
+    loop = asyncio.get_running_loop()
+    events = await loop.run_in_executor(
+        None, lambda: scan_db.get_security_events(limit=limit, event_type=event_type)
+    )
+    return {"events": events, "total": len(events)}
 
 
 # -- Trust Registry Endpoint -------------------------------------------------
