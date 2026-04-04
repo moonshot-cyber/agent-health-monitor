@@ -1021,6 +1021,7 @@
         <button class="guided-btn" data-endpoint="alerts" onclick="selectService('alerts')">Live Alerts <span class="guided-price">$2.00</span></button>
         <button class="guided-btn" data-endpoint="optimize" onclick="selectService('optimize')">Optimize <span class="guided-price">$5.00</span></button>
         <button class="guided-btn" data-endpoint="retry" onclick="selectService('retry')">Retry Failed Txns <span class="guided-price">$10.00</span></button>
+        <button class="guided-btn" data-endpoint="batch" onclick="selectService('batch')">Batch Score <span class="guided-price">$10.00</span></button>
         <button class="guided-btn" data-endpoint="protect" onclick="selectService('protect')">Agent Protect <span class="guided-price">$25.00</span></button>
       </div>
       <div class="intent-row">
@@ -1096,7 +1097,7 @@
   <div class="panel" id="browse-section">
     <div class="panel-header browse-toggle-header" onclick="toggleBrowse()">
       <span class="panel-title">// BROWSE_ENDPOINTS</span>
-      <span class="panel-tag" id="browse-toggle-label">▶ Show all 12 services</span>
+      <span class="panel-tag" id="browse-toggle-label">▶ Show all 13 services</span>
     </div>
     <div class="panel-body" id="browse-body" style="display:none">
       <div class="endpoint-grid">
@@ -1155,6 +1156,11 @@
           <div class="ep-name">/retry</div>
           <div class="ep-desc">Analyse and retry failed transactions</div>
         </div>
+        <div class="endpoint-card" data-endpoint="batch" data-price="10.00" data-path="/ahs/batch" data-method="POST" onclick="selectEndpoint(this)">
+          <div class="ep-price">$10.00</div>
+          <div class="ep-name">/ahs/batch</div>
+          <div class="ep-desc">Score up to 25 agent wallets in a single call</div>
+        </div>
         <div class="endpoint-card" data-endpoint="protect" data-price="25.00" data-path="/agent/protect" onclick="selectEndpoint(this)">
           <div class="ep-price">$25.00</div>
           <div class="ep-name">/protect</div>
@@ -1204,6 +1210,7 @@
     if (/alert|monitor|watch|notif|subscribe/.test(t)) return 'alerts';
     if (/wash|clean|hygiene|dust|spam|clutter|sweep/.test(t)) return 'wash';
     if (/report\s*card|visual|share|png|image/i.test(t)) return 'report-card';
+    if (/batch|bulk|multiple\s*wallet|multi.*score/i.test(t)) return 'batch';
     if (/\bahs\b|agent\s*health\s*score|composite\s*score|behavio|infra.*health|zombie|pattern/i.test(t)) return 'ahs';
     if (/optimi[sz]|gas|efficien|save|cheaper/.test(t)) return 'optimize';
     if (/retry|fail|revert|stuck|rescue/.test(t)) return 'retry';
@@ -1250,7 +1257,7 @@
     const label = document.getElementById('browse-toggle-label');
     const visible = body.style.display !== 'none';
     body.style.display = visible ? 'none' : 'block';
-    label.textContent = visible ? '\u25B6 Show all 12 services' : '\u25BC Hide services';
+    label.textContent = visible ? '\u25B6 Show all 13 services' : '\u25BC Hide services';
   }
 
   // ─── ENDPOINT SELECT ───
@@ -1888,13 +1895,16 @@
     }
 
     const coupon = document.getElementById('coupon-input')?.value?.trim().toUpperCase();
-    const url = couponValid && coupon
-      ? `${API_BASE}${selectedEndpoint.couponPath}/${coupon}/${wallet}`
-      : `${API_BASE}${selectedEndpoint.path}/${wallet}`;
+    const isBatch = selectedEndpoint.name === 'batch';
+    const url = isBatch
+      ? `${API_BASE}${selectedEndpoint.path}`
+      : couponValid && coupon
+        ? `${API_BASE}${selectedEndpoint.couponPath}/${coupon}/${wallet}`
+        : `${API_BASE}${selectedEndpoint.path}/${wallet}`;
 
     terminal([
       ['t-dim', `ENDPOINT: ${selectedEndpoint.path}`],
-      ['t-dim', `TARGET: ${wallet}`],
+      ['t-dim', isBatch ? `TARGET: ${wallet} (batch mode)` : `TARGET: ${wallet}`],
       ['t-dim', `NETWORK: Base Mainnet (eip155:8453)`],
       ['t-info', couponValid ? 'COUPON APPLIED — bypassing payment' : `PAYMENT: $${selectedEndpoint.price.toFixed(2)} USDC required`],
       ['t-dim', 'Initiating request...'],
@@ -1902,7 +1912,16 @@
 
     try {
       const useCoupon = couponValid && coupon;
-      const fetchOpts = (!useCoupon && selectedEndpoint.method === 'POST') ? { method: 'POST' } : {};
+      let fetchOpts;
+      if (isBatch) {
+        fetchOpts = {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ addresses: [wallet] }),
+        };
+      } else {
+        fetchOpts = (!useCoupon && selectedEndpoint.method === 'POST') ? { method: 'POST' } : {};
+      }
       const res = await fetch(url, fetchOpts);
 
       if (res.status === 402) {
