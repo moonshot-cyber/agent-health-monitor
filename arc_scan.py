@@ -17,12 +17,14 @@ Usage:
 """
 
 import argparse
+import json
 import logging
 import os
 import random
 import time
 from datetime import datetime, timezone
 from functools import partial
+from pathlib import Path
 
 logger = logging.getLogger("ahm.arc_scan")
 
@@ -79,6 +81,41 @@ RPC_BACKOFF_BASE = 2.0
 
 ZERO_ADDRESS = "0x" + "0" * 40
 
+# Block checkpoint — avoids re-scanning from block 0 on every run.
+# Stored as a JSON file on the persistent volume.
+CHECKPOINT_PATH = Path(os.getenv("ARC_CHECKPOINT_PATH", "arc_scan_checkpoint.json"))
+EVENT_CHUNK_SIZE = 10_000  # blocks per eth_getLogs request
+
+
+# ---------------------------------------------------------------------------
+# Block checkpoint persistence
+# ---------------------------------------------------------------------------
+
+def load_checkpoint() -> dict:
+    """Load the last-scanned-block checkpoint from disk."""
+    try:
+        if CHECKPOINT_PATH.exists():
+            data = json.loads(CHECKPOINT_PATH.read_text())
+            logger.info("Loaded Arc checkpoint: last_scanned_block=%s", data.get("last_scanned_block"))
+            return data
+    except Exception:
+        logger.warning("Failed to read Arc checkpoint, starting from block 0")
+    return {}
+
+
+def save_checkpoint(last_scanned_block: int, events_found: int) -> None:
+    """Persist the highest block we have fetched events through."""
+    data = {
+        "last_scanned_block": last_scanned_block,
+        "events_found": events_found,
+        "saved_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    }
+    try:
+        CHECKPOINT_PATH.write_text(json.dumps(data))
+        logger.info("Saved Arc checkpoint: block %d", last_scanned_block)
+    except Exception:
+        logger.warning("Failed to save Arc checkpoint (non-fatal)")
+
 
 # ---------------------------------------------------------------------------
 # Discovery: scan the on-chain registry via Registered events
@@ -127,18 +164,23 @@ def _rpc_call_with_retry(fn, *args, label: str = "RPC call"):
 
 
 def _fetch_registered_events(w3, contract, from_block: int = 0) -> list[dict]:
-    """Fetch all Registered events from the IdentityRegistry.
+    """Fetch Registered events from the IdentityRegistry in fixed-size chunks.
 
-    Uses batch log queries. Falls back to incremental probing if
-    the RPC doesn't support large block ranges.
+    Uses EVENT_CHUNK_SIZE-block windows (default 10,000) to stay within
+    RPC payload limits. If a chunk still triggers a 413 / range error,
+    the chunk size is halved down to a 1,000-block floor.
     """
     latest_block = w3.eth.block_number
-    logger.info("Arc discovery: fetching Registered events from block %d to %d", from_block, latest_block)
+    total_range = latest_block - from_block
+    logger.info(
+        "Arc discovery: fetching Registered events blocks %d→%d (%d blocks, chunk=%d)",
+        from_block, latest_block, total_range, EVENT_CHUNK_SIZE,
+    )
 
-    all_events = []
-    # Try full range first; some RPCs limit range to ~10k blocks
-    chunk_size = latest_block - from_block + 1
+    all_events: list[dict] = []
+    chunk_size = EVENT_CHUNK_SIZE
     start = from_block
+    chunks_queried = 0
 
     while start <= latest_block:
         end = min(start + chunk_size - 1, latest_block)
@@ -149,16 +191,35 @@ def _fetch_registered_events(w3, contract, from_block: int = 0) -> list[dict]:
             events = event_filter.get_all_entries()
             all_events.extend(events)
             start = end + 1
+            chunks_queried += 1
+
+            if chunks_queried % 100 == 0:
+                pct = (start - from_block) / max(total_range, 1) * 100
+                logger.info(
+                    "  progress: %d/%d blocks (%.0f%%), %d events so far",
+                    start - from_block, total_range, pct, len(all_events),
+                )
+
         except Exception as e:
             err_str = str(e).lower()
-            if "range" in err_str or "too many" in err_str or "limit" in err_str:
-                # Reduce chunk size and retry
-                chunk_size = max(1000, chunk_size // 4)
+            is_range_error = (
+                "range" in err_str
+                or "too many" in err_str
+                or "limit" in err_str
+                or "too large" in err_str
+                or "413" in err_str
+                or "payload" in err_str
+            )
+            if is_range_error and chunk_size > 1000:
+                chunk_size = max(1000, chunk_size // 2)
                 logger.info("Arc discovery: reducing chunk size to %d blocks", chunk_size)
                 continue
             raise
 
-    logger.info("Arc discovery: found %d Registered events", len(all_events))
+    logger.info(
+        "Arc discovery: found %d Registered events in %d chunks",
+        len(all_events), chunks_queried,
+    )
     return all_events
 
 
@@ -178,11 +239,23 @@ def discover_arc_wallets(max_agents: int = 500) -> list[dict]:
     chain_id = w3.eth.chain_id
     logger.info("Arc IdentityRegistry connected (chain=%d, rpc=%s)", chain_id, ARC_RPC_URL)
 
+    # Resume from last checkpoint (or block 0 on first run)
+    checkpoint = load_checkpoint()
+    from_block = checkpoint.get("last_scanned_block", 0)
+    if from_block > 0:
+        # Start one block after the last fully-scanned block
+        from_block += 1
+        logger.info("Resuming from checkpoint block %d", from_block)
+
     # Discover agents via Registered events
-    events = _fetch_registered_events(w3, contract)
+    latest_block = w3.eth.block_number
+    events = _fetch_registered_events(w3, contract, from_block=from_block)
+
+    # Persist the block we scanned through, even if 0 events found
+    save_checkpoint(latest_block, len(events))
 
     if not events:
-        logger.warning("No Registered events found on Arc IdentityRegistry")
+        logger.warning("No new Registered events found since block %d", from_block)
         return []
 
     wallets: list[dict] = []
