@@ -1,73 +1,62 @@
 # ACP Nightly Scan — Automated Scheduling
 
 Automated nightly scanning of the ACP (agdp.io) agent ecosystem.
-Runs `acp_proactive_scan.py` daily at **02:00 UTC**, scanning up to 500 agents and 100 wallets per run.
+Runs daily at **02:00 UTC**, scanning up to 500 agents and 100 wallets per run.
 
 ---
 
-## Option A: Railway Cron Service (Recommended)
+## Production: APScheduler (in-process)
 
-Railway supports cron jobs on all plans. The scan runs as a **separate service** in the same Railway project — it won't interfere with the web API.
+The ACP nightly scan runs inside the FastAPI web process via APScheduler. No separate Railway cron service is needed.
 
-### Setup Steps
+The scheduler is configured in `api.py` lifespan:
 
-1. **Open your Railway project** (the one running `agent-health-monitor`)
+```python
+scheduler.add_job(
+    run_acp_scan,
+    trigger=CronTrigger(hour=2, minute=0, timezone="UTC"),
+    id="acp_nightly_scan",
+    coalesce=True,
+    misfire_grace_time=3600,
+    max_instances=1,
+)
+```
 
-2. **Create a new service:**
-   - Click **"+ New"** → **"GitHub Repo"** → select the same `agent-health-monitor` repo
-   - Or click **"+ New"** → **"Empty Service"** and connect the repo
+### How it works
 
-3. **Set the config file** (Settings tab → "Config as Code"):
-   - Set **Config File Path** to `/railway.cron.json`
-   - This is the critical step — without it, Railway reads `railway.json` and runs `uvicorn api:app` instead of the scan script
+- `run_acp_scan()` imports from `acp_proactive_scan.py` and offloads sync I/O to `run_in_executor`
+- An `asyncio.Lock` prevents concurrent runs
+- Already-scanned wallets are automatically skipped
+- Configurable via environment variables:
 
-4. **Configure the cron schedule** (Settings tab):
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ACP_MAX_AGENTS` | `500` | Max agents to fetch from ACP API |
+| `ACP_MAX_SCANS` | `100` | Max AHS scans per run |
+| `ACP_SORT` | `successfulJobCount:desc` | API sort order |
+| `ACP_MAX_RUNTIME` | `3600` | Safety timeout in seconds |
 
-   | Setting | Value |
-   |---------|-------|
-   | **Cron Schedule** | `0 2 * * *` |
+### Manual trigger
 
-   The start command (`python cron_acp_scan.py`) and restart policy (`Never`) are already set in `railway.cron.json`. You do **not** need to set them manually in the dashboard.
+```bash
+# Trigger scan immediately (requires X-Internal-Key header)
+curl -X POST https://agenthealthmonitor.xyz/acp-scan/trigger \
+  -H "X-Internal-Key: $INTERNAL_API_KEY"
 
-5. **Add environment variables** (Variables tab):
-   - The cron service needs the same `DB_PATH` and `BASESCAN_API_KEY` as the web service
-   - Copy shared variables from the web service, or use Railway's **shared variables** feature
-   - Optional overrides (defaults shown):
+# Check scan status
+curl https://agenthealthmonitor.xyz/acp-scan/status \
+  -H "X-Internal-Key: $INTERNAL_API_KEY"
+```
 
-   | Variable | Default | Description |
-   |----------|---------|-------------|
-   | `ACP_MAX_AGENTS` | `500` | Max agents to fetch from ACP API |
-   | `ACP_MAX_SCANS` | `100` | Max AHS scans per run |
-   | `ACP_SORT` | `successfulJobCount:desc` | API sort order |
-   | `ACP_MAX_RUNTIME` | `3600` | Safety timeout in seconds |
+### Why there's no Procfile
 
-6. **Deploy** — Railway will build the service and start running it on schedule
-
-### Cron Schedule Reference
-
-| Schedule | Cron Expression |
-|----------|-----------------|
-| Daily at 02:00 UTC | `0 2 * * *` |
-| Every 12 hours | `0 */12 * * *` |
-| Weekdays only at 02:00 | `0 2 * * 1-5` |
-| Every 6 hours | `0 */6 * * *` |
-
-### Railway Cron Constraints
-
-- Minimum interval: **5 minutes** between runs
-- Schedule is in **UTC** (not local time)
-- The service must **exit** when done — `cron_acp_scan.py` handles this
-- Execution time may vary by a few minutes from the scheduled time
-
-### Why There's No Procfile
-
-This repo intentionally has **no Procfile**. Nixpacks treats the Procfile `web:` command as the highest-priority start command, overriding `startCommand` in `railway.json` / `railway.cron.json`. With a Procfile present, both the web API and cron service would run `uvicorn` regardless of their config file settings. Start commands are defined exclusively in `railway.json` (web) and `railway.cron.json` (cron) to allow per-service control.
+This repo intentionally has **no Procfile**. Nixpacks treats the Procfile `web:` command as the highest-priority start command, overriding `startCommand` in `railway.json`. The start command is defined exclusively in `railway.json`.
 
 ---
 
-## Option B: Windows Task Scheduler (Local Fallback)
+## Local Fallback: Windows Task Scheduler
 
-Use this if Railway cron doesn't work for your plan, or if you want to run scans from your local machine.
+Use this if you want to run scans from your local machine.
 
 ### Automatic Setup (one command)
 
@@ -131,11 +120,11 @@ Logs older than 30 days are automatically cleaned up.
 
 ## Monitoring
 
-### Railway
+### Production (APScheduler)
 
-- **Logs:** Railway dashboard → select the cron service → **Deployments** tab → click a run to see stdout/stderr
-- **Status:** Green checkmark = success, red X = failed (non-zero exit)
-- **Alerts:** Set up Railway notifications in Project Settings → Notifications to get notified on failures
+- **Logs:** Railway dashboard → web service → **Deployments** tab → search for `ACP nightly scan`
+- **Status endpoint:** `GET /acp-scan/status` (protected by `X-Internal-Key`) returns `running` flag and `next_scheduled_run`
+- **Manual trigger:** `POST /acp-scan/trigger` (protected by `X-Internal-Key`)
 
 ### Windows Task Scheduler
 
@@ -166,7 +155,7 @@ The scan processes agents in two stages — **discovery** (fetching from ACP API
 
 ### Via Environment Variables (Railway)
 
-Set these in the Railway cron service's Variables tab:
+Set these in the Railway web service's Variables tab:
 
 | Variable | Default | Effect |
 |----------|---------|--------|
@@ -210,7 +199,7 @@ Runtime assumes ~4s per wallet (2× Blockscout calls with 2s delay each). Alread
 ### When to Decrease Batch Size
 
 - **Blockscout rate limiting (429 errors)** — reduce `ACP_MAX_SCANS` or add `BASESCAN_API_KEY`
-- **Railway cron timing out** — reduce both values
+- **Scan taking too long** — reduce both values
 - **API costs matter** — lower `ACP_MAX_AGENTS` to reduce Blockscout calls
 
 ---
@@ -219,9 +208,9 @@ Runtime assumes ~4s per wallet (2× Blockscout calls with 2s delay each). Alread
 
 | File | Purpose |
 |------|---------|
-| `cron_acp_scan.py` | Cron wrapper — handles logging, exit codes, runtime guard |
+| `api.py` (`run_acp_scan`) | Production entry point — APScheduler job at 02:00 UTC |
 | `acp_proactive_scan.py` | Core scanner — discovery, dedup, AHS scanning, reporting |
-| `railway.cron.json` | Railway service config for the cron service |
+| `cron_acp_scan.py` | Standalone CLI wrapper for manual runs |
 | `scripts/run_acp_scan.bat` | Windows batch runner with log rotation |
 | `scripts/acp_scan_task.xml` | Windows Task Scheduler task definition |
 | `CRON_SETUP.md` | This file |
