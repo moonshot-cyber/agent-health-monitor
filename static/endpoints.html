@@ -403,6 +403,20 @@
   </div>
   <div class="divider"></div>
   <div class="section">
+    <div class="sect-header anim-in"><div class="sect-tag">// Tiered Trust Routing</div><div class="sect-title">GET /ahs/route/{address} &mdash; $0.01</div></div>
+    <div class="dim-row two-col anim-in">
+      <div class="dim-card">
+        <div class="dim-tag">Payment Routing Signal</div>
+        <div class="dim-desc" style="margin-top:0">Returns a routing recommendation (instant_settle, escrow, or reject) based on the agent's current AHS score. Designed for payment middleware &mdash; one call, one signal.</div>
+      </div>
+      <div class="dim-card">
+        <div class="dim-tag">Response Fields</div>
+        <div class="dim-desc" style="margin-top:0">address, agent_health_score, grade, routing_recommendation, confidence, scored_at, stale</div>
+      </div>
+    </div>
+  </div>
+  <div class="divider"></div>
+  <div class="section">
     <div class="sect-header anim-in"><div class="sect-tag">// Sample Response</div><div class="sect-title">What You Get Back</div></div>
     <div class="anim-in"><div class="code-block" id="ahs-code"></div></div>
   </div>
