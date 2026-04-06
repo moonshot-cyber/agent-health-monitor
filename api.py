@@ -45,8 +45,8 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta, timezone
 from functools import partial
 from ipaddress import ip_address
-from pathlib import Path
-from typing import Optional
+import pathlib
+from typing import Annotated, Optional
 from urllib.parse import quote as url_quote, urlparse
 
 import hashlib
@@ -55,11 +55,11 @@ import httpx as httpx_client
 import jwt
 import stripe
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi import FastAPI, HTTPException, Path, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -141,6 +141,14 @@ if STRIPE_SECRET_KEY:
 
 ADDRESS_RE = re.compile(r"^0x[0-9a-fA-F]{40}$")
 
+# Reusable Annotated type for {address} path parameters across all endpoints.
+# Using Annotated keeps address as a required positional arg (no default value),
+# so direct calls like `await get_risk_score(address)` from coupon endpoints still work.
+WalletAddress = Annotated[str, Path(
+    description="Ethereum wallet address (0x-prefixed, 40 hex chars)",
+    examples=["0xde0b295669a9fd93d5f28d9ec85e40f4cb697bae"],
+)]
+
 
 # -- Client IP Extraction ---------------------------------------------------
 
@@ -187,48 +195,48 @@ if NANSEN_PAYER_PRIVATE_KEY:
 # -- Response Models ---------------------------------------------------------
 
 class Recommendation(BaseModel):
-    category: str
-    severity: str  # "critical", "high", "medium", "info"
-    message: str
+    category: str = Field(description="Issue category (gas, nonce, failure, balance)", examples=["gas"])
+    severity: str = Field(description="Severity level: critical, high, medium, or info", examples=["high"])
+    message: str = Field(description="Actionable recommendation text", examples=["Gas waste detected — 12% of gas spent on reverted transactions"])
 
 
 class HealthReport(BaseModel):
-    address: str
-    is_contract: bool
-    health_score: float
-    optimization_priority: str
-    total_transactions: int
-    successful: int
-    failed: int
-    success_rate_pct: float
-    total_gas_spent_eth: float
-    wasted_gas_eth: float
-    estimated_monthly_waste_usd: float
-    avg_gas_efficiency_pct: float
-    out_of_gas_count: int
-    reverted_count: int
-    nonce_gap_count: int
-    retry_count: int
-    top_failure_type: str
-    first_seen: str
-    last_seen: str
-    recommendations: list[Recommendation]
-    eth_price_usd: float
-    analyzed_at: str
+    address: str = Field(description="Wallet address analysed", examples=["0xde0b295669a9fd93d5f28d9ec85e40f4cb697bae"])
+    is_contract: bool = Field(description="Whether the address is a smart contract", examples=[False])
+    health_score: float = Field(description="Composite health score 0-100", examples=[74.5])
+    optimization_priority: str = Field(description="Priority level: low, medium, high, critical", examples=["medium"])
+    total_transactions: int = Field(description="Total transactions in analysis window", examples=[1542])
+    successful: int = Field(description="Number of successful transactions", examples=[1480])
+    failed: int = Field(description="Number of failed transactions", examples=[62])
+    success_rate_pct: float = Field(description="Transaction success rate as percentage", examples=[95.98])
+    total_gas_spent_eth: float = Field(description="Total gas spent in ETH", examples=[0.284])
+    wasted_gas_eth: float = Field(description="Gas wasted on failed transactions in ETH", examples=[0.019])
+    estimated_monthly_waste_usd: float = Field(description="Projected monthly USD waste at current rate", examples=[14.30])
+    avg_gas_efficiency_pct: float = Field(description="Average gas usage vs gas limit percentage", examples=[67.3])
+    out_of_gas_count: int = Field(description="Transactions that failed due to out-of-gas", examples=[3])
+    reverted_count: int = Field(description="Transactions that reverted", examples=[59])
+    nonce_gap_count: int = Field(description="Detected nonce gaps", examples=[0])
+    retry_count: int = Field(description="Duplicate-nonce retry transactions detected", examples=[2])
+    top_failure_type: str = Field(description="Most common failure reason", examples=["execution reverted"])
+    first_seen: str = Field(description="ISO 8601 timestamp of earliest transaction", examples=["2024-01-15T08:30:00Z"])
+    last_seen: str = Field(description="ISO 8601 timestamp of most recent transaction", examples=["2025-04-05T14:22:00Z"])
+    recommendations: list[Recommendation] = Field(description="Prioritised list of actionable recommendations")
+    eth_price_usd: float = Field(description="ETH/USD price used for calculations", examples=[3245.50])
+    analyzed_at: str = Field(description="ISO 8601 timestamp of this analysis", examples=["2025-04-06T10:00:00Z"])
 
 
 class NansenLabel(BaseModel):
-    label: str
-    category: Optional[str] = None
-    definition: Optional[str] = None
+    label: str = Field(description="Nansen wallet label", examples=["Smart Money"])
+    category: Optional[str] = Field(default=None, description="Label category", examples=["behavioral"])
+    definition: Optional[str] = Field(default=None, description="Human-readable label definition", examples=["Wallet that consistently trades profitably"])
 
 
 class TokenBalance(BaseModel):
-    chain: str
-    symbol: str
-    name: str
-    amount: float
-    usd_value: float
+    chain: str = Field(description="Chain identifier", examples=["base"])
+    symbol: str = Field(description="Token ticker symbol", examples=["USDC"])
+    name: str = Field(description="Full token name", examples=["USD Coin"])
+    amount: float = Field(description="Token balance amount", examples=[1250.75])
+    usd_value: float = Field(description="USD value of the balance", examples=[1250.75])
 
 
 class Counterparty(BaseModel):
@@ -266,12 +274,12 @@ class RelatedWalletsResponse(BaseModel):
 
 
 class HealthResponse(BaseModel):
-    status: str
-    report: HealthReport
-    nansen_labels: list[NansenLabel] = []
-    nansen_available: bool = False
-    token_balances: list[TokenBalance] = []
-    total_portfolio_usd: float = 0.0
+    status: str = Field(description="Response status", examples=["ok"])
+    report: HealthReport = Field(description="Full health analysis report")
+    nansen_labels: list[NansenLabel] = Field(default=[], description="Nansen wallet intelligence labels, if available")
+    nansen_available: bool = Field(default=False, description="Whether Nansen enrichment was successful")
+    token_balances: list[TokenBalance] = Field(default=[], description="Token balances across chains")
+    total_portfolio_usd: float = Field(default=0.0, description="Total portfolio value in USD", examples=[4820.50])
 
 
 class TransactionTypeOptimization(BaseModel):
@@ -401,9 +409,9 @@ class ProtectionPreviewResponse(BaseModel):
 # -- Risk Score Model --------------------------------------------------------
 
 class RiskResponse(BaseModel):
-    risk_score: int
-    risk_level: str
-    verdict: str
+    risk_score: int = Field(description="Risk score from 0 (safe) to 100 (dangerous)", examples=[32])
+    risk_level: str = Field(description="Risk classification: LOW, MEDIUM, HIGH, or CRITICAL", examples=["LOW"])
+    verdict: str = Field(description="One-line human-readable risk assessment", examples=["Low-risk wallet with normal transaction patterns"])
 
 
 class PnlTokenSummary(BaseModel):
@@ -445,38 +453,38 @@ class PremiumRiskResponse(BaseModel):
 # -- Wash Models ------------------------------------------------------------
 
 class WashIssue(BaseModel):
-    category: str           # "dust", "spam", "gas", "failed_tx", "nonce"
-    severity: str           # "low", "medium", "high"
-    description: str        # Human-readable description
-    action: str             # Recommended cleanup action
-    estimated_savings: Optional[str] = None
+    category: str = Field(description="Issue category: dust, spam, gas, failed_tx, or nonce", examples=["dust"])
+    severity: str = Field(description="Issue severity: low, medium, or high", examples=["medium"])
+    description: str = Field(description="Human-readable description of the issue", examples=["14 dust tokens worth < $0.01 each cluttering wallet"])
+    action: str = Field(description="Recommended cleanup action", examples=["Consolidate or discard dust tokens to reduce clutter"])
+    estimated_savings: Optional[str] = Field(default=None, description="Potential savings from fixing this issue", examples=["$0.42/month in gas"])
 
 
 class WashReport(BaseModel):
-    address: str
-    cleanliness_score: int
-    cleanliness_grade: str
-    total_issues: int
-    issues_by_severity: dict
-    dust_tokens: int
-    dust_total_usd: float
-    spam_tokens: int
-    spam_token_list: list
-    gas_efficiency_pct: float
-    gas_efficiency_grade: str
-    wasted_gas_usd: float
-    failed_tx_count_24hr: int
-    failed_tx_patterns: list
-    nonce_gaps: int
-    issues: list[WashIssue]
-    recommendations: list[str]
-    scan_timestamp: str
-    next_wash_recommended: str
+    address: str = Field(description="Wallet address scanned", examples=["0xde0b295669a9fd93d5f28d9ec85e40f4cb697bae"])
+    cleanliness_score: int = Field(description="Cleanliness score 0 (dirty) to 100 (spotless)", examples=[72])
+    cleanliness_grade: str = Field(description="Letter grade A-F", examples=["C"])
+    total_issues: int = Field(description="Total hygiene issues found", examples=[8])
+    issues_by_severity: dict = Field(description="Issue count by severity level", examples=[{"high": 1, "medium": 3, "low": 4}])
+    dust_tokens: int = Field(description="Number of dust tokens (< $0.01 value)", examples=[14])
+    dust_total_usd: float = Field(description="Total USD value of dust tokens", examples=[0.03])
+    spam_tokens: int = Field(description="Number of suspected spam/airdrop tokens", examples=[5])
+    spam_token_list: list = Field(description="Names of detected spam tokens", examples=[["FakeUSDT", "SCAM-Airdrop"]])
+    gas_efficiency_pct: float = Field(description="Gas usage efficiency percentage", examples=[71.4])
+    gas_efficiency_grade: str = Field(description="Gas efficiency letter grade", examples=["C"])
+    wasted_gas_usd: float = Field(description="USD value of gas wasted on failed txs", examples=[8.20])
+    failed_tx_count_24hr: int = Field(description="Failed transactions in the last 24 hours", examples=[3])
+    failed_tx_patterns: list = Field(description="Detected failure pattern names", examples=[["repeated_revert"]])
+    nonce_gaps: int = Field(description="Number of nonce gaps detected", examples=[0])
+    issues: list[WashIssue] = Field(description="Detailed list of hygiene issues found")
+    recommendations: list[str] = Field(description="Prioritised cleanup recommendations", examples=[["Revoke approvals for 5 spam tokens", "Set tighter gas limits on swap calls"]])
+    scan_timestamp: str = Field(description="ISO 8601 timestamp of this scan", examples=["2025-04-06T10:00:00Z"])
+    next_wash_recommended: str = Field(description="Recommended next scan date", examples=["2025-04-13T10:00:00Z"])
 
 
 class WashResponse(BaseModel):
-    status: str
-    report: WashReport
+    status: str = Field(description="Response status", examples=["ok"])
+    report: WashReport = Field(description="Full hygiene scan report")
 
 
 # -- AHS Models --------------------------------------------------------------
@@ -488,10 +496,10 @@ class AHSDimensionScore(BaseModel):
     contributing_factors: list
 
 class AHSCrossDimensionalPattern(BaseModel):
-    name: str
-    detected: bool
-    severity: str
-    description: str
+    name: str = Field(description="Pattern identifier", examples=["Zombie Agent"])
+    detected: bool = Field(description="Whether this pattern was detected", examples=[True])
+    severity: str = Field(description="Pattern severity: info, warning, or critical", examples=["warning"])
+    description: str = Field(description="Human-readable explanation", examples=["Wallet shows signs of abandoned automation"])
 
 class AHSShadowSignals(BaseModel):
     session_continuity_score: Optional[int] = None
@@ -502,24 +510,24 @@ class AHSShadowSignals(BaseModel):
     shadow_patterns: list[dict] = []
 
 class AHSReport(BaseModel):
-    address: str
-    agent_health_score: int
-    grade: str
-    confidence: str
-    mode: str
-    dimensions: list[AHSDimensionScore]
-    patterns_detected: list[AHSCrossDimensionalPattern]
-    trend: Optional[str] = None
-    recommendations: list[str]
-    ahs_token: str
-    model_version: str
-    scan_timestamp: str
-    next_scan_recommended: str
-    shadow_signals: Optional[AHSShadowSignals] = None
+    address: str = Field(description="Wallet address scored", examples=["0xde0b295669a9fd93d5f28d9ec85e40f4cb697bae"])
+    agent_health_score: int = Field(description="Composite AHS score 0-100", examples=[67])
+    grade: str = Field(description="Letter grade A-F", examples=["C"])
+    confidence: str = Field(description="Score confidence level: high, medium, or low", examples=["high"])
+    mode: str = Field(description="Scoring mode: 2D (wallet + behavioural) or 3D (+ infrastructure)", examples=["2D"])
+    dimensions: list[AHSDimensionScore] = Field(description="Per-dimension score breakdown")
+    patterns_detected: list[AHSCrossDimensionalPattern] = Field(description="Cross-dimensional anomaly patterns detected")
+    trend: Optional[str] = Field(default=None, description="Score trend vs previous scan: improving, stable, or declining", examples=["stable"])
+    recommendations: list[str] = Field(description="Prioritised improvement recommendations", examples=[["Reduce revert rate below 5% to improve D1 score", "Investigate Zombie Agent pattern"]])
+    ahs_token: str = Field(description="JWT token for temporal trend tracking across scans", examples=["eyJhbGciOiJIUzI1NiIs..."])
+    model_version: str = Field(description="AHS scoring model version", examples=["2.1.0"])
+    scan_timestamp: str = Field(description="ISO 8601 timestamp of this scan", examples=["2025-04-06T10:00:00Z"])
+    next_scan_recommended: str = Field(description="Recommended next scan date", examples=["2025-04-13T10:00:00Z"])
+    shadow_signals: Optional[AHSShadowSignals] = Field(default=None, description="Shadow signal analysis (session continuity, budget exhaustion)")
 
 class AHSResponse(BaseModel):
-    status: str
-    report: AHSReport
+    status: str = Field(description="Response status", examples=["ok"])
+    report: AHSReport = Field(description="Full Agent Health Score report")
 
 
 # -- AHS Batch models -------------------------------------------------------
@@ -552,32 +560,32 @@ class AHSBatchResponse(BaseModel):
 # -- Report Card models ------------------------------------------------------
 
 class EcosystemComparison(BaseModel):
-    average_ahs: Optional[float] = None
-    percentile_rank: int
-    grade_distribution: dict
-    total_agents_scored: int
+    average_ahs: Optional[float] = Field(default=None, description="Ecosystem-wide average AHS score", examples=[58.3])
+    percentile_rank: int = Field(description="This wallet's percentile rank in the ecosystem (0-100)", examples=[72])
+    grade_distribution: dict = Field(description="Grade distribution across all scored agents", examples=[{"A": 8, "B": 22, "C": 45, "D": 18, "F": 7}])
+    total_agents_scored: int = Field(description="Total agents in the comparison pool", examples=[1247])
 
 class ReportCardDimension(BaseModel):
-    dimension: str
-    score: Optional[int] = None
-    weight: float
+    dimension: str = Field(description="Dimension name (D1 Wallet Hygiene, D2 Behavioural, D3 Infrastructure)", examples=["D1 Wallet Hygiene"])
+    score: Optional[int] = Field(default=None, description="Dimension score 0-100", examples=[84])
+    weight: float = Field(description="Weight of this dimension in the composite score", examples=[0.5])
 
 class ReportCardReport(BaseModel):
-    address: str
-    agent_health_score: int
-    grade: str
-    confidence: str
-    mode: str
-    dimensions: list[ReportCardDimension]
-    patterns_detected: list[AHSCrossDimensionalPattern]
-    recommendations: list[str]
-    ecosystem_comparison: EcosystemComparison
-    image_url: str
-    share_url: str
+    address: str = Field(description="Wallet address scored", examples=["0xde0b295669a9fd93d5f28d9ec85e40f4cb697bae"])
+    agent_health_score: int = Field(description="Composite AHS score 0-100", examples=[67])
+    grade: str = Field(description="Letter grade A-F", examples=["C"])
+    confidence: str = Field(description="Score confidence: high, medium, or low", examples=["high"])
+    mode: str = Field(description="Scoring mode: 2D or 3D", examples=["2D"])
+    dimensions: list[ReportCardDimension] = Field(description="Per-dimension score breakdown")
+    patterns_detected: list[AHSCrossDimensionalPattern] = Field(description="Cross-dimensional anomaly patterns detected")
+    recommendations: list[str] = Field(description="Prioritised improvement actions", examples=[["Reduce revert rate below 5%"]])
+    ecosystem_comparison: EcosystemComparison = Field(description="How this wallet compares to the ecosystem")
+    image_url: str = Field(description="URL to the generated report card PNG image", examples=["https://agenthealthmonitor.xyz/static/report-cards/0xde0b...7bae.png"])
+    share_url: str = Field(description="Shareable URL for this report card", examples=["https://agenthealthmonitor.xyz/report-card/0xde0b...7bae"])
 
 class ReportCardResponse(BaseModel):
-    status: str
-    report: ReportCardReport
+    status: str = Field(description="Response status", examples=["ok"])
+    report: ReportCardReport = Field(description="Full report card with ecosystem benchmarks")
 
 
 # -- Nansen Helper -----------------------------------------------------------
@@ -1299,7 +1307,7 @@ async def lifespan(app: FastAPI):
 
     # Verify critical static assets exist at startup
     _log = logging.getLogger("ahm")
-    og_img = Path(__file__).parent / "static" / "ahm-og-banner.png"
+    og_img = pathlib.Path(__file__).parent / "static" / "ahm-og-banner.png"
     if og_img.is_file():
         _log.info("Static OG image verified: %s (%d bytes)", og_img, og_img.stat().st_size)
     else:
@@ -2681,7 +2689,7 @@ def consume_api_key(record: dict, endpoint: str, wallet: str | None = None) -> N
 
 # -- Routes ------------------------------------------------------------------
 
-STATIC_DIR = Path(__file__).parent / "static"
+STATIC_DIR = pathlib.Path(__file__).parent / "static"
 
 
 @app.api_route("/", methods=["GET", "HEAD"], tags=["Discovery & Info"])
@@ -3032,7 +3040,7 @@ def _check_coupon_access_rate(ip: str):
 
 
 @app.get("/coupon/risk/{code}/{address}", tags=["Coupon Access"])
-async def coupon_risk(code: str, address: str, request: Request):
+async def coupon_risk(code: str, address: WalletAddress, request: Request):
     """Quick risk score via coupon — mirrors GET /risk/{address}."""
     _check_coupon_access_rate(request.client.host)
     _require_coupon(code)
@@ -3040,7 +3048,7 @@ async def coupon_risk(code: str, address: str, request: Request):
 
 
 @app.get("/coupon/health/{code}/{address}", tags=["Coupon Access"])
-async def coupon_health(code: str, address: str, request: Request):
+async def coupon_health(code: str, address: WalletAddress, request: Request):
     """Wallet health diagnosis via coupon — mirrors GET /health/{address}."""
     _check_coupon_access_rate(request.client.host)
     _require_coupon(code)
@@ -3048,7 +3056,7 @@ async def coupon_health(code: str, address: str, request: Request):
 
 
 @app.get("/coupon/optimize/{code}/{address}", tags=["Coupon Access"])
-async def coupon_optimize(code: str, address: str, request: Request):
+async def coupon_optimize(code: str, address: WalletAddress, request: Request):
     """Gas optimization report via coupon — mirrors GET /optimize/{address}."""
     _check_coupon_access_rate(request.client.host)
     _require_coupon(code)
@@ -3056,7 +3064,7 @@ async def coupon_optimize(code: str, address: str, request: Request):
 
 
 @app.get("/coupon/retry/{code}/{address}", tags=["Coupon Access"])
-async def coupon_retry(code: str, address: str, request: Request):
+async def coupon_retry(code: str, address: WalletAddress, request: Request):
     """Retry bot via coupon — mirrors GET /retry/{address}."""
     _check_coupon_access_rate(request.client.host)
     _require_coupon(code)
@@ -3064,7 +3072,7 @@ async def coupon_retry(code: str, address: str, request: Request):
 
 
 @app.get("/coupon/protect/{code}/{address}", tags=["Coupon Access"])
-async def coupon_protect(code: str, address: str, request: Request):
+async def coupon_protect(code: str, address: WalletAddress, request: Request):
     """Full protection agent via coupon — mirrors GET /agent/protect/{address}."""
     _check_coupon_access_rate(request.client.host)
     _require_coupon(code)
@@ -3072,7 +3080,7 @@ async def coupon_protect(code: str, address: str, request: Request):
 
 
 @app.get("/coupon/alerts/{code}/{address}", tags=["Coupon Access"])
-async def coupon_alerts(code: str, address: str, request: Request):
+async def coupon_alerts(code: str, address: WalletAddress, request: Request):
     """Alert subscription via coupon — mirrors GET /alerts/subscribe/{address}."""
     _check_coupon_access_rate(request.client.host)
     _require_coupon(code)
@@ -3080,7 +3088,7 @@ async def coupon_alerts(code: str, address: str, request: Request):
 
 
 @app.get("/coupon/risk-premium/{code}/{address}", tags=["Coupon Access"])
-async def coupon_premium_risk(code: str, address: str, request: Request):
+async def coupon_premium_risk(code: str, address: WalletAddress, request: Request):
     """Premium risk score via coupon — mirrors GET /risk/premium/{address}."""
     _check_coupon_access_rate(request.client.host)
     _require_coupon(code)
@@ -3088,7 +3096,7 @@ async def coupon_premium_risk(code: str, address: str, request: Request):
 
 
 @app.get("/coupon/counterparties/{code}/{address}", tags=["Coupon Access"])
-async def coupon_counterparties(code: str, address: str, request: Request):
+async def coupon_counterparties(code: str, address: WalletAddress, request: Request):
     """Counterparty analysis via coupon — mirrors GET /counterparties/{address}."""
     _check_coupon_access_rate(request.client.host)
     _require_coupon(code)
@@ -3096,7 +3104,7 @@ async def coupon_counterparties(code: str, address: str, request: Request):
 
 
 @app.get("/coupon/network-map/{code}/{address}", tags=["Coupon Access"])
-async def coupon_network_map(code: str, address: str, request: Request, chain: str = "ethereum"):
+async def coupon_network_map(code: str, address: WalletAddress, request: Request, chain: str = "ethereum"):
     """Network map via coupon — mirrors GET /network-map/{address}."""
     _check_coupon_access_rate(request.client.host)
     _require_coupon(code)
@@ -3104,7 +3112,7 @@ async def coupon_network_map(code: str, address: str, request: Request, chain: s
 
 
 @app.get("/coupon/wash/{code}/{address}", tags=["Coupon Access"])
-async def coupon_wash(code: str, address: str, request: Request):
+async def coupon_wash(code: str, address: WalletAddress, request: Request):
     """Hygiene scan via coupon — mirrors POST /wash/{address}."""
     _check_coupon_access_rate(request.client.host)
     _require_coupon(code)
@@ -3112,7 +3120,7 @@ async def coupon_wash(code: str, address: str, request: Request):
 
 
 @app.get("/coupon/ahs/{code}/{address}", tags=["Coupon Access"])
-async def coupon_ahs(code: str, address: str, request: Request):
+async def coupon_ahs(code: str, address: WalletAddress, request: Request):
     """Agent Health Score via coupon — mirrors GET /ahs/{address}."""
     _check_coupon_access_rate(request.client.host)
     _require_coupon(code)
@@ -3120,7 +3128,7 @@ async def coupon_ahs(code: str, address: str, request: Request):
 
 
 @app.get("/coupon/report-card/{code}/{address}", tags=["Coupon Access"])
-async def coupon_report_card(code: str, address: str, request: Request):
+async def coupon_report_card(code: str, address: WalletAddress, request: Request):
     """Visual report card via coupon — mirrors GET /report-card/{address}."""
     _check_coupon_access_rate(request.client.host)
     _require_coupon(code)
@@ -3212,7 +3220,7 @@ async def up():
 
 @app.get("/risk/premium/{address}", response_model=PremiumRiskResponse, tags=["Scoring & Risk"])
 @limiter.limit("60/minute")
-async def get_premium_risk_score(address: str, request: Request):
+async def get_premium_risk_score(address: WalletAddress, request: Request):
     """
     Premium risk score enriched with Nansen wallet intelligence, PnL data,
     and operational health metrics (transaction failure rate analysis).
@@ -3372,7 +3380,7 @@ async def get_premium_risk_score(address: str, request: Request):
 
 @app.get("/counterparties/{address}", response_model=CounterpartyResponse, tags=["Scoring & Risk"])
 @limiter.limit("60/minute")
-async def get_counterparties(address: str, request: Request):
+async def get_counterparties(address: WalletAddress, request: Request):
     """
     Know Your Counterparty — top wallets/contracts this address interacts with.
 
@@ -3448,7 +3456,7 @@ async def get_counterparties(address: str, request: Request):
 
 @app.get("/network-map/{address}", response_model=RelatedWalletsResponse, tags=["Scoring & Risk"])
 @limiter.limit("60/minute")
-async def get_network_map(address: str, request: Request, chain: str = "ethereum"):
+async def get_network_map(address: WalletAddress, request: Request, chain: str = "ethereum"):
     """
     Wallet Network Map — related wallets linked by funding, deployment, or multisig.
 
@@ -3528,7 +3536,7 @@ async def get_network_map(address: str, request: Request, chain: str = "ethereum
 
 @app.get("/risk/{address}", response_model=RiskResponse, tags=["Scoring & Risk"])
 @limiter.limit("60/minute")
-async def get_risk_score(address: str, request: Request):
+async def get_risk_score(address: WalletAddress, request: Request):
     """
     Quick risk score for agent pre-flight checks.
 
@@ -3615,7 +3623,7 @@ async def get_risk_score(address: str, request: Request):
 
 @app.get("/health/{address}", response_model=HealthResponse, tags=["Health & Hygiene"])
 @limiter.limit("60/minute")
-async def get_health_report(address: str, request: Request):
+async def get_health_report(address: WalletAddress, request: Request):
     """
     Analyze a Base wallet address and return a health report.
 
@@ -3722,7 +3730,7 @@ async def get_health_report(address: str, request: Request):
 
 @app.post("/wash/{address}", response_model=WashResponse, tags=["Health & Hygiene"])
 @limiter.limit("60/minute")
-async def get_wash_report(address: str, request: Request):
+async def get_wash_report(address: WalletAddress, request: Request):
     """
     Agent Wash: Hygiene scan for Base wallet addresses.
 
@@ -3798,7 +3806,7 @@ async def get_wash_report(address: str, request: Request):
 
 @app.get("/ahs/{address}", response_model=AHSResponse, tags=["Health & Hygiene"])
 @limiter.limit("60/minute")
-async def get_ahs_report(address: str, request: Request):
+async def get_ahs_report(address: WalletAddress, request: Request):
     """
     Agent Health Score: Composite 0-100 index for on-chain agent wallets.
 
@@ -4156,7 +4164,7 @@ async def get_ahs_batch(body: AHSBatchRequest, request: Request):
 
 @app.get("/report-card/{address}", response_model=ReportCardResponse, tags=["Health & Hygiene"])
 @limiter.limit("10/minute")
-async def get_report_card(address: str, request: Request):
+async def get_report_card(address: WalletAddress, request: Request):
     """
     Agent Report Card: Visual health report card with ecosystem benchmarks.
 
@@ -4328,7 +4336,7 @@ def _report_card_percentile(score: int, percentiles: dict) -> int:
 
 @app.get("/optimize/{address}", response_model=OptimizeResponse, tags=["Optimization"])
 @limiter.limit("60/minute")
-async def get_optimization_report(address: str, request: Request):
+async def get_optimization_report(address: WalletAddress, request: Request):
     """
     Analyze a Base wallet and return a gas optimization report.
 
@@ -4405,7 +4413,7 @@ async def get_optimization_report(address: str, request: Request):
 # -- Protection Agent Endpoints -----------------------------------------------
 
 @app.get("/agent/protect/preview/{address}", response_model=ProtectionPreviewResponse, tags=["Protection"])
-async def protection_preview(address: str):
+async def protection_preview(address: WalletAddress):
     """
     Free preview of protection agent analysis.
 
@@ -4467,7 +4475,7 @@ async def protection_preview(address: str):
 
 @app.get("/agent/protect/{address}", response_model=ProtectionResponse, tags=["Protection"])
 @limiter.limit("10/minute")
-async def get_protection_report(address: str, request: Request):
+async def get_protection_report(address: WalletAddress, request: Request):
     """
     Autonomous protection agent — full wallet analysis and action plan.
 
@@ -4608,7 +4616,7 @@ async def get_protection_report(address: str, request: Request):
 # -- RetryBot Endpoints ------------------------------------------------------
 
 @app.get("/retry/preview/{address}", response_model=RetryPreviewResponse, tags=["Optimization"])
-async def retry_preview(address: str):
+async def retry_preview(address: WalletAddress):
     """
     Free preview of retryable failed transactions.
 
@@ -4656,7 +4664,7 @@ async def retry_preview(address: str):
 
 @app.get("/retry/{address}", response_model=RetryResponse, tags=["Optimization"])
 @limiter.limit("60/minute")
-async def get_retry_transactions(address: str, request: Request):
+async def get_retry_transactions(address: WalletAddress, request: Request):
     """
     Analyze failed transactions and return optimized retry transactions.
 
@@ -4727,7 +4735,7 @@ async def get_retry_transactions(address: str, request: Request):
 
 @app.get("/alerts/subscribe/{address}", tags=["Alerts"])
 @limiter.limit("60/minute")
-async def subscribe_alerts(address: str, request: Request):
+async def subscribe_alerts(address: WalletAddress, request: Request):
     """
     Subscribe a wallet to automated health monitoring (30 days).
 
@@ -4807,7 +4815,7 @@ async def configure_alerts(req: ConfigureRequest):
 
 
 @app.get("/alerts/status/{address}", tags=["Alerts"])
-async def alert_status(address: str):
+async def alert_status(address: WalletAddress):
     """Check the status of an alert subscription."""
     if not ADDRESS_RE.match(address):
         raise HTTPException(status_code=400, detail=f"Invalid Ethereum address format: {address}")
@@ -4821,7 +4829,7 @@ async def alert_status(address: str):
 
 
 @app.delete("/alerts/unsubscribe/{address}", tags=["Alerts"])
-async def unsubscribe_alerts(address: str):
+async def unsubscribe_alerts(address: WalletAddress):
     """Remove an alert subscription."""
     if not ADDRESS_RE.match(address):
         raise HTTPException(status_code=400, detail=f"Invalid Ethereum address format: {address}")
