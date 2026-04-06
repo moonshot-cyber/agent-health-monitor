@@ -1,12 +1,12 @@
 # Agent Health Monitor
 
-Trust and health verification for the autonomous agent economy. Before an agent delegates a task, routes a payment, or enters a contract — it needs to know: **is this counterparty solvent, reliable, and operational?** AHM answers that with 13 diagnostic endpoints, 3,000+ agents in the trust registry, and composite scoring across three dimensions.
+Trust and health verification for the autonomous agent economy. Before an agent delegates a task, routes a payment, or enters a contract — it needs to know: **is this counterparty solvent, reliable, and operational?** AHM answers that with 14 diagnostic endpoints, 3,000+ agents in the trust registry, and composite scoring across three dimensions.
 
 **Pay how you want:** [x402 protocol](https://x402.org) (USDC on Base, pay-per-call) or [Stripe](https://agenthealthmonitor.xyz) (fiat API key, no wallet required).
 
 ## What it does
 
-**Screen** with `/risk` — **profile** with `/risk/premium` — **investigate** with `/counterparties` and `/network-map` — **diagnose** with `/health` — **clean** with `/wash` — **score** with `/ahs` — **batch score** with `/ahs/batch` — **visualise** with `/report-card` — **monitor** with `/alerts` — **fix** with `/optimize` — **retry** with `/retry` — **protect** with `/agent/protect`.
+**Screen** with `/risk` — **profile** with `/risk/premium` — **investigate** with `/counterparties` and `/network-map` — **diagnose** with `/health` — **clean** with `/wash` — **score** with `/ahs` — **route** with `/ahs/route` — **batch score** with `/ahs/batch` — **visualise** with `/report-card` — **monitor** with `/alerts` — **fix** with `/optimize` — **retry** with `/retry` — **protect** with `/agent/protect`.
 
 | Endpoint | Price (x402) | Purpose |
 |---|---|---|
@@ -17,6 +17,7 @@ Trust and health verification for the autonomous agent economy. Before an agent 
 | `GET /health/{address}` | $0.50 USDC | Full health diagnostic with solvency and operational analysis |
 | `POST /wash/{address}` | $0.50 USDC | Financial health scan — portfolio quality, efficiency, and failure patterns |
 | `GET /ahs/{address}` | $1.00 USDC | Agent Health Score — composite 0-100 blending solvency, behavioural consistency & operational stability |
+| `GET /ahs/route/{address}` | $0.01 USDC | Tiered trust routing — returns instant_settle, escrow, or reject based on AHS grade |
 | `GET /report-card/{address}` | $2.00 USDC | Visual report card with ecosystem benchmarks and shareable PNG |
 | `GET /alerts/subscribe/{address}` | $2.00 USDC/month | Automated monitoring — webhook alerts every 6 hours |
 | `GET /optimize/{address}` | $5.00 USDC | Operational efficiency report — per-transaction cost optimization |
@@ -305,15 +306,15 @@ GET /agent/protect/preview/{wallet_address}
 ## The Service Funnel
 
 ```
-  Screen    Profile    Investigate   Diagnose     Clean      Score     Batch     Report    Monitor      Fix       Retry     Protect
-  $0.01     $0.05    $0.10 each     $0.50      $0.50      $1.00     $10.00    $2.00    $2.00/mo    $5.00     $10.00     $25.00
+  Screen    Profile    Investigate   Diagnose     Clean      Score     Route     Batch     Report    Monitor      Fix       Retry     Protect
+  $0.01     $0.05    $0.10 each     $0.50      $0.50      $1.00     $0.01    $10.00    $2.00    $2.00/mo    $5.00     $10.00     $25.00
 
-GET /risk  /premium  /counterparties  /health  POST /wash  /ahs   POST /ahs/  /report  /alerts/sub /optimize  /retry  /agent/protect
-    |          |     /network-map        |          |        |     batch       card       |          |         |         |
-    v          v          v              v          v        v        v          v         v          v         v         v
- "Score:    Nansen    Top counter-   Full health  Dust +  Composite  Up to    Visual    Every 6h:  Per-type  Ready-to  Autonomous
-  8/100"    labels    parties +      score +      spam +  0-100 AHS  25       report    check &    gas       sign      triage +
-            + PnL     network map    gas waste    hygiene 3D infra   wallets  card PNG  alert      limits    EIP-1559  all services
+GET /risk  /premium  /counterparties  /health  POST /wash  /ahs   /ahs/    POST /ahs/  /report  /alerts/sub /optimize  /retry  /agent/protect
+    |          |     /network-map        |          |        |     route    batch       card       |          |         |         |
+    v          v          v              v          v        v        v        v          v         v          v         v         v
+ "Score:    Nansen    Top counter-   Full health  Dust +  Composite  Trust   Up to    Visual    Every 6h:  Per-type  Ready-to  Autonomous
+  8/100"    labels    parties +      score +      spam +  0-100 AHS  route   25       report    check &    gas       sign      triage +
+            + PnL     network map    gas waste    hygiene 3D infra   signal  wallets  card PNG  alert      limits    EIP-1559  all services
 ```
 
 Or skip straight to `GET /agent/protect/{address}` ($25) and let the agent figure it out.
@@ -420,6 +421,7 @@ uvicorn api:app --host 0.0.0.0 --port 4021
 | `PRICE_USD` | No | `$0.50` | Price per health check |
 | `WASH_PRICE_USD` | No | `$0.50` | Price per wash hygiene scan |
 | `AHS_PRICE_USD` | No | `$1.00` | Price per Agent Health Score |
+| `ROUTE_PRICE_USD` | No | `$0.01` | Price per trust routing signal |
 | `REPORT_CARD_PRICE_USD` | No | `$2.00` | Price per report card |
 | `AHS_BATCH_PRICE_USD` | No | `$10.00` | Price per batch AHS (up to 10 wallets) |
 | `AHS_JWT_SECRET` | No | (generated) | Secret for signing AHS trend-tracking JWT tokens |

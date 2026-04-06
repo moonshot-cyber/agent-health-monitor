@@ -6,7 +6,7 @@
 <meta name="base:app_id" content="699881c46768b2f53f686a78" />
 <title>Agent Health Monitor // Diagnostics for the Agent Economy</title>
 <meta property="og:title" content="Agent Health Monitor — Diagnostics for the Agent Economy">
-<meta property="og:description" content="Agent trust and health diagnostics. 13 endpoints from $0.01. Pay-per-call.">
+<meta property="og:description" content="Agent trust and health diagnostics. 14 endpoints from $0.01. Pay-per-call.">
 <meta property="og:image" content="https://agenthealthmonitor.xyz/static/ahm-og-banner.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
@@ -14,7 +14,7 @@
 <meta property="og:type" content="website">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Agent Health Monitor — Diagnostics for the Agent Economy">
-<meta name="twitter:description" content="Agent trust and health diagnostics. 13 endpoints from $0.01. Pay-per-call.">
+<meta name="twitter:description" content="Agent trust and health diagnostics. 14 endpoints from $0.01. Pay-per-call.">
 <meta name="twitter:image" content="https://agenthealthmonitor.xyz/static/ahm-og-banner.png">
 <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
 <link rel="icon" type="image/png" sizes="32x32" href="/static/ahm-favicon-32.png">
@@ -976,7 +976,7 @@
 <section class="hero">
   <div class="hero-tag">Agent Trust &amp; Health Protocol</div>
   <h1>AGENT <span>HEALTH</span> MONITOR</h1>
-  <p class="hero-sub">// Trust verification for the agent economy &middot; 13 endpoints from $0.01</p>
+  <p class="hero-sub">// Trust verification for the agent economy &middot; 14 endpoints from $0.01</p>
 </section>
 
 <!-- ENDPOINT NAV -->
@@ -1011,6 +1011,7 @@
     <div class="panel-body">
       <div class="guided-menu">
         <button class="guided-btn active" data-endpoint="risk" onclick="selectService('risk')">Quick Risk Check <span class="guided-price">$0.01</span></button>
+        <button class="guided-btn" data-endpoint="trust-route" onclick="selectService('trust-route')">Trust Routing <span class="guided-price">$0.01</span></button>
         <button class="guided-btn" data-endpoint="risk-premium" onclick="selectService('risk-premium')">Premium Risk Scan <span class="guided-price">$0.05</span></button>
         <button class="guided-btn" data-endpoint="counterparties" onclick="selectService('counterparties')">Counterparties <span class="guided-price">$0.10</span></button>
         <button class="guided-btn" data-endpoint="network-map" onclick="selectService('network-map')">Network Map <span class="guided-price">$0.10</span></button>
@@ -1097,7 +1098,7 @@
   <div class="panel" id="browse-section">
     <div class="panel-header browse-toggle-header" onclick="toggleBrowse()">
       <span class="panel-title">// BROWSE_ENDPOINTS</span>
-      <span class="panel-tag" id="browse-toggle-label">▶ Show all 13 services</span>
+      <span class="panel-tag" id="browse-toggle-label">▶ Show all 14 services</span>
     </div>
     <div class="panel-body" id="browse-body" style="display:none">
       <div class="endpoint-grid">
@@ -1105,6 +1106,11 @@
           <div class="ep-price">$0.01</div>
           <div class="ep-name">/risk</div>
           <div class="ep-desc">Quick risk score for pre-flight checks</div>
+        </div>
+        <div class="endpoint-card" data-endpoint="trust-route" data-price="0.01" data-path="/ahs/route" onclick="selectEndpoint(this)">
+          <div class="ep-price">$0.01</div>
+          <div class="ep-name">/ahs/route</div>
+          <div class="ep-desc">Trust routing signal — instant settle, escrow, or reject</div>
         </div>
         <div class="endpoint-card" data-endpoint="risk-premium" data-price="0.05" data-path="/risk/premium" onclick="selectEndpoint(this)">
           <div class="ep-price">$0.05</div>
@@ -1257,7 +1263,7 @@
     const label = document.getElementById('browse-toggle-label');
     const visible = body.style.display !== 'none';
     body.style.display = visible ? 'none' : 'block';
-    label.textContent = visible ? '\u25B6 Show all 13 services' : '\u25BC Hide services';
+    label.textContent = visible ? '\u25B6 Show all 14 services' : '\u25BC Hide services';
   }
 
   // ─── ENDPOINT SELECT ───
@@ -2749,7 +2755,7 @@
       var statusBar = document.querySelector('.status-bar');
       if (statusBar) statusBar.innerHTML = '<div class="status-dot"></div>LIVE // ' + agentLabel;
 
-      var epCount = data.endpoint_count || 13;
+      var epCount = data.endpoint_count || 14;
       var heroSub = document.querySelector('.hero-sub');
       if (heroSub) heroSub.innerHTML = heroSub.innerHTML.replace(/\d+ endpoints/i, epCount + ' endpoints');
     })

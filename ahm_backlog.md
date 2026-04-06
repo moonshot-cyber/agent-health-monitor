@@ -6,7 +6,7 @@
 
 ## Current State (as of Mar 17 2026)
 
-- **13 endpoints** live on Base mainnet at agenthealthmonitor.xyz
+- **14 endpoints** live on Base mainnet at agenthealthmonitor.xyz
 - **ERC-8004 registered** — agentId #32328 on Base mainnet
 - **Nansen integration** — 4 direct API connections (labels, counterparties, PnL, related wallets)
 - **Listed on:** Virtuals ACP (11 offerings), x402scan, Bankr Skills, agdp.io, 8004scan.io
@@ -54,7 +54,7 @@ Based on ERC-8004 registry scan of IDs 30000-30355 (183 wallets, avg AHS 59.5, r
 ### Update all references to endpoint count and add /ahs/batch to documentation
 
 Now that /ahs/batch is live, the following need updating:
-- [ ] static/index.html — endpoint count shows "12 endpoints", update to 13
+- [x] static/index.html — endpoint count updated to 14
 - [ ] static/ahm-roadmap.html — add /ahs/batch to live endpoints list
 - [ ] Any endpoint showcase cards or marketing copy referencing endpoint count
 - [ ] openapi.json / API docs — confirm /ahs/batch appears correctly
