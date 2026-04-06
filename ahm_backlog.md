@@ -69,6 +69,12 @@ ERC-8004 deployed on Ethereum mainnet Jan 29 2026. Identity + reputation standar
 - [ ] Monitor ecosystem: **@quantu_ai** (indexing attestations), **@cascade_fyi** (SATI attestations), **Warden** ($4M funded, Messari-backed)
 - [ ] Consider ERC-8004 integration angle for AHS — health scores as attestation data
 
+### ERC-8210 (added Apr 6 2026)
+
+ERC-8210 verification schema names AHM as a reference implementation. AHS D1/D2/D3 will be cited as a concrete composition example in the spec's multi-hop reference scenarios.
+
+- [ ] **cmayorga (Carlos Mayorga, ETH Magicians)** — CTO at DeFiRe.finance, Madrid. ERC-8210 contributor, active in ERC-8183 thread. Has named AHM as a reference implementation in ERC-8210 verification schema (assessor type: `ahs-d1-d2-d3`). AHM will be included as a concrete composition example in ERC-8210 multi-hop reference scenarios. **Note:** defire.finance flagged as phishing site by NordVPN — verify before any direct coordination. Keep engagement on public forum only for now
+
 ---
 
 ## P2 — Product Backlog
@@ -81,6 +87,7 @@ ERC-8004 deployed on Ethereum mainnet Jan 29 2026. Identity + reputation standar
 - [ ] **Wash Phase 2** — Token approvals scan + dead contract detection (deferred from wash MVP, see wash_spike_results.md)
 - [ ] **ERC-8183 integration** — Pre-flight health check before a client funds an ERC-8183 job escrow. Add to product backlog as agentic commerce verification layer
 - [ ] **ERC-8183 provider integration** — 3-4 day build, additive via new `acp_worker.py` module. Event listener watches ACP contract for jobs where provider=AHM, routes to existing `calculate_ahs()`, submits result hash on-chain. Reuses ERC-8004 identity (#32328). Build when ERC-8183 deploys to Base mainnet and first real jobs appear. Technical assessment complete — see session notes
+- [ ] **ERC-8210 assessor schema alignment** — Review ERC-8210 draft spec when available. Ensure AHM's D1/D2/D3 output format matches the assessor schema (`type: rule`, `id: ahs-d1-d2-d3`, `verdict: APPROVE/REJECT`, `confidence: 0-1`). Consider publishing AHS verdicts as IPFS-pinned outputs to serve as verifiable assessor outputs (links to EAS integration backlog item). No action until ERC-8210 draft is shared
 - [x] **/ahs/batch endpoint** (completed Mar 31) — POST `/ahs/batch` scores multiple agent wallets in a single API call. Up to 10 wallets per x402 call ($10.00 flat), up to 25 via API key (1 credit/wallet, partial results supported). Concurrent scoring with semaphore-limited RPC. PRs #42, #43, #44. Design partner validated (Alfred Zhang, httppay.xyz)
 
 ### Long-term Product Visions
