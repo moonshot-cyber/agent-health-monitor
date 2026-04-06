@@ -4061,6 +4061,21 @@ async def get_trust_route(address: WalletAddress, request: Request):
     if fiat_key:
         consume_api_key(fiat_key, "ahs/route", address, request=request)
 
+        # Enforce Shield subscription quota (if the key has one)
+        key_hash = fiat_key["key_hash"]
+        sub = await asyncio.get_running_loop().run_in_executor(
+            None, scan_db.get_shield_subscription, key_hash,
+        )
+        if sub:
+            if sub["calls_used_this_period"] >= sub["call_quota"]:
+                raise HTTPException(
+                    status_code=429,
+                    detail="Shield call quota exceeded for this billing period",
+                )
+            await asyncio.get_running_loop().run_in_executor(
+                None, scan_db.increment_shield_usage, key_hash,
+            )
+
     record = await asyncio.get_running_loop().run_in_executor(
         None, scan_db.get_latest_ahs_for_address, address,
     )
@@ -5060,6 +5075,166 @@ async def stripe_webhook_test(req: TestWebhookRequest, request: Request):
         "type": req.key_type,
         "calls": req.calls,
     }
+
+
+# -- Shield Subscription Endpoints -------------------------------------------
+
+# Shield tier -> (Stripe price lookup, agent_slots, call_quota, price_cents)
+_SHIELD_TIERS = {
+    "starter":    {"agent_slots": 5,   "call_quota": 10_000,      "price_cents": 2900},
+    "pro":        {"agent_slots": 50,  "call_quota": 100_000,     "price_cents": 9900},
+    "enterprise": {"agent_slots": 999, "call_quota": 999_999_999, "price_cents": 29900},
+}
+
+
+class ShieldSubscribeRequest(BaseModel):
+    tier: str = Field(description="Shield tier: starter, pro, or enterprise")
+    success_url: str = Field(default="https://agenthealthmonitor.xyz/shield?subscribed=true",
+                             description="URL to redirect after successful checkout")
+    cancel_url: str = Field(default="https://agenthealthmonitor.xyz/shield",
+                            description="URL to redirect if checkout is cancelled")
+
+
+@app.post("/shield/subscribe", tags=["Billing"])
+async def shield_subscribe(body: ShieldSubscribeRequest, request: Request):
+    """Create a Stripe Checkout session for a Shield subscription tier.
+
+    Requires a valid X-API-Key header. The subscription will be linked to
+    the API key used for authentication.
+    """
+    if not STRIPE_SECRET_KEY:
+        raise HTTPException(status_code=503, detail="Stripe not configured")
+
+    tier_info = _SHIELD_TIERS.get(body.tier)
+    if not tier_info:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid tier '{body.tier}'. Valid: {', '.join(_SHIELD_TIERS)}",
+        )
+
+    # Require an API key to link the subscription
+    api_key = request.headers.get("X-API-Key")
+    if not api_key:
+        raise HTTPException(status_code=401, detail="X-API-Key header required")
+
+    record = scan_db.validate_api_key(api_key)
+    if record is None:
+        raise HTTPException(status_code=401, detail="Invalid or expired API key")
+
+    key_hash = record["key_hash"]
+
+    try:
+        session = stripe.checkout.Session.create(
+            mode="subscription",
+            payment_method_types=["card"],
+            line_items=[{
+                "price_data": {
+                    "currency": "usd",
+                    "unit_amount": tier_info["price_cents"],
+                    "recurring": {"interval": "month"},
+                    "product_data": {
+                        "name": f"AHM Shield — {body.tier.title()}",
+                        "description": (
+                            f"Up to {tier_info['agent_slots']} agents, "
+                            f"{tier_info['call_quota']:,} route checks/mo"
+                        ),
+                    },
+                },
+                "quantity": 1,
+            }],
+            metadata={
+                "product": "shield",
+                "tier": body.tier,
+                "api_key_hash": key_hash,
+            },
+            customer_email=record["customer_email"],
+            success_url=body.success_url,
+            cancel_url=body.cancel_url,
+        )
+    except stripe.StripeError as e:
+        logger.error("Stripe session creation failed: %s", e)
+        raise HTTPException(status_code=502, detail="Failed to create checkout session")
+
+    return {
+        "status": "ok",
+        "checkout_url": session.url,
+        "session_id": session.id,
+    }
+
+
+@app.post("/shield/webhook", tags=["Billing"])
+async def shield_webhook(request: Request):
+    """Stripe webhook handler for Shield subscription lifecycle events.
+
+    Handles: checkout.session.completed (new subscription),
+    customer.subscription.updated, customer.subscription.deleted.
+    """
+    if not STRIPE_WEBHOOK_SECRET:
+        raise HTTPException(status_code=503, detail="Stripe webhooks not configured")
+
+    payload = await request.body()
+    sig_header = request.headers.get("stripe-signature", "")
+
+    try:
+        event = stripe.Webhook.construct_event(
+            payload, sig_header, STRIPE_WEBHOOK_SECRET
+        )
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid payload")
+    except stripe.SignatureVerificationError:
+        raise HTTPException(status_code=400, detail="Invalid signature")
+
+    event_type = event["type"]
+    obj = event["data"]["object"]
+
+    # ── New Shield subscription via checkout ──
+    if event_type == "checkout.session.completed":
+        metadata = obj.get("metadata", {})
+        if metadata.get("product") != "shield":
+            return {"status": "ignored", "reason": "not a shield checkout"}
+
+        tier = metadata.get("tier", "starter")
+        api_key_hash = metadata.get("api_key_hash", "")
+        stripe_customer_id = obj.get("customer")
+        stripe_subscription_id = obj.get("subscription")
+
+        if not api_key_hash:
+            logger.error("Shield webhook: no api_key_hash in metadata for session %s", obj.get("id"))
+            return {"status": "error", "detail": "Missing api_key_hash"}
+
+        scan_db.create_shield_subscription(
+            api_key_hash=api_key_hash,
+            tier=tier,
+            stripe_customer_id=stripe_customer_id,
+            stripe_subscription_id=stripe_subscription_id,
+        )
+        logger.info("SHIELD SUBSCRIPTION CREATED: tier=%s key=%s… stripe_sub=%s",
+                     tier, api_key_hash[:12], stripe_subscription_id)
+        return {"status": "ok", "event": "subscription_created"}
+
+    # ── Subscription updated (plan change, renewal) ──
+    if event_type == "customer.subscription.updated":
+        stripe_sub_id = obj.get("id")
+        status = obj.get("status", "active")
+        # Map Stripe statuses to our statuses
+        status_map = {
+            "active": "active",
+            "past_due": "past_due",
+            "unpaid": "past_due",
+            "trialing": "active",
+            "paused": "paused",
+        }
+        our_status = status_map.get(status, status)
+        scan_db.update_shield_subscription_status(stripe_sub_id, our_status)
+        return {"status": "ok", "event": "subscription_updated"}
+
+    # ── Subscription cancelled/deleted ──
+    if event_type == "customer.subscription.deleted":
+        stripe_sub_id = obj.get("id")
+        scan_db.update_shield_subscription_status(stripe_sub_id, "cancelled")
+        return {"status": "ok", "event": "subscription_cancelled"}
+
+    return {"status": "ignored", "event_type": event_type}
 
 
 @app.get("/api/key/status", tags=["Billing"])
