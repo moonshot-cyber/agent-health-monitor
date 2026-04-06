@@ -2727,11 +2727,26 @@ def validate_fiat_request(request: Request) -> dict | None:
     return record
 
 
-def consume_api_key(record: dict, endpoint: str, wallet: str | None = None) -> None:
-    """Decrement calls and log usage for a validated API key. Fire-and-forget."""
+def consume_api_key(
+    record: dict,
+    endpoint: str,
+    wallet: str | None = None,
+    request: Request | None = None,
+) -> None:
+    """Decrement calls and log usage for a validated API key.
+
+    When an X-Partner-Id header is present on the request, attribute the
+    call to that partner in usage logs.
+    """
     key_hash = record["key_hash"]
+    # Resolve partner_id: explicit header > key's own partner_id
+    partner_id = None
+    if request:
+        partner_id = request.headers.get("X-Partner-Id")
+    if not partner_id:
+        partner_id = record.get("partner_id")
     scan_db.decrement_api_key(key_hash)
-    scan_db.log_api_key_usage(key_hash, endpoint, wallet)
+    scan_db.log_api_key_usage(key_hash, endpoint, wallet, partner_id=partner_id)
 
 
 # -- Routes ------------------------------------------------------------------
@@ -3292,7 +3307,7 @@ async def get_premium_risk_score(address: WalletAddress, request: Request):
     # Fiat API key path
     fiat_key = validate_fiat_request(request)
     if fiat_key:
-        consume_api_key(fiat_key, "risk/premium", address)
+        consume_api_key(fiat_key, "risk/premium", address, request=request)
     loop = asyncio.get_running_loop()
 
     # Run risk analysis in parallel with Nansen labels (Corbits, safe to overlap)
@@ -3447,7 +3462,7 @@ async def get_counterparties(address: WalletAddress, request: Request):
     # Fiat API key path
     fiat_key = validate_fiat_request(request)
     if fiat_key:
-        consume_api_key(fiat_key, "counterparties", address)
+        consume_api_key(fiat_key, "counterparties", address, request=request)
 
     raw = await fetch_nansen_counterparties(address)
 
@@ -3534,7 +3549,7 @@ async def get_network_map(address: WalletAddress, request: Request, chain: str =
     # Fiat API key path
     fiat_key = validate_fiat_request(request)
     if fiat_key:
-        consume_api_key(fiat_key, "network-map", address)
+        consume_api_key(fiat_key, "network-map", address, request=request)
 
     raw = await fetch_nansen_related_wallets(address, chain=chain)
 
@@ -3604,7 +3619,7 @@ async def get_risk_score(address: WalletAddress, request: Request):
     # Fiat API key path
     fiat_key = validate_fiat_request(request)
     if fiat_key:
-        consume_api_key(fiat_key, "risk", address)
+        consume_api_key(fiat_key, "risk", address, request=request)
 
     loop = asyncio.get_running_loop()
 
@@ -3692,7 +3707,7 @@ async def get_health_report(address: WalletAddress, request: Request):
     # Fiat API key path
     fiat_key = validate_fiat_request(request)
     if fiat_key:
-        consume_api_key(fiat_key, "health", address)
+        consume_api_key(fiat_key, "health", address, request=request)
 
     # Run blocking I/O and Nansen enrichment in parallel.
     # Nansen labels + balances share a single x402 session (serialised)
@@ -3803,7 +3818,7 @@ async def get_wash_report(address: WalletAddress, request: Request):
     # Fiat API key path
     fiat_key = validate_fiat_request(request)
     if fiat_key:
-        consume_api_key(fiat_key, "wash", address)
+        consume_api_key(fiat_key, "wash", address, request=request)
 
     loop = asyncio.get_running_loop()
 
@@ -3878,7 +3893,7 @@ async def get_ahs_report(address: WalletAddress, request: Request):
     # Fiat API key path
     fiat_key = validate_fiat_request(request)
     if fiat_key:
-        consume_api_key(fiat_key, "ahs", address)
+        consume_api_key(fiat_key, "ahs", address, request=request)
 
     loop = asyncio.get_running_loop()
 
@@ -4035,6 +4050,11 @@ async def get_trust_route(address: WalletAddress, request: Request):
     re-running the full AHS scoring pipeline.  Useful for payment gateways and
     agent orchestrators that need a fast trust check.
     """
+    # Fiat API key path — decrement + attribute to partner
+    fiat_key = validate_fiat_request(request)
+    if fiat_key:
+        consume_api_key(fiat_key, "ahs/route", address, request=request)
+
     record = await asyncio.get_running_loop().run_in_executor(
         None, scan_db.get_latest_ahs_for_address, address,
     )
@@ -4233,9 +4253,10 @@ async def get_ahs_batch(body: AHSBatchRequest, request: Request):
     # ── Consume API key credits ─────────────────────────────────────────
     if fiat_key and scored > 0:
         key_hash = fiat_key["key_hash"]
+        batch_partner_id = request.headers.get("X-Partner-Id") or fiat_key.get("partner_id")
         for i, item in enumerate(results):
             scan_db.decrement_api_key(key_hash)
-            scan_db.log_api_key_usage(key_hash, "ahs_batch", item.address)
+            scan_db.log_api_key_usage(key_hash, "ahs_batch", item.address, partner_id=batch_partner_id)
         available = fiat_key.get("calls_remaining")
         credits_remaining = max(0, available - scored) if available is not None else None
 
@@ -4276,7 +4297,7 @@ async def get_report_card(address: WalletAddress, request: Request):
     # Fiat API key path
     fiat_key = validate_fiat_request(request)
     if fiat_key:
-        consume_api_key(fiat_key, "report-card", address)
+        consume_api_key(fiat_key, "report-card", address, request=request)
 
     loop = asyncio.get_running_loop()
 
@@ -4449,7 +4470,7 @@ async def get_optimization_report(address: WalletAddress, request: Request):
     # Fiat API key path
     fiat_key = validate_fiat_request(request)
     if fiat_key:
-        consume_api_key(fiat_key, "optimize", address)
+        consume_api_key(fiat_key, "optimize", address, request=request)
 
     loop = asyncio.get_running_loop()
 
@@ -4592,7 +4613,7 @@ async def get_protection_report(address: WalletAddress, request: Request):
     # Fiat API key path
     fiat_key = validate_fiat_request(request)
     if fiat_key:
-        consume_api_key(fiat_key, "protect", address)
+        consume_api_key(fiat_key, "protect", address, request=request)
 
     loop = asyncio.get_running_loop()
 
@@ -4781,7 +4802,7 @@ async def get_retry_transactions(address: WalletAddress, request: Request):
     # Fiat API key path
     fiat_key = validate_fiat_request(request)
     if fiat_key:
-        consume_api_key(fiat_key, "retry", address)
+        consume_api_key(fiat_key, "retry", address, request=request)
 
     loop = asyncio.get_running_loop()
 
@@ -4843,7 +4864,7 @@ async def subscribe_alerts(address: WalletAddress, request: Request):
     # Fiat API key path
     fiat_key = validate_fiat_request(request)
     if fiat_key:
-        consume_api_key(fiat_key, "alerts/subscribe", address)
+        consume_api_key(fiat_key, "alerts/subscribe", address, request=request)
     now = datetime.now(timezone.utc)
 
     existing = subscriptions.get(address)
@@ -5058,6 +5079,28 @@ async def api_key_status(request: Request):
         "created_at": record["created_at"],
         "is_active": bool(record["is_active"]),
     }
+
+
+# -- Partner Usage Endpoint ---------------------------------------------------
+
+@app.get("/partners/{partner_id}/usage", tags=["Billing"])
+async def partner_usage(partner_id: str, request: Request):
+    """Usage report for a Shield reseller partner.
+
+    Protected by X-Internal-Key header. Returns call count, wholesale cost,
+    and billing period for the given partner_id.
+    """
+    internal_key = request.headers.get("X-Internal-Key", "")
+    if not INTERNAL_API_KEY or not hmac.compare_digest(internal_key, INTERNAL_API_KEY):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    days = min(int(request.query_params.get("days", "30")), 365)
+
+    loop = asyncio.get_running_loop()
+    usage = await loop.run_in_executor(
+        None, lambda: scan_db.get_partner_usage(partner_id, days=days)
+    )
+    return usage
 
 
 # -- Security Activity Endpoint -----------------------------------------------
