@@ -1377,11 +1377,74 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Agent Health Monitor API",
     description=(
-        "Analyzes Base blockchain agent wallets for transaction failures, "
-        "gas inefficiency, and nonce issues. Returns actionable health reports. "
-        "Payments via x402 protocol (USDC on Base)."
+        "Wallet intelligence API for autonomous agents on Base L2.\n\n"
+        "Analyzes transaction failures, gas inefficiency, nonce issues, counterparty risk, "
+        "and behavioural patterns. Returns actionable health reports, risk scores, "
+        "gas optimization plans, and ready-to-sign retry transactions.\n\n"
+        "**Payment:** All paid endpoints accept x402 protocol (USDC on Base) or a "
+        "fiat-purchased API key via the `X-API-Key` header.\n\n"
+        "**Free preview endpoints** are available for `/retry/preview` and `/agent/protect/preview`.\n\n"
+        "**Coupon access** — partners can use coupon codes to access any paid endpoint "
+        "without x402 payment via the `/coupon/{action}/{code}/{address}` routes."
     ),
-    version="1.6.0",
+    version="1.8.0",
+    contact={
+        "name": "AHM Support",
+        "url": "https://agenthealthmonitor.xyz",
+    },
+    license_info={
+        "name": "Proprietary",
+    },
+    openapi_tags=[
+        {
+            "name": "Scoring & Risk",
+            "description": "Risk scoring, counterparty analysis, and wallet network mapping. "
+            "Fast pre-flight checks from $0.001 to deep Nansen-enriched analysis at $0.10.",
+        },
+        {
+            "name": "Health & Hygiene",
+            "description": "Wallet health diagnosis, hygiene scans, composite Agent Health Score (AHS), "
+            "and visual report cards. Core analysis endpoints from $0.50 to $2.00.",
+        },
+        {
+            "name": "Optimization",
+            "description": "Gas optimization reports and failed-transaction retry bot. "
+            "Returns per-transaction-type savings and ready-to-sign EIP-1559 retry payloads.",
+        },
+        {
+            "name": "Protection",
+            "description": "Autonomous protection agent that triages risk and runs the appropriate "
+            "combination of health, optimization, and retry services automatically.",
+        },
+        {
+            "name": "Alerts",
+            "description": "Subscribe wallets to automated health monitoring with webhook alerts. "
+            "Health checks run every 6 hours; alerts fire when configurable thresholds are breached.",
+        },
+        {
+            "name": "Coupon Access",
+            "description": "Partner coupon routes — access any paid endpoint for free with a valid coupon code. "
+            "Rate-limited to 5 requests per IP per minute.",
+        },
+        {
+            "name": "Discovery & Info",
+            "description": "Service discovery, pricing info, ecosystem statistics, and x402/ERC-8004 "
+            "well-known documents for automated agent registration.",
+        },
+        {
+            "name": "Billing",
+            "description": "Stripe checkout webhooks and API key management for fiat-paid access.",
+        },
+        {
+            "name": "Admin",
+            "description": "Internal admin endpoints protected by X-Internal-Key header. "
+            "Security activity logs, trust registry, and registry scan triggers.",
+        },
+        {
+            "name": "Utility",
+            "description": "Health checks and AI chat assistant.",
+        },
+    ],
     lifespan=lifespan,
 )
 
@@ -2621,7 +2684,7 @@ def consume_api_key(record: dict, endpoint: str, wallet: str | None = None) -> N
 STATIC_DIR = Path(__file__).parent / "static"
 
 
-@app.api_route("/", methods=["GET", "HEAD"])
+@app.api_route("/", methods=["GET", "HEAD"], tags=["Discovery & Info"])
 async def root():
     """Serve the marketing homepage."""
     index = STATIC_DIR / "index.html"
@@ -2630,7 +2693,7 @@ async def root():
     return JSONResponse({"service": "Agent Health Monitor", "docs": "/docs", "info": "/api/info"})
 
 
-@app.get("/app")
+@app.get("/app", tags=["Discovery & Info"])
 async def app_page():
     """Serve the developer tool (formerly the homepage)."""
     app_file = STATIC_DIR / "app.html"
@@ -2639,19 +2702,19 @@ async def app_page():
     raise HTTPException(status_code=404, detail="App page not found")
 
 
-@app.get("/roadmap")
+@app.get("/roadmap", tags=["Discovery & Info"])
 async def roadmap():
     """Serve the roadmap page."""
     return FileResponse(STATIC_DIR / "ahm-roadmap.html")
 
 
-@app.get("/.well-known/agent-registration.json")
+@app.get("/.well-known/agent-registration.json", tags=["Discovery & Info"])
 async def agent_registration():
     """ERC-8004 agent registration document."""
     return FileResponse(STATIC_DIR / "agent-registration.json", media_type="application/json")
 
 
-@app.get("/.well-known/402index-verify.txt")
+@app.get("/.well-known/402index-verify.txt", tags=["Discovery & Info"])
 async def verify_402index():
     """402index.io domain verification token."""
     return Response(
@@ -2660,7 +2723,7 @@ async def verify_402index():
     )
 
 
-@app.get("/.well-known/x402")
+@app.get("/.well-known/x402", tags=["Discovery & Info"])
 async def x402_discovery(request: Request):
     """
     x402 discovery document — lists all paid endpoints with payment
@@ -2726,7 +2789,7 @@ async def x402_discovery(request: Request):
     }
 
 
-@app.get("/api/info")
+@app.get("/api/info", tags=["Discovery & Info"])
 async def api_info():
     """Service info and pricing."""
     return {
@@ -2754,7 +2817,7 @@ async def api_info():
     }
 
 
-@app.get("/api/ecosystem-stats")
+@app.get("/api/ecosystem-stats", tags=["Discovery & Info"])
 async def ecosystem_stats():
     """Public aggregate ecosystem stats for the dashboard. No auth required."""
     loop = asyncio.get_running_loop()
@@ -2763,7 +2826,7 @@ async def ecosystem_stats():
     return stats
 
 
-@app.get("/scan/quality")
+@app.get("/scan/quality", tags=["Discovery & Info"])
 async def scan_quality():
     """Batch quality history for the last 30 days. No auth required."""
     loop = asyncio.get_running_loop()
@@ -2771,7 +2834,7 @@ async def scan_quality():
     return {"batches": history}
 
 
-@app.get("/dashboard")
+@app.get("/dashboard", tags=["Discovery & Info"])
 async def dashboard():
     """Serve the public ecosystem health dashboard."""
     dash_file = STATIC_DIR / "dashboard.html"
@@ -2865,7 +2928,7 @@ ENDPOINT_PAGES = {
 }
 
 
-@app.get("/api/endpoint-info/{slug}")
+@app.get("/api/endpoint-info/{slug}", tags=["Discovery & Info"])
 async def endpoint_info(slug: str):
     """Public endpoint metadata for marketing pages. No auth required."""
     page = ENDPOINT_PAGES.get(slug)
@@ -2901,7 +2964,7 @@ async def endpoint_info(slug: str):
     }
 
 
-@app.get("/endpoints/{slug}")
+@app.get("/endpoints/{slug}", tags=["Discovery & Info"])
 async def endpoint_page(slug: str):
     """Serve the endpoint marketing page for any valid slug."""
     if slug not in ENDPOINT_PAGES:
@@ -2934,9 +2997,9 @@ def _check_coupon_rate(ip: str):
             del _coupon_rate[k]
 
 
-@app.get("/coupon/validate/{code}")
+@app.get("/coupon/validate/{code}", tags=["Coupon Access"])
 async def validate_coupon(code: str, request: Request):
-    """Check if a coupon code is valid."""
+    """Check if a coupon code is valid. Rate-limited to 5 attempts per IP per minute."""
     _check_coupon_rate(request.client.host)
     return {"valid": code.strip().upper() in VALID_COUPONS}
 
@@ -2968,85 +3031,97 @@ def _check_coupon_access_rate(ip: str):
             del _coupon_access_rate[k]
 
 
-@app.get("/coupon/risk/{code}/{address}")
+@app.get("/coupon/risk/{code}/{address}", tags=["Coupon Access"])
 async def coupon_risk(code: str, address: str, request: Request):
+    """Quick risk score via coupon — mirrors GET /risk/{address}."""
     _check_coupon_access_rate(request.client.host)
     _require_coupon(code)
     return await get_risk_score(address)
 
 
-@app.get("/coupon/health/{code}/{address}")
+@app.get("/coupon/health/{code}/{address}", tags=["Coupon Access"])
 async def coupon_health(code: str, address: str, request: Request):
+    """Wallet health diagnosis via coupon — mirrors GET /health/{address}."""
     _check_coupon_access_rate(request.client.host)
     _require_coupon(code)
     return await get_health_report(address)
 
 
-@app.get("/coupon/optimize/{code}/{address}")
+@app.get("/coupon/optimize/{code}/{address}", tags=["Coupon Access"])
 async def coupon_optimize(code: str, address: str, request: Request):
+    """Gas optimization report via coupon — mirrors GET /optimize/{address}."""
     _check_coupon_access_rate(request.client.host)
     _require_coupon(code)
     return await get_optimization_report(address)
 
 
-@app.get("/coupon/retry/{code}/{address}")
+@app.get("/coupon/retry/{code}/{address}", tags=["Coupon Access"])
 async def coupon_retry(code: str, address: str, request: Request):
+    """Retry bot via coupon — mirrors GET /retry/{address}."""
     _check_coupon_access_rate(request.client.host)
     _require_coupon(code)
     return await get_retry_transactions(address)
 
 
-@app.get("/coupon/protect/{code}/{address}")
+@app.get("/coupon/protect/{code}/{address}", tags=["Coupon Access"])
 async def coupon_protect(code: str, address: str, request: Request):
+    """Full protection agent via coupon — mirrors GET /agent/protect/{address}."""
     _check_coupon_access_rate(request.client.host)
     _require_coupon(code)
     return await get_protection_report(address)
 
 
-@app.get("/coupon/alerts/{code}/{address}")
+@app.get("/coupon/alerts/{code}/{address}", tags=["Coupon Access"])
 async def coupon_alerts(code: str, address: str, request: Request):
+    """Alert subscription via coupon — mirrors GET /alerts/subscribe/{address}."""
     _check_coupon_access_rate(request.client.host)
     _require_coupon(code)
     return await subscribe_alerts(address)
 
 
-@app.get("/coupon/risk-premium/{code}/{address}")
+@app.get("/coupon/risk-premium/{code}/{address}", tags=["Coupon Access"])
 async def coupon_premium_risk(code: str, address: str, request: Request):
+    """Premium risk score via coupon — mirrors GET /risk/premium/{address}."""
     _check_coupon_access_rate(request.client.host)
     _require_coupon(code)
     return await get_premium_risk_score(address)
 
 
-@app.get("/coupon/counterparties/{code}/{address}")
+@app.get("/coupon/counterparties/{code}/{address}", tags=["Coupon Access"])
 async def coupon_counterparties(code: str, address: str, request: Request):
+    """Counterparty analysis via coupon — mirrors GET /counterparties/{address}."""
     _check_coupon_access_rate(request.client.host)
     _require_coupon(code)
     return await get_counterparties(address)
 
 
-@app.get("/coupon/network-map/{code}/{address}")
+@app.get("/coupon/network-map/{code}/{address}", tags=["Coupon Access"])
 async def coupon_network_map(code: str, address: str, request: Request, chain: str = "ethereum"):
+    """Network map via coupon — mirrors GET /network-map/{address}."""
     _check_coupon_access_rate(request.client.host)
     _require_coupon(code)
     return await get_network_map(address, chain=chain)
 
 
-@app.get("/coupon/wash/{code}/{address}")
+@app.get("/coupon/wash/{code}/{address}", tags=["Coupon Access"])
 async def coupon_wash(code: str, address: str, request: Request):
+    """Hygiene scan via coupon — mirrors POST /wash/{address}."""
     _check_coupon_access_rate(request.client.host)
     _require_coupon(code)
     return await get_wash_report(address)
 
 
-@app.get("/coupon/ahs/{code}/{address}")
+@app.get("/coupon/ahs/{code}/{address}", tags=["Coupon Access"])
 async def coupon_ahs(code: str, address: str, request: Request):
+    """Agent Health Score via coupon — mirrors GET /ahs/{address}."""
     _check_coupon_access_rate(request.client.host)
     _require_coupon(code)
     return await get_ahs_report(address, request)
 
 
-@app.get("/coupon/report-card/{code}/{address}")
+@app.get("/coupon/report-card/{code}/{address}", tags=["Coupon Access"])
 async def coupon_report_card(code: str, address: str, request: Request):
+    """Visual report card via coupon — mirrors GET /report-card/{address}."""
     _check_coupon_access_rate(request.client.host)
     _require_coupon(code)
     return await get_report_card(address, request)
@@ -3084,7 +3159,7 @@ def _check_chat_rate(ip: str):
             del _chat_rate[k]
 
 
-@app.post("/chat")
+@app.post("/chat", tags=["Utility"])
 async def chat(req: ChatRequest, request: Request):
     """AI chat about wallet analysis results."""
     _check_chat_rate(request.client.host)
@@ -3129,13 +3204,13 @@ async def chat(req: ChatRequest, request: Request):
     return {"reply": reply}
 
 
-@app.get("/up")
+@app.get("/up", tags=["Utility"])
 async def up():
     """Unpaid liveness probe for load balancers."""
     return {"status": "ok"}
 
 
-@app.get("/risk/premium/{address}", response_model=PremiumRiskResponse)
+@app.get("/risk/premium/{address}", response_model=PremiumRiskResponse, tags=["Scoring & Risk"])
 @limiter.limit("60/minute")
 async def get_premium_risk_score(address: str, request: Request):
     """
@@ -3295,7 +3370,7 @@ async def get_premium_risk_score(address: str, request: Request):
     )
 
 
-@app.get("/counterparties/{address}", response_model=CounterpartyResponse)
+@app.get("/counterparties/{address}", response_model=CounterpartyResponse, tags=["Scoring & Risk"])
 @limiter.limit("60/minute")
 async def get_counterparties(address: str, request: Request):
     """
@@ -3371,7 +3446,7 @@ async def get_counterparties(address: str, request: Request):
     )
 
 
-@app.get("/network-map/{address}", response_model=RelatedWalletsResponse)
+@app.get("/network-map/{address}", response_model=RelatedWalletsResponse, tags=["Scoring & Risk"])
 @limiter.limit("60/minute")
 async def get_network_map(address: str, request: Request, chain: str = "ethereum"):
     """
@@ -3451,7 +3526,7 @@ async def get_network_map(address: str, request: Request, chain: str = "ethereum
     )
 
 
-@app.get("/risk/{address}", response_model=RiskResponse)
+@app.get("/risk/{address}", response_model=RiskResponse, tags=["Scoring & Risk"])
 @limiter.limit("60/minute")
 async def get_risk_score(address: str, request: Request):
     """
@@ -3538,7 +3613,7 @@ async def get_risk_score(address: str, request: Request):
     )
 
 
-@app.get("/health/{address}", response_model=HealthResponse)
+@app.get("/health/{address}", response_model=HealthResponse, tags=["Health & Hygiene"])
 @limiter.limit("60/minute")
 async def get_health_report(address: str, request: Request):
     """
@@ -3645,7 +3720,7 @@ async def get_health_report(address: str, request: Request):
     )
 
 
-@app.post("/wash/{address}", response_model=WashResponse)
+@app.post("/wash/{address}", response_model=WashResponse, tags=["Health & Hygiene"])
 @limiter.limit("60/minute")
 async def get_wash_report(address: str, request: Request):
     """
@@ -3721,7 +3796,7 @@ async def get_wash_report(address: str, request: Request):
 
 # -- Agent Health Score (AHS) Endpoint --------------------------------------
 
-@app.get("/ahs/{address}", response_model=AHSResponse)
+@app.get("/ahs/{address}", response_model=AHSResponse, tags=["Health & Hygiene"])
 @limiter.limit("60/minute")
 async def get_ahs_report(address: str, request: Request):
     """
@@ -3897,7 +3972,7 @@ async def get_ahs_report(address: str, request: Request):
 _BATCH_SEMAPHORE = asyncio.Semaphore(3)  # max 3 concurrent RPC calls
 
 
-@app.post("/ahs/batch", response_model=AHSBatchResponse)
+@app.post("/ahs/batch", response_model=AHSBatchResponse, tags=["Health & Hygiene"])
 @limiter.limit("20/minute")
 async def get_ahs_batch(body: AHSBatchRequest, request: Request):
     """
@@ -4079,7 +4154,7 @@ async def get_ahs_batch(body: AHSBatchRequest, request: Request):
 
 # ── Report Card endpoint ────────────────────────────────────────────────────
 
-@app.get("/report-card/{address}", response_model=ReportCardResponse)
+@app.get("/report-card/{address}", response_model=ReportCardResponse, tags=["Health & Hygiene"])
 @limiter.limit("10/minute")
 async def get_report_card(address: str, request: Request):
     """
@@ -4251,7 +4326,7 @@ def _report_card_percentile(score: int, percentiles: dict) -> int:
     return 50
 
 
-@app.get("/optimize/{address}", response_model=OptimizeResponse)
+@app.get("/optimize/{address}", response_model=OptimizeResponse, tags=["Optimization"])
 @limiter.limit("60/minute")
 async def get_optimization_report(address: str, request: Request):
     """
@@ -4329,7 +4404,7 @@ async def get_optimization_report(address: str, request: Request):
 
 # -- Protection Agent Endpoints -----------------------------------------------
 
-@app.get("/agent/protect/preview/{address}", response_model=ProtectionPreviewResponse)
+@app.get("/agent/protect/preview/{address}", response_model=ProtectionPreviewResponse, tags=["Protection"])
 async def protection_preview(address: str):
     """
     Free preview of protection agent analysis.
@@ -4390,7 +4465,7 @@ async def protection_preview(address: str):
     )
 
 
-@app.get("/agent/protect/{address}", response_model=ProtectionResponse)
+@app.get("/agent/protect/{address}", response_model=ProtectionResponse, tags=["Protection"])
 @limiter.limit("10/minute")
 async def get_protection_report(address: str, request: Request):
     """
@@ -4532,7 +4607,7 @@ async def get_protection_report(address: str, request: Request):
 
 # -- RetryBot Endpoints ------------------------------------------------------
 
-@app.get("/retry/preview/{address}", response_model=RetryPreviewResponse)
+@app.get("/retry/preview/{address}", response_model=RetryPreviewResponse, tags=["Optimization"])
 async def retry_preview(address: str):
     """
     Free preview of retryable failed transactions.
@@ -4579,7 +4654,7 @@ async def retry_preview(address: str):
     )
 
 
-@app.get("/retry/{address}", response_model=RetryResponse)
+@app.get("/retry/{address}", response_model=RetryResponse, tags=["Optimization"])
 @limiter.limit("60/minute")
 async def get_retry_transactions(address: str, request: Request):
     """
@@ -4650,7 +4725,7 @@ async def get_retry_transactions(address: str, request: Request):
 
 # -- Alert Endpoints ---------------------------------------------------------
 
-@app.get("/alerts/subscribe/{address}")
+@app.get("/alerts/subscribe/{address}", tags=["Alerts"])
 @limiter.limit("60/minute")
 async def subscribe_alerts(address: str, request: Request):
     """
@@ -4688,7 +4763,7 @@ async def subscribe_alerts(address: str, request: Request):
     }
 
 
-@app.post("/alerts/configure")
+@app.post("/alerts/configure", tags=["Alerts"])
 async def configure_alerts(req: ConfigureRequest):
     """
     Configure webhook and thresholds for an active alert subscription.
@@ -4731,7 +4806,7 @@ async def configure_alerts(req: ConfigureRequest):
     }
 
 
-@app.get("/alerts/status/{address}")
+@app.get("/alerts/status/{address}", tags=["Alerts"])
 async def alert_status(address: str):
     """Check the status of an alert subscription."""
     if not ADDRESS_RE.match(address):
@@ -4745,7 +4820,7 @@ async def alert_status(address: str):
     return {"status": "ok", "subscription": _sub_to_status(sub)}
 
 
-@app.delete("/alerts/unsubscribe/{address}")
+@app.delete("/alerts/unsubscribe/{address}", tags=["Alerts"])
 async def unsubscribe_alerts(address: str):
     """Remove an alert subscription."""
     if not ADDRESS_RE.match(address):
@@ -4761,7 +4836,7 @@ async def unsubscribe_alerts(address: str):
 
 # -- Stripe Webhook & API Key Endpoints --------------------------------------
 
-@app.post("/stripe/webhook")
+@app.post("/stripe/webhook", tags=["Billing"])
 async def stripe_webhook(request: Request):
     """
     Stripe webhook handler for checkout.session.completed events.
@@ -4826,7 +4901,7 @@ class TestWebhookRequest(BaseModel):
     calls: int = 100
 
 
-@app.post("/stripe/webhook/test")
+@app.post("/stripe/webhook/test", tags=["Billing"])
 async def stripe_webhook_test(req: TestWebhookRequest, request: Request):
     """
     Test endpoint: simulate a Stripe checkout.session.completed event.
@@ -4861,7 +4936,7 @@ async def stripe_webhook_test(req: TestWebhookRequest, request: Request):
     }
 
 
-@app.get("/api/key/status")
+@app.get("/api/key/status", tags=["Billing"])
 async def api_key_status(request: Request):
     """
     Check the status of an API key.
@@ -4888,7 +4963,7 @@ async def api_key_status(request: Request):
 
 # -- Security Activity Endpoint -----------------------------------------------
 
-@app.get("/security/activity")
+@app.get("/security/activity", tags=["Admin"])
 async def security_activity(request: Request):
     """Recent security events (rate limits, suspicious patterns).
 
@@ -4910,7 +4985,7 @@ async def security_activity(request: Request):
 
 # -- Trust Registry Endpoint -------------------------------------------------
 
-@app.get("/trust-registry")
+@app.get("/trust-registry", tags=["Admin"])
 async def trust_registry(request: Request):
     """
     Aggregated scan statistics for the AHM trust layer.
@@ -4928,7 +5003,7 @@ async def trust_registry(request: Request):
 
 # -- ACP Scan Trigger & Status -----------------------------------------------
 
-@app.post("/acp-scan/trigger")
+@app.post("/acp-scan/trigger", tags=["Admin"])
 async def trigger_acp_scan(request: Request):
     """Manually trigger the ACP nightly scan.
 
@@ -4946,7 +5021,7 @@ async def trigger_acp_scan(request: Request):
     return {"status": "ok", "message": "ACP scan triggered"}
 
 
-@app.get("/acp-scan/status")
+@app.get("/acp-scan/status", tags=["Admin"])
 async def acp_scan_status(request: Request):
     """Check if an ACP scan is currently running.
 
@@ -4968,7 +5043,7 @@ async def acp_scan_status(request: Request):
 
 # -- Olas Scan Trigger & Status ----------------------------------------------
 
-@app.post("/olas-scan/trigger")
+@app.post("/olas-scan/trigger", tags=["Admin"])
 async def trigger_olas_scan(request: Request):
     """Manually trigger the Olas nightly scan.
 
@@ -4986,7 +5061,7 @@ async def trigger_olas_scan(request: Request):
     return {"status": "ok", "message": "Olas scan triggered"}
 
 
-@app.get("/olas-scan/status")
+@app.get("/olas-scan/status", tags=["Admin"])
 async def olas_scan_status(request: Request):
     """Check if an Olas scan is currently running.
 
@@ -5008,7 +5083,7 @@ async def olas_scan_status(request: Request):
 
 # -- Arc Scan Trigger & Status -----------------------------------------------
 
-@app.post("/arc-scan/trigger")
+@app.post("/arc-scan/trigger", tags=["Admin"])
 async def trigger_arc_scan(request: Request):
     """Manually trigger the Arc nightly scan.
 
@@ -5026,7 +5101,7 @@ async def trigger_arc_scan(request: Request):
     return {"status": "ok", "message": "Arc scan triggered"}
 
 
-@app.get("/arc-scan/status")
+@app.get("/arc-scan/status", tags=["Admin"])
 async def arc_scan_status(request: Request):
     """Check if an Arc scan is currently running.
 
@@ -5050,7 +5125,7 @@ async def arc_scan_status(request: Request):
 
 # -- ERC-8183 Worker Status --------------------------------------------------
 
-@app.get("/erc8183/status")
+@app.get("/erc8183/status", tags=["Admin"])
 async def erc8183_status(request: Request):
     """Check ERC-8183 evaluator worker status on Arc testnet.
 
