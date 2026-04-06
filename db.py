@@ -278,6 +278,33 @@ def log_scan(
         conn.close()
 
 
+def get_latest_ahs_for_address(address: str) -> dict | None:
+    """Return the latest AHS score summary for a single address from known_wallets.
+
+    Returns dict with keys: address, latest_ahs, latest_grade, confidence,
+    last_scanned_at — or None if the address has never been scored.
+    """
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            """SELECT w.address, w.latest_ahs, w.latest_grade, w.last_scanned_at,
+                      s.confidence
+               FROM known_wallets w
+               LEFT JOIN (
+                   SELECT address, confidence,
+                       ROW_NUMBER() OVER (PARTITION BY address ORDER BY scan_timestamp DESC) as rn
+                   FROM scans WHERE endpoint = 'ahs' AND ahs_score IS NOT NULL
+               ) s ON s.address = w.address AND s.rn = 1
+               WHERE w.address = ? AND w.latest_ahs IS NOT NULL""",
+            (address.lower(),),
+        ).fetchone()
+        if row is None:
+            return None
+        return dict(row)
+    finally:
+        conn.close()
+
+
 def get_wallets_due_for_rescan(limit: int = 50) -> list[dict]:
     """Return wallets whose rescan interval has elapsed."""
     conn = get_connection()
