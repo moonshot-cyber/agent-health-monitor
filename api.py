@@ -114,10 +114,11 @@ NETWORK_MAP_PRICE = os.getenv("NETWORK_MAP_PRICE_USD", "$0.10")
 WASH_PRICE = os.getenv("WASH_PRICE_USD", "$0.50")
 AHS_PRICE = os.getenv("AHS_PRICE_USD", "$1.00")
 AHS_BATCH_PRICE = os.getenv("AHS_BATCH_PRICE_USD", "$10.00")
+ROUTE_PRICE = os.getenv("ROUTE_PRICE_USD", "$0.01")
 REPORT_CARD_PRICE = os.getenv("REPORT_CARD_PRICE_USD", "$2.00")
 AHS_JWT_SECRET = os.getenv("AHS_JWT_SECRET", secrets.token_urlsafe(32))
 NANSEN_PAYER_PRIVATE_KEY = os.getenv("NANSEN_PAYER_PRIVATE_KEY", "")
-ENDPOINT_COUNT = 13  # single source of truth — update here when adding endpoints
+ENDPOINT_COUNT = 14  # single source of truth — update here when adding endpoints
 NETWORK = os.getenv("NETWORK", "eip155:8453")  # Base mainnet
 VALID_COUPONS = set(c.strip().upper() for c in os.getenv("VALID_COUPONS", "").split(",") if c.strip())
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
@@ -487,6 +488,22 @@ class WashResponse(BaseModel):
     report: WashReport = Field(description="Full hygiene scan report")
 
 
+# -- Trust Routing Helper ----------------------------------------------------
+
+def _trust_routing(grade_letter: str) -> str:
+    """Map AHS grade letter to a payment routing recommendation.
+
+    A/B → instant_settle (trusted, low-risk agent)
+    C   → escrow (moderate risk, hold funds until confirmed)
+    D/E/F → reject (high risk, do not transact)
+    """
+    if grade_letter in ("A", "B"):
+        return "instant_settle"
+    if grade_letter == "C":
+        return "escrow"
+    return "reject"
+
+
 # -- AHS Models --------------------------------------------------------------
 
 class AHSDimensionScore(BaseModel):
@@ -524,6 +541,7 @@ class AHSReport(BaseModel):
     scan_timestamp: str = Field(description="ISO 8601 timestamp of this scan", examples=["2025-04-06T10:00:00Z"])
     next_scan_recommended: str = Field(description="Recommended next scan date", examples=["2025-04-13T10:00:00Z"])
     shadow_signals: Optional[AHSShadowSignals] = Field(default=None, description="Shadow signal analysis (session continuity, budget exhaustion)")
+    routing_recommendation: str = Field(description="Trust-based routing signal: instant_settle, escrow, or reject", examples=["escrow"])
 
 class AHSResponse(BaseModel):
     status: str = Field(description="Response status", examples=["ok"])
@@ -545,6 +563,7 @@ class AHSBatchResultItem(BaseModel):
     d2_score: int
     pattern: str
     verdict: str
+    routing_recommendation: str
 
 class AHSBatchResponse(BaseModel):
     results: list[AHSBatchResultItem]
@@ -555,6 +574,18 @@ class AHSBatchResponse(BaseModel):
     credits_used: int
     credits_remaining: Optional[int] = None
     errors: list[str]
+
+
+# -- Trust Route models ------------------------------------------------------
+
+class TrustRouteResponse(BaseModel):
+    address: str = Field(description="Wallet address queried", examples=["0xde0b295669a9fd93d5f28d9ec85e40f4cb697bae"])
+    agent_health_score: int = Field(description="Most recent AHS score 0-100", examples=[67])
+    grade: str = Field(description="Letter grade A-F", examples=["C"])
+    routing_recommendation: str = Field(description="Trust-based routing signal: instant_settle, escrow, or reject", examples=["escrow"])
+    confidence: str = Field(description="Score confidence level", examples=["high"])
+    scored_at: str = Field(description="ISO 8601 timestamp of the cached score", examples=["2025-04-06T10:00:00Z"])
+    stale: bool = Field(description="True if the cached score is older than 24 hours", examples=[False])
 
 
 # -- Report Card models ------------------------------------------------------
@@ -1497,10 +1528,10 @@ class AddressValidationMiddleware:
     # (e.g. /risk/premium/) match before shorter ones (e.g. /risk/).
     _ADDRESS_PREFIXES = tuple(sorted([
         "/health/", "/risk/", "/risk/premium/", "/counterparties/",
-        "/network-map/", "/wash/", "/ahs/", "/optimize/", "/retry/",
-        "/retry/preview/", "/agent/protect/", "/agent/protect/preview/",
-        "/alerts/subscribe/", "/alerts/status/", "/alerts/unsubscribe/",
-        "/report-card/",
+        "/network-map/", "/wash/", "/ahs/", "/ahs/route/", "/optimize/",
+        "/retry/", "/retry/preview/", "/agent/protect/",
+        "/agent/protect/preview/", "/alerts/subscribe/",
+        "/alerts/status/", "/alerts/unsubscribe/", "/report-card/",
     ], key=len, reverse=True))
     # Exact paths under address prefixes that are NOT address endpoints
     _SKIP_PATHS = frozenset({"/ahs/batch"})
@@ -2460,6 +2491,22 @@ x402_routes = {
                 },
             },
         },
+    ),
+    "GET /ahs/route/*": RouteConfig(
+        accepts=[
+            PaymentOption(
+                scheme="exact",
+                pay_to=PAYMENT_ADDRESS,
+                price=ROUTE_PRICE,
+                network=NETWORK,
+            ),
+        ],
+        mime_type="application/json",
+        description=(
+            "Trust routing signal for agent wallets. Returns a lightweight "
+            "routing recommendation (instant_settle / escrow / reject) based "
+            "on the most recent AHS grade."
+        ),
     ),
     "POST /ahs/batch": RouteConfig(
         accepts=[
@@ -3949,6 +3996,7 @@ async def get_ahs_report(address: WalletAddress, request: Request):
         dimensions=dimensions,
         patterns_detected=patterns,
         trend=result.trend,
+        routing_recommendation=_trust_routing(result.grade),
         recommendations=result.recommendations,
         ahs_token=ahs_token,
         model_version=result.model_version,
@@ -3973,6 +4021,48 @@ async def get_ahs_report(address: WalletAddress, request: Request):
                        "d1_score": result.d1_score, "d2_score": result.d2_score},
     ))
     return AHSResponse(status="ok", report=report)
+
+
+# ── AHS Trust Route endpoint ──────────────────────────────────────────────
+
+
+@app.get("/ahs/route/{address}", response_model=TrustRouteResponse, tags=["Health & Hygiene"])
+@limiter.limit("60/minute")
+async def get_trust_route(address: WalletAddress, request: Request):
+    """Lightweight trust routing signal from the most recent cached AHS score.
+
+    Returns a routing recommendation (instant_settle / escrow / reject) without
+    re-running the full AHS scoring pipeline.  Useful for payment gateways and
+    agent orchestrators that need a fast trust check.
+    """
+    record = await asyncio.get_running_loop().run_in_executor(
+        None, scan_db.get_latest_ahs_for_address, address,
+    )
+    if record is None:
+        raise HTTPException(
+            status_code=404,
+            detail="No score available — call /ahs/{address} first",
+        )
+
+    scored_at = record["last_scanned_at"] or ""
+    stale = False
+    if scored_at:
+        try:
+            scored_dt = datetime.fromisoformat(scored_at.replace("Z", "+00:00"))
+            stale = (datetime.now(timezone.utc) - scored_dt).total_seconds() > 86400
+        except (ValueError, TypeError):
+            stale = True
+
+    grade_letter = (record["latest_grade"] or "F").split()[0]
+    return TrustRouteResponse(
+        address=record["address"],
+        agent_health_score=record["latest_ahs"],
+        grade=record["latest_grade"],
+        routing_recommendation=_trust_routing(grade_letter),
+        confidence=record.get("confidence") or "unknown",
+        scored_at=scored_at,
+        stale=stale,
+    )
 
 
 # ── AHS Batch endpoint ─────────────────────────────────────────────────────
@@ -4120,6 +4210,7 @@ async def get_ahs_batch(body: AHSBatchRequest, request: Request):
             d2_score=result.d2_score,
             pattern=primary_pattern,
             verdict=result.recommendations[0] if result.recommendations else "No issues detected",
+            routing_recommendation=_trust_routing(result.grade),
         ))
 
         # Fire-and-forget: persist scan to DB
