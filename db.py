@@ -11,13 +11,13 @@ import os
 import secrets
 import sqlite3
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 logger = logging.getLogger("ahm.db")
 
 DB_PATH = os.getenv("DB_PATH", "./ahm_history.db")
 
-_SCHEMA_VERSION = 5
+_SCHEMA_VERSION = 6
 
 _SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS scans (
@@ -105,7 +105,10 @@ CREATE TABLE IF NOT EXISTS api_keys (
     calls_total             INTEGER,
     created_at              TEXT NOT NULL,
     expires_at              TEXT,
-    is_active               INTEGER DEFAULT 1
+    is_active               INTEGER DEFAULT 1,
+    partner_id              TEXT,
+    is_reseller             INTEGER DEFAULT 0,
+    wholesale_rate          REAL DEFAULT 0.5
 );
 
 CREATE TABLE IF NOT EXISTS api_key_usage (
@@ -113,7 +116,8 @@ CREATE TABLE IF NOT EXISTS api_key_usage (
     key_hash        TEXT NOT NULL,
     endpoint        TEXT NOT NULL,
     called_at       TEXT NOT NULL,
-    wallet_queried  TEXT
+    wallet_queried  TEXT,
+    partner_id      TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_api_keys_hash ON api_keys(key_hash);
@@ -170,6 +174,30 @@ def init_db():
 
         # v5: Add security_events table (created via _SCHEMA_SQL above)
         # No ALTER needed — table is created by CREATE TABLE IF NOT EXISTS.
+
+        # v6: Add partner fields to api_keys and api_key_usage
+        if current < 6:
+            for col, default in [
+                ("partner_id", None),
+                ("is_reseller", 0),
+                ("wholesale_rate", 0.5),
+            ]:
+                try:
+                    if default is None:
+                        conn.execute(f"ALTER TABLE api_keys ADD COLUMN {col} TEXT")
+                    elif isinstance(default, float):
+                        conn.execute(f"ALTER TABLE api_keys ADD COLUMN {col} REAL DEFAULT {default}")
+                    else:
+                        conn.execute(f"ALTER TABLE api_keys ADD COLUMN {col} INTEGER DEFAULT {default}")
+                except sqlite3.OperationalError:
+                    pass  # Column already exists
+            try:
+                conn.execute("ALTER TABLE api_key_usage ADD COLUMN partner_id TEXT")
+            except sqlite3.OperationalError:
+                pass  # Column already exists
+            # Create indexes on new columns (safe after columns exist)
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_api_keys_partner ON api_keys(partner_id)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_api_key_usage_partner ON api_key_usage(partner_id, called_at DESC)")
 
         if current < _SCHEMA_VERSION:
             conn.execute("INSERT INTO schema_version (version) VALUES (?)", (_SCHEMA_VERSION,))
@@ -686,6 +714,9 @@ def create_api_key(
     key_type: str = "payg",
     tier: str = "starter",
     calls_total: int | None = 100,
+    partner_id: str | None = None,
+    is_reseller: bool = False,
+    wholesale_rate: float = 0.5,
 ) -> str:
     """Create an API key record. Returns the raw key (only time it's available)."""
     raw_key, key_hash, key_prefix = generate_api_key()
@@ -696,14 +727,16 @@ def create_api_key(
         conn.execute(
             """INSERT INTO api_keys
                (key_hash, key_prefix, customer_email, stripe_customer_id,
-                type, tier, calls_remaining, calls_total, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                type, tier, calls_remaining, calls_total, created_at,
+                partner_id, is_reseller, wholesale_rate)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (key_hash, key_prefix, customer_email, stripe_customer_id,
-             key_type, tier, calls_total, calls_total, now_iso),
+             key_type, tier, calls_total, calls_total, now_iso,
+             partner_id, int(is_reseller), wholesale_rate),
         )
         conn.commit()
-        logger.info("API key created: prefix=%s email=%s tier=%s calls=%s",
-                     key_prefix, customer_email, tier, calls_total)
+        logger.info("API key created: prefix=%s email=%s tier=%s calls=%s partner=%s",
+                     key_prefix, customer_email, tier, calls_total, partner_id)
         return raw_key
     finally:
         conn.close()
@@ -721,7 +754,8 @@ def validate_api_key(raw_key: str) -> dict | None:
             """SELECT id, key_hash, key_prefix, customer_email,
                       stripe_customer_id, stripe_subscription_id,
                       type, tier, calls_remaining, calls_total,
-                      created_at, expires_at, is_active
+                      created_at, expires_at, is_active,
+                      partner_id, is_reseller, wholesale_rate
                FROM api_keys
                WHERE key_hash = ? AND is_active = 1""",
             (key_hash,),
@@ -761,17 +795,74 @@ def decrement_api_key(key_hash: str) -> None:
         conn.close()
 
 
-def log_api_key_usage(key_hash: str, endpoint: str, wallet_queried: str | None = None) -> None:
-    """Log an API key usage event."""
+def log_api_key_usage(
+    key_hash: str,
+    endpoint: str,
+    wallet_queried: str | None = None,
+    partner_id: str | None = None,
+) -> None:
+    """Log an API key usage event, optionally attributed to a partner."""
     now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     conn = get_connection()
     try:
         conn.execute(
-            """INSERT INTO api_key_usage (key_hash, endpoint, called_at, wallet_queried)
-               VALUES (?, ?, ?, ?)""",
-            (key_hash, endpoint, now_iso, wallet_queried),
+            """INSERT INTO api_key_usage (key_hash, endpoint, called_at, wallet_queried, partner_id)
+               VALUES (?, ?, ?, ?, ?)""",
+            (key_hash, endpoint, now_iso, wallet_queried, partner_id),
         )
         conn.commit()
+    finally:
+        conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Partner usage reporting
+# ---------------------------------------------------------------------------
+
+def get_partner_usage(partner_id: str, days: int = 30) -> dict:
+    """Aggregate usage stats for a partner over the last N days.
+
+    Returns call count, cost at wholesale rate, and period boundaries.
+    Looks up the partner's wholesale_rate from their api_keys record,
+    and counts all usage rows attributed to the partner_id.
+    """
+    conn = get_connection()
+    try:
+        now = datetime.now(timezone.utc)
+        period_end = now.strftime("%Y-%m-%dT%H:%M:%SZ")
+        period_start_dt = now - timedelta(days=days)
+        period_start = period_start_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        # Get wholesale rate from partner's own key (first match)
+        rate_row = conn.execute(
+            "SELECT wholesale_rate FROM api_keys WHERE partner_id = ? AND is_active = 1 LIMIT 1",
+            (partner_id,),
+        ).fetchone()
+        wholesale_rate = rate_row["wholesale_rate"] if rate_row else 0.5
+
+        # Count calls attributed to this partner in the period
+        row = conn.execute(
+            """SELECT COUNT(*) as call_count
+               FROM api_key_usage
+               WHERE partner_id = ? AND called_at >= ?""",
+            (partner_id, period_start),
+        ).fetchone()
+        call_count = row["call_count"]
+
+        # Default per-call retail price is the /ahs/route price ($0.01)
+        retail_per_call = 0.01
+        wholesale_cost = round(call_count * retail_per_call * wholesale_rate, 4)
+
+        return {
+            "partner_id": partner_id,
+            "call_count": call_count,
+            "wholesale_rate": wholesale_rate,
+            "retail_per_call_usd": retail_per_call,
+            "wholesale_cost_usd": wholesale_cost,
+            "period_start": period_start,
+            "period_end": period_end,
+            "period_days": days,
+        }
     finally:
         conn.close()
 
