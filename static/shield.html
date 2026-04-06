@@ -234,6 +234,214 @@
   }
   .hero-links a:hover { color: var(--cyan); }
 
+  /* ── SHIELD VISUAL ── */
+  .shield-visual {
+    position: relative;
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 2rem 2rem 1rem;
+    text-align: center;
+  }
+
+  .shield-visual-tag {
+    font-family: var(--mono);
+    font-size: 0.6rem;
+    letter-spacing: 0.2em;
+    color: var(--cyan-dim);
+    margin-bottom: 1rem;
+  }
+
+  .shield-svg {
+    width: 100%;
+    height: auto;
+    max-width: 1000px;
+    display: block;
+    margin: 0 auto;
+  }
+
+  /* Connection lines */
+  .conn-lines line {
+    stroke: rgba(0, 245, 255, 0.18);
+    stroke-width: 1;
+    stroke-dasharray: 3 5;
+    fill: none;
+  }
+
+  /* Generic node */
+  .node rect {
+    fill: rgba(13, 31, 45, 0.85);
+    stroke: var(--border);
+    stroke-width: 1;
+  }
+  .node-title {
+    font-family: var(--display);
+    font-size: 13px;
+    font-weight: 700;
+    fill: var(--text-bright);
+    letter-spacing: 0.12em;
+  }
+  .node-sub {
+    font-family: var(--mono);
+    font-size: 9px;
+    fill: var(--text-dim);
+    letter-spacing: 0.15em;
+  }
+  .node-corner { fill: var(--cyan); opacity: 0.6; }
+
+  /* Output node colors (steady) */
+  .out-settle-text { fill: var(--green); }
+  .out-escrow-text { fill: var(--amber); }
+  .out-reject-text { fill: var(--red); }
+
+  .node-settle rect { stroke: var(--green); stroke-opacity: 0.3;
+    animation: settle-flash 9s ease-in-out infinite; }
+  .node-escrow rect { stroke: var(--amber); stroke-opacity: 0.3;
+    animation: escrow-flash 9s ease-in-out infinite; }
+  .node-reject rect { stroke: var(--red); stroke-opacity: 0.3;
+    animation: reject-flash 9s ease-in-out infinite; }
+
+  @keyframes settle-flash {
+    0%, 14%   { stroke-opacity: 0.3; }
+    20%, 24%  { stroke-opacity: 1; }
+    32%, 100% { stroke-opacity: 0.3; }
+  }
+  @keyframes escrow-flash {
+    0%, 47%   { stroke-opacity: 0.3; }
+    53%, 57%  { stroke-opacity: 1; }
+    65%, 100% { stroke-opacity: 0.3; }
+  }
+  @keyframes reject-flash {
+    0%, 80%   { stroke-opacity: 0.3; }
+    86%, 90%  { stroke-opacity: 1; }
+    98%, 100% { stroke-opacity: 0.3; }
+  }
+
+  /* Shield centerpiece */
+  .shield-glow {
+    transform-origin: 0 0;
+    animation: shield-glow-pulse 3s ease-in-out infinite;
+  }
+  @keyframes shield-glow-pulse {
+    0%, 100% { opacity: 0.45; transform: scale(0.92); }
+    50%      { opacity: 0.85; transform: scale(1.06); }
+  }
+
+  .hex-outer {
+    fill: none;
+    stroke: var(--cyan);
+    stroke-width: 2;
+    stroke-linejoin: round;
+    stroke-dasharray: 540;
+    stroke-dashoffset: 540;
+    animation: hex-trace 6s ease-in-out infinite;
+  }
+  @keyframes hex-trace {
+    0%   { stroke-dashoffset: 540;  opacity: 0.4; }
+    50%  { stroke-dashoffset: 0;    opacity: 1;   }
+    100% { stroke-dashoffset: -540; opacity: 0.4; }
+  }
+
+  .hex-mid {
+    fill: rgba(0, 245, 255, 0.04);
+    stroke: var(--cyan);
+    stroke-width: 1.2;
+    stroke-opacity: 0.6;
+  }
+
+  .shield-icon {
+    fill: rgba(0, 245, 255, 0.12);
+    stroke: var(--cyan);
+    stroke-width: 1.5;
+    stroke-linejoin: round;
+  }
+  .shield-check {
+    fill: none;
+    stroke: var(--cyan);
+    stroke-width: 2.5;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .shield-flash {
+    transform-origin: 0 0;
+    animation: shield-impact 3s ease-out infinite;
+  }
+  @keyframes shield-impact {
+    0%, 26% { transform: scale(1); }
+    32%     { transform: scale(1.07); }
+    42%     { transform: scale(1); }
+    100%    { transform: scale(1); }
+  }
+
+  .shield-label {
+    font-family: var(--display);
+    font-size: 13px;
+    font-weight: 900;
+    fill: var(--cyan);
+    letter-spacing: 0.2em;
+  }
+  .shield-sub {
+    font-family: var(--mono);
+    font-size: 9px;
+    fill: var(--text-dim);
+    letter-spacing: 0.15em;
+  }
+
+  /* Animated packets */
+  .pkt { transform-origin: 0 0; }
+  .pkt-in {
+    fill: var(--cyan);
+    filter: drop-shadow(0 0 6px var(--cyan));
+    animation: pkt-in-fly 3s linear infinite;
+  }
+  @keyframes pkt-in-fly {
+    0%   { opacity: 1; transform: translate(0, 0); }
+    30%  { opacity: 1; transform: translate(230px, 0); }
+    31%  { opacity: 0; transform: translate(0, 0); }
+    100% { opacity: 0; transform: translate(0, 0); }
+  }
+
+  .pkt-out-settle {
+    fill: var(--green);
+    filter: drop-shadow(0 0 6px var(--green));
+    animation: pkt-out-settle-fly 9s linear infinite;
+  }
+  @keyframes pkt-out-settle-fly {
+    0%, 11%   { opacity: 0; transform: translate(0, 0); }
+    12%       { opacity: 1; transform: translate(0, 0); }
+    22%       { opacity: 1; transform: translate(230px, -80px); }
+    23%, 100% { opacity: 0; transform: translate(0, 0); }
+  }
+
+  .pkt-out-escrow {
+    fill: var(--amber);
+    filter: drop-shadow(0 0 6px var(--amber));
+    animation: pkt-out-escrow-fly 9s linear infinite;
+  }
+  @keyframes pkt-out-escrow-fly {
+    0%, 44%   { opacity: 0; transform: translate(0, 0); }
+    45%       { opacity: 1; transform: translate(0, 0); }
+    55%       { opacity: 1; transform: translate(230px, 0); }
+    56%, 100% { opacity: 0; transform: translate(0, 0); }
+  }
+
+  .pkt-out-reject {
+    fill: var(--red);
+    filter: drop-shadow(0 0 6px var(--red));
+    animation: pkt-out-reject-fly 9s linear infinite;
+  }
+  @keyframes pkt-out-reject-fly {
+    0%, 77%   { opacity: 0; transform: translate(0, 0); }
+    78%       { opacity: 1; transform: translate(0, 0); }
+    88%       { opacity: 1; transform: translate(230px, 80px); }
+    89%, 100% { opacity: 0; transform: translate(0, 0); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .shield-svg * { animation: none !important; }
+    .pkt { display: none; }
+  }
+
   /* ── SECTIONS ── */
   .section {
     padding: 5rem 2rem;
@@ -648,6 +856,86 @@
     <a href="https://pypi.org/project/ahm-shield/">PyPI &rarr;</a>
     <a href="/endpoints/ahs">API Docs &rarr;</a>
   </div>
+</section>
+
+<!-- SHIELD VISUAL — payment intercept flow -->
+<section class="shield-visual" aria-label="Shield payment intercept flow diagram">
+  <div class="shield-visual-tag">// PAYMENT INTERCEPT FLOW</div>
+  <svg class="shield-svg" viewBox="0 0 1000 360" xmlns="http://www.w3.org/2000/svg" role="img" aria-hidden="true">
+    <defs>
+      <radialGradient id="shieldGlow" cx="50%" cy="50%" r="50%">
+        <stop offset="0%"   stop-color="rgba(0,245,255,0.40)"/>
+        <stop offset="55%"  stop-color="rgba(0,245,255,0.10)"/>
+        <stop offset="100%" stop-color="rgba(0,245,255,0)"/>
+      </radialGradient>
+      <pattern id="hexGrid" width="40" height="40" patternUnits="userSpaceOnUse">
+        <path d="M 40 0 L 0 0 0 40" fill="none" stroke="rgba(0,245,255,0.04)" stroke-width="1"/>
+      </pattern>
+    </defs>
+
+    <!-- Background grid -->
+    <rect width="1000" height="360" fill="url(#hexGrid)"/>
+
+    <!-- Connection lines -->
+    <g class="conn-lines">
+      <line x1="200" y1="180" x2="430" y2="180"/>
+      <line x1="570" y1="180" x2="800" y2="100"/>
+      <line x1="570" y1="180" x2="800" y2="180"/>
+      <line x1="570" y1="180" x2="800" y2="260"/>
+    </g>
+
+    <!-- AGENT NODE -->
+    <g class="node node-agent">
+      <rect x="60" y="140" width="140" height="80" rx="4"/>
+      <circle class="node-corner" cx="68" cy="148" r="1.5"/>
+      <circle class="node-corner" cx="192" cy="148" r="1.5"/>
+      <circle class="node-corner" cx="68" cy="212" r="1.5"/>
+      <circle class="node-corner" cx="192" cy="212" r="1.5"/>
+      <text x="130" y="178" text-anchor="middle" class="node-title">AGENT</text>
+      <text x="130" y="198" text-anchor="middle" class="node-sub">x402 PAYMENT</text>
+    </g>
+
+    <!-- SHIELD CENTERPIECE (centered at 500,180) -->
+    <g transform="translate(500,180)">
+      <g class="shield-flash">
+        <!-- Glow halo -->
+        <circle class="shield-glow" cx="0" cy="0" r="120" fill="url(#shieldGlow)"/>
+        <!-- Outer hex (traced) -->
+        <polygon class="hex-outer" points="0,-90 78,-45 78,45 0,90 -78,45 -78,-45"/>
+        <!-- Mid hex -->
+        <polygon class="hex-mid" points="0,-65 56,-32 56,32 0,65 -56,32 -56,-32"/>
+        <!-- Inner shield glyph -->
+        <path class="shield-icon" d="M 0,-38 L 28,-22 L 28,12 Q 28,32 0,46 Q -28,32 -28,12 L -28,-22 Z"/>
+        <!-- Checkmark -->
+        <path class="shield-check" d="M -11,4 L -3,12 L 13,-6"/>
+      </g>
+      <text x="0" y="125" text-anchor="middle" class="shield-label">SHIELD</text>
+      <text x="0" y="142" text-anchor="middle" class="shield-sub">/ahs/route &middot; &lt;50ms</text>
+    </g>
+
+    <!-- OUTPUT NODES -->
+    <g class="node node-out node-settle">
+      <rect x="800" y="75" width="140" height="50" rx="4"/>
+      <text x="870" y="100" text-anchor="middle" class="node-title out-settle-text">SETTLE</text>
+      <text x="870" y="116" text-anchor="middle" class="node-sub">A / B GRADE</text>
+    </g>
+    <g class="node node-out node-escrow">
+      <rect x="800" y="155" width="140" height="50" rx="4"/>
+      <text x="870" y="180" text-anchor="middle" class="node-title out-escrow-text">ESCROW</text>
+      <text x="870" y="196" text-anchor="middle" class="node-sub">C GRADE</text>
+    </g>
+    <g class="node node-out node-reject">
+      <rect x="800" y="235" width="140" height="50" rx="4"/>
+      <text x="870" y="260" text-anchor="middle" class="node-title out-reject-text">REJECT</text>
+      <text x="870" y="276" text-anchor="middle" class="node-sub">D / E / F GRADE</text>
+    </g>
+
+    <!-- Animated packets -->
+    <circle class="pkt pkt-in"          cx="200" cy="180" r="5"/>
+    <circle class="pkt pkt-out-settle"  cx="570" cy="180" r="5"/>
+    <circle class="pkt pkt-out-escrow"  cx="570" cy="180" r="5"/>
+    <circle class="pkt pkt-out-reject"  cx="570" cy="180" r="5"/>
+  </svg>
 </section>
 
 <!-- HOW IT WORKS -->
