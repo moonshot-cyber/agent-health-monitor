@@ -2772,6 +2772,12 @@ async def app_page():
     raise HTTPException(status_code=404, detail="App page not found")
 
 
+@app.get("/shield", tags=["Discovery & Info"])
+async def shield_page():
+    """Serve the Shield SDK landing page."""
+    return FileResponse(STATIC_DIR / "shield.html")
+
+
 @app.get("/roadmap", tags=["Discovery & Info"])
 async def roadmap():
     """Serve the roadmap page."""
