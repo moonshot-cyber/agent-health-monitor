@@ -17,7 +17,7 @@ logger = logging.getLogger("ahm.db")
 
 DB_PATH = os.getenv("DB_PATH", "./ahm_history.db")
 
-_SCHEMA_VERSION = 6
+_SCHEMA_VERSION = 7
 
 _SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS scans (
@@ -133,6 +133,26 @@ CREATE TABLE IF NOT EXISTS security_events (
 
 CREATE INDEX IF NOT EXISTS idx_security_events_ip   ON security_events(ip_address, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_security_events_type ON security_events(event_type, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS shield_subscriptions (
+    id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+    api_key_hash            TEXT NOT NULL,
+    stripe_customer_id      TEXT,
+    stripe_subscription_id  TEXT UNIQUE,
+    tier                    TEXT NOT NULL,
+    status                  TEXT NOT NULL DEFAULT 'active',
+    agent_slots             INTEGER NOT NULL,
+    call_quota              INTEGER NOT NULL,
+    calls_used_this_period  INTEGER NOT NULL DEFAULT 0,
+    period_start            TEXT NOT NULL,
+    period_end              TEXT NOT NULL,
+    created_at              TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+    updated_at              TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_shield_subs_key ON shield_subscriptions(api_key_hash);
+CREATE INDEX IF NOT EXISTS idx_shield_subs_stripe ON shield_subscriptions(stripe_subscription_id);
+CREATE INDEX IF NOT EXISTS idx_shield_subs_status ON shield_subscriptions(status);
 """
 
 
@@ -198,6 +218,9 @@ def init_db():
             # Create indexes on new columns (safe after columns exist)
             conn.execute("CREATE INDEX IF NOT EXISTS idx_api_keys_partner ON api_keys(partner_id)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_api_key_usage_partner ON api_key_usage(partner_id, called_at DESC)")
+
+        # v7: Add shield_subscriptions table (created via _SCHEMA_SQL above)
+        # No ALTER needed — table is created by CREATE TABLE IF NOT EXISTS.
 
         if current < _SCHEMA_VERSION:
             conn.execute("INSERT INTO schema_version (version) VALUES (?)", (_SCHEMA_VERSION,))
@@ -863,6 +886,149 @@ def get_partner_usage(partner_id: str, days: int = 30) -> dict:
             "period_end": period_end,
             "period_days": days,
         }
+    finally:
+        conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Shield subscriptions
+# ---------------------------------------------------------------------------
+
+# Tier definitions: tier -> (agent_slots, call_quota)
+SHIELD_TIERS = {
+    "free":       (1,      100),
+    "starter":    (5,    10_000),
+    "pro":        (50,  100_000),
+    "enterprise": (999, 999_999_999),  # effectively unlimited
+}
+
+
+def create_shield_subscription(
+    api_key_hash: str,
+    tier: str,
+    stripe_customer_id: str | None = None,
+    stripe_subscription_id: str | None = None,
+    period_days: int = 30,
+) -> int:
+    """Create a Shield subscription. Returns the new subscription ID."""
+    now = datetime.now(timezone.utc)
+    period_start = now.strftime("%Y-%m-%dT%H:%M:%SZ")
+    period_end = (now + timedelta(days=period_days)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    agent_slots, call_quota = SHIELD_TIERS.get(tier, SHIELD_TIERS["starter"])
+
+    conn = get_connection()
+    try:
+        cur = conn.execute(
+            """INSERT INTO shield_subscriptions
+               (api_key_hash, stripe_customer_id, stripe_subscription_id,
+                tier, status, agent_slots, call_quota,
+                calls_used_this_period, period_start, period_end)
+               VALUES (?, ?, ?, ?, 'active', ?, ?, 0, ?, ?)""",
+            (api_key_hash, stripe_customer_id, stripe_subscription_id,
+             tier, agent_slots, call_quota, period_start, period_end),
+        )
+        conn.commit()
+        sub_id = cur.lastrowid
+        logger.info("Shield subscription created: id=%d tier=%s key=%s…",
+                     sub_id, tier, api_key_hash[:12])
+        return sub_id
+    finally:
+        conn.close()
+
+
+def get_shield_subscription(api_key_hash: str) -> dict | None:
+    """Return the active Shield subscription for a given API key hash, or None."""
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            """SELECT * FROM shield_subscriptions
+               WHERE api_key_hash = ? AND status = 'active'
+               ORDER BY created_at DESC LIMIT 1""",
+            (api_key_hash,),
+        ).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def get_shield_subscription_by_stripe_id(stripe_subscription_id: str) -> dict | None:
+    """Look up a Shield subscription by its Stripe subscription ID."""
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT * FROM shield_subscriptions WHERE stripe_subscription_id = ?",
+            (stripe_subscription_id,),
+        ).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def increment_shield_usage(api_key_hash: str) -> dict | None:
+    """Increment calls_used_this_period for the active subscription.
+
+    Returns the updated subscription dict, or None if no active subscription.
+    Resets the counter and advances the period if period_end has passed.
+    """
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            """SELECT * FROM shield_subscriptions
+               WHERE api_key_hash = ? AND status = 'active'
+               ORDER BY created_at DESC LIMIT 1""",
+            (api_key_hash,),
+        ).fetchone()
+        if not row:
+            return None
+
+        sub = dict(row)
+        now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        # Auto-reset if period has elapsed
+        if now_iso > sub["period_end"]:
+            new_start = now_iso
+            new_end = (datetime.now(timezone.utc) + timedelta(days=30)).strftime("%Y-%m-%dT%H:%M:%SZ")
+            conn.execute(
+                """UPDATE shield_subscriptions
+                   SET calls_used_this_period = 1, period_start = ?, period_end = ?, updated_at = ?
+                   WHERE id = ?""",
+                (new_start, new_end, now_iso, sub["id"]),
+            )
+            conn.commit()
+            sub["calls_used_this_period"] = 1
+            sub["period_start"] = new_start
+            sub["period_end"] = new_end
+        else:
+            conn.execute(
+                """UPDATE shield_subscriptions
+                   SET calls_used_this_period = calls_used_this_period + 1, updated_at = ?
+                   WHERE id = ?""",
+                (now_iso, sub["id"]),
+            )
+            conn.commit()
+            sub["calls_used_this_period"] += 1
+
+        return sub
+    finally:
+        conn.close()
+
+
+def update_shield_subscription_status(stripe_subscription_id: str, status: str) -> bool:
+    """Update the status of a Shield subscription by Stripe ID. Returns True if updated."""
+    now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    conn = get_connection()
+    try:
+        cur = conn.execute(
+            """UPDATE shield_subscriptions
+               SET status = ?, updated_at = ?
+               WHERE stripe_subscription_id = ?""",
+            (status, now_iso, stripe_subscription_id),
+        )
+        conn.commit()
+        updated = cur.rowcount > 0
+        if updated:
+            logger.info("Shield subscription %s -> %s", stripe_subscription_id, status)
+        return updated
     finally:
         conn.close()
 
