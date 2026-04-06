@@ -17,6 +17,7 @@ import os
 import sys
 import time
 from datetime import datetime, timezone
+from pathlib import Path
 
 # ---------------------------------------------------------------------------
 # Configurable via environment variables (Railway service variables)
@@ -31,6 +32,80 @@ def log(msg: str):
     """Print with UTC timestamp for Railway log ingestion."""
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     print(f"[{ts}] {msg}", flush=True)
+
+
+AHM_VP_PATH = Path(__file__).parent / "AHM_VALUE_PROPOSITIONS.md"
+
+
+def _update_value_propositions():
+    """Rewrite AHM_VALUE_PROPOSITIONS.md with latest stats from the DB."""
+    try:
+        import db
+        stats = db.get_ecosystem_dashboard_stats()
+        if not stats or not stats.get("total_scanned"):
+            log("Skipping AHM_VALUE_PROPOSITIONS.md update — no stats available")
+            return
+
+        total = stats["total_scanned"]
+        avg_ahs = stats.get("avg_ahs", 0)
+        avg_d1 = stats.get("avg_d1", 0)
+        avg_d2 = stats.get("avg_d2", 0)
+
+        grades = stats.get("grade_distribution", {})
+        total_graded = sum(grades.values()) or 1
+        grade_a_pct = round(grades.get("A", 0) / total_graded * 100, 1)
+
+        patterns = stats.get("pattern_distribution", {})
+        zombie_count = patterns.get("Zombie Agent", 0)
+        zombie_pct = round(zombie_count / total_graded * 100)
+
+        sources = stats.get("data_sources", {})
+        ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+
+        grade_lines = "\n".join(
+            f"| {g} | {c} |" for g, c in sorted(grades.items())
+        )
+
+        source_lines = "\n".join(
+            f"| {s} | {c:,} |" for s, c in sorted(sources.items(), key=lambda x: -x[1])
+        )
+
+        content = f"""# AHM Value Propositions — Live Ecosystem Stats
+
+> **Auto-updated by the nightly scan pipeline.** Do not edit manually — values are
+> overwritten after each `cron_acp_scan.py` run via `db.get_ecosystem_dashboard_stats()`.
+
+## Ecosystem Health (Source of Truth)
+
+| Metric | Value |
+|--------|-------|
+| Total agents scored | {total:,} |
+| Ecosystem avg AHS | {avg_ahs} |
+| D1 avg (Wallet Hygiene) | {avg_d1} |
+| D2 avg (Behavioural Patterns) | {avg_d2} |
+| Zombie Agent rate | {zombie_pct}% |
+| Grade A rate | {grade_a_pct}% |
+
+## Registry Breakdown
+
+| Source | Agents |
+|--------|--------|
+{source_lines}
+
+## Grade Distribution
+
+| Grade | Count |
+|-------|-------|
+{grade_lines}
+
+---
+
+*Last updated: {ts} by nightly scan pipeline.*
+"""
+        AHM_VP_PATH.write_text(content, encoding="utf-8")
+        log(f"AHM_VALUE_PROPOSITIONS.md updated ({total:,} agents, avg AHS {avg_ahs})")
+    except Exception as e:
+        log(f"Warning: failed to update AHM_VALUE_PROPOSITIONS.md — {e}")
 
 
 def main():
@@ -76,6 +151,9 @@ def main():
 
         # Phase 4: Report
         generate_report(agents, api_stats, dedup_stats, scan_results)
+
+        # Phase 5: Update AHM_VALUE_PROPOSITIONS.md with latest DB stats
+        _update_value_propositions()
 
         elapsed = time.time() - start
         log(f"ACP NIGHTLY SCAN — COMPLETE ({elapsed:.0f}s)")

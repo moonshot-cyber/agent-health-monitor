@@ -88,7 +88,7 @@ These are implementation choices, not the product. The product is trust verifica
 
 ## Where This Goes
 
-1. **Today:** 14 diagnostic endpoints, 3,000+ agents in the trust registry, pre-transaction health checks.
+1. **Today:** 14 diagnostic endpoints, 4,500+ agents in the trust registry, pre-transaction health checks.
 2. **Next:** Post-transaction outcome verification, ERC-8183 evaluator integration, automated trust loops.
 3. **Endgame:** A trust layer where agents prove their health, quality, and legitimacy to each other — automatically, with verifiable evidence, pay-per-verification.
 

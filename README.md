@@ -1,6 +1,6 @@
 # Agent Health Monitor
 
-Trust and health verification for the autonomous agent economy. Before an agent delegates a task, routes a payment, or enters a contract — it needs to know: **is this counterparty solvent, reliable, and operational?** AHM answers that with 14 diagnostic endpoints, 3,000+ agents in the trust registry, and composite scoring across three dimensions.
+Trust and health verification for the autonomous agent economy. Before an agent delegates a task, routes a payment, or enters a contract — it needs to know: **is this counterparty solvent, reliable, and operational?** AHM answers that with 14 diagnostic endpoints, 4,500+ agents in the trust registry, and composite scoring across three dimensions.
 
 **Pay how you want:** [x402 protocol](https://x402.org) (USDC on Base, pay-per-call) or [Stripe](https://agenthealthmonitor.xyz) (fiat API key, no wallet required).
 
@@ -46,7 +46,7 @@ No wallet required. Purchase an API key at [agenthealthmonitor.xyz](https://agen
 
 ## Trust Registry
 
-3,000+ agent wallets scanned and tracked across 5 discovery sources:
+4,500+ agent wallets scanned and tracked across 5 discovery sources:
 
 | Source | Description |
 |---|---|
@@ -233,7 +233,7 @@ curl -X POST https://agenthealthmonitor.xyz/ahs/batch \
 GET /report-card/{wallet_address}
 ```
 
-Generates a personalised 1200x675 PNG report card showing AHS score, grade, dimension breakdown, and percentile ranking against all 3,000+ scanned agents. Includes a pre-built share URL for X/Twitter.
+Generates a personalised 1200x675 PNG report card showing AHS score, grade, dimension breakdown, and percentile ranking against all 4,500+ scanned agents. Includes a pre-built share URL for X/Twitter.
 
 ### 5. Alert Monitoring ($2.00/month) — Stay on top of it
 
