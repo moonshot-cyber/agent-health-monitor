@@ -4980,12 +4980,13 @@ async def unsubscribe_alerts(address: WalletAddress):
 @app.post("/stripe/webhook", tags=["Billing"])
 async def stripe_webhook(request: Request):
     """
-    Stripe webhook handler for checkout.session.completed events.
+    Unified Stripe webhook handler for all payment events.
 
-    Verifies the Stripe webhook signature, extracts customer email and
-    product metadata (tier, type, calls), generates an API key, and logs it.
-    Email delivery is not implemented yet — the raw key is logged for manual
-    retrieval during early access.
+    Handles:
+    - checkout.session.completed — issues an API key (core) or creates
+      a Shield subscription (when metadata.product == "shield")
+    - customer.subscription.updated — updates Shield subscription status
+    - customer.subscription.deleted — cancels Shield subscription
     """
     if not STRIPE_WEBHOOK_SECRET:
         raise HTTPException(status_code=503, detail="Stripe webhooks not configured")
@@ -5002,37 +5003,83 @@ async def stripe_webhook(request: Request):
     except stripe.SignatureVerificationError:
         raise HTTPException(status_code=400, detail="Invalid signature")
 
-    if event["type"] != "checkout.session.completed":
-        return {"status": "ignored", "event_type": event["type"]}
+    event_type = event["type"]
+    obj = event["data"]["object"]
 
-    session = event["data"]["object"]
-    email = session.get("customer_email") or session.get("customer_details", {}).get("email", "")
-    stripe_customer_id = session.get("customer")
-    metadata = session.get("metadata", {})
+    # ── checkout.session.completed ──
+    if event_type == "checkout.session.completed":
+        metadata = obj.get("metadata", {})
 
-    tier = metadata.get("tier", "starter")
-    key_type = metadata.get("type", "payg")
-    calls = int(metadata.get("calls", "100"))
+        # Shield subscription checkout
+        if metadata.get("product") == "shield":
+            tier = metadata.get("tier", "starter")
+            api_key_hash = metadata.get("api_key_hash", "")
+            stripe_customer_id = obj.get("customer")
+            stripe_subscription_id = obj.get("subscription")
 
-    if not email:
-        logger.error("Stripe webhook: no email found in session %s", session.get("id"))
-        return {"status": "error", "detail": "No customer email in session"}
+            if not api_key_hash:
+                logger.error("Shield webhook: no api_key_hash in metadata for session %s", obj.get("id"))
+                return {"status": "error", "detail": "Missing api_key_hash"}
 
-    raw_key = scan_db.create_api_key(
-        customer_email=email,
-        stripe_customer_id=stripe_customer_id,
-        key_type=key_type,
-        tier=tier,
-        calls_total=calls,
-    )
+            scan_db.create_shield_subscription(
+                api_key_hash=api_key_hash,
+                tier=tier,
+                stripe_customer_id=stripe_customer_id,
+                stripe_subscription_id=stripe_subscription_id,
+            )
+            logger.info("SHIELD SUBSCRIPTION CREATED: tier=%s key=%s… stripe_sub=%s",
+                         tier, api_key_hash[:12], stripe_subscription_id)
+            return {"status": "ok", "event": "subscription_created"}
 
-    # Log prominently — email delivery not yet implemented
-    logger.info(
-        "API KEY ISSUED: %s for %s (tier=%s, type=%s, calls=%d)",
-        raw_key, email, tier, key_type, calls,
-    )
+        # Core API key checkout (default)
+        email = obj.get("customer_email") or obj.get("customer_details", {}).get("email", "")
+        stripe_customer_id = obj.get("customer")
 
-    return {"status": "ok", "message": f"API key issued for {email}"}
+        tier = metadata.get("tier", "starter")
+        key_type = metadata.get("type", "payg")
+        calls = int(metadata.get("calls", "100"))
+
+        if not email:
+            logger.error("Stripe webhook: no email found in session %s", obj.get("id"))
+            return {"status": "error", "detail": "No customer email in session"}
+
+        raw_key = scan_db.create_api_key(
+            customer_email=email,
+            stripe_customer_id=stripe_customer_id,
+            key_type=key_type,
+            tier=tier,
+            calls_total=calls,
+        )
+
+        # Log prominently — email delivery not yet implemented
+        logger.info(
+            "API KEY ISSUED: %s for %s (tier=%s, type=%s, calls=%d)",
+            raw_key, email, tier, key_type, calls,
+        )
+        return {"status": "ok", "message": f"API key issued for {email}"}
+
+    # ── Shield subscription updated (plan change, renewal) ──
+    if event_type == "customer.subscription.updated":
+        stripe_sub_id = obj.get("id")
+        status = obj.get("status", "active")
+        status_map = {
+            "active": "active",
+            "past_due": "past_due",
+            "unpaid": "past_due",
+            "trialing": "active",
+            "paused": "paused",
+        }
+        our_status = status_map.get(status, status)
+        scan_db.update_shield_subscription_status(stripe_sub_id, our_status)
+        return {"status": "ok", "event": "subscription_updated"}
+
+    # ── Shield subscription cancelled/deleted ──
+    if event_type == "customer.subscription.deleted":
+        stripe_sub_id = obj.get("id")
+        scan_db.update_shield_subscription_status(stripe_sub_id, "cancelled")
+        return {"status": "ok", "event": "subscription_cancelled"}
+
+    return {"status": "ignored", "event_type": event_type}
 
 
 class TestWebhookRequest(BaseModel):
@@ -5161,80 +5208,6 @@ async def shield_subscribe(body: ShieldSubscribeRequest, request: Request):
         "session_id": session.id,
     }
 
-
-@app.post("/shield/webhook", tags=["Billing"])
-async def shield_webhook(request: Request):
-    """Stripe webhook handler for Shield subscription lifecycle events.
-
-    Handles: checkout.session.completed (new subscription),
-    customer.subscription.updated, customer.subscription.deleted.
-    """
-    if not STRIPE_WEBHOOK_SECRET:
-        raise HTTPException(status_code=503, detail="Stripe webhooks not configured")
-
-    payload = await request.body()
-    sig_header = request.headers.get("stripe-signature", "")
-
-    try:
-        event = stripe.Webhook.construct_event(
-            payload, sig_header, STRIPE_WEBHOOK_SECRET
-        )
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid payload")
-    except stripe.SignatureVerificationError:
-        raise HTTPException(status_code=400, detail="Invalid signature")
-
-    event_type = event["type"]
-    obj = event["data"]["object"]
-
-    # ── New Shield subscription via checkout ──
-    if event_type == "checkout.session.completed":
-        metadata = obj.get("metadata", {})
-        if metadata.get("product") != "shield":
-            return {"status": "ignored", "reason": "not a shield checkout"}
-
-        tier = metadata.get("tier", "starter")
-        api_key_hash = metadata.get("api_key_hash", "")
-        stripe_customer_id = obj.get("customer")
-        stripe_subscription_id = obj.get("subscription")
-
-        if not api_key_hash:
-            logger.error("Shield webhook: no api_key_hash in metadata for session %s", obj.get("id"))
-            return {"status": "error", "detail": "Missing api_key_hash"}
-
-        scan_db.create_shield_subscription(
-            api_key_hash=api_key_hash,
-            tier=tier,
-            stripe_customer_id=stripe_customer_id,
-            stripe_subscription_id=stripe_subscription_id,
-        )
-        logger.info("SHIELD SUBSCRIPTION CREATED: tier=%s key=%s… stripe_sub=%s",
-                     tier, api_key_hash[:12], stripe_subscription_id)
-        return {"status": "ok", "event": "subscription_created"}
-
-    # ── Subscription updated (plan change, renewal) ──
-    if event_type == "customer.subscription.updated":
-        stripe_sub_id = obj.get("id")
-        status = obj.get("status", "active")
-        # Map Stripe statuses to our statuses
-        status_map = {
-            "active": "active",
-            "past_due": "past_due",
-            "unpaid": "past_due",
-            "trialing": "active",
-            "paused": "paused",
-        }
-        our_status = status_map.get(status, status)
-        scan_db.update_shield_subscription_status(stripe_sub_id, our_status)
-        return {"status": "ok", "event": "subscription_updated"}
-
-    # ── Subscription cancelled/deleted ──
-    if event_type == "customer.subscription.deleted":
-        stripe_sub_id = obj.get("id")
-        scan_db.update_shield_subscription_status(stripe_sub_id, "cancelled")
-        return {"status": "ok", "event": "subscription_cancelled"}
-
-    return {"status": "ignored", "event_type": event_type}
 
 
 @app.get("/api/key/status", tags=["Billing"])
