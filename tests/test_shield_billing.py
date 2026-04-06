@@ -2,6 +2,7 @@
 
 import hashlib
 import os
+import uuid
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -214,12 +215,12 @@ class TestShieldSubscribeEndpoint:
 
 
 class TestShieldWebhookEndpoint:
-    """Verify POST /shield/webhook endpoint."""
+    """Verify Shield-related webhook handling via unified POST /stripe/webhook."""
 
     def test_rejects_invalid_signature(self, client):
         with patch("api.STRIPE_WEBHOOK_SECRET", "whsec_test"):
             resp = client.post(
-                "/shield/webhook",
+                "/stripe/webhook",
                 content=b"{}",
                 headers={"stripe-signature": "bad_sig"},
             )
@@ -227,11 +228,11 @@ class TestShieldWebhookEndpoint:
 
     def test_returns_503_without_webhook_secret(self, client):
         with patch("api.STRIPE_WEBHOOK_SECRET", ""):
-            resp = client.post("/shield/webhook", content=b"{}")
+            resp = client.post("/stripe/webhook", content=b"{}")
         assert resp.status_code == 503
 
-    def test_ignores_non_shield_checkout(self, client):
-        """checkout.session.completed without product=shield should be ignored."""
+    def test_non_shield_checkout_skips_shield_logic(self, client):
+        """checkout.session.completed without product=shield takes core API path."""
         mock_event = {
             "type": "checkout.session.completed",
             "data": {"object": {"metadata": {"product": "core_api"}}},
@@ -240,12 +241,13 @@ class TestShieldWebhookEndpoint:
         with patch("api.STRIPE_WEBHOOK_SECRET", "whsec_test"), \
              patch("stripe.Webhook.construct_event", return_value=mock_event):
             resp = client.post(
-                "/shield/webhook",
+                "/stripe/webhook",
                 content=b"{}",
                 headers={"stripe-signature": "test"},
             )
+        # Falls through to core API key path; no email → error (not shield)
         assert resp.status_code == 200
-        assert resp.json()["status"] == "ignored"
+        assert resp.json()["status"] == "error"
 
     def test_creates_subscription_on_checkout(self, client):
         """checkout.session.completed with product=shield creates subscription."""
@@ -253,13 +255,14 @@ class TestShieldWebhookEndpoint:
         _db.init_db()
         raw_key = _db.create_api_key(customer_email="buyer@example.com", calls_total=100)
         key_hash = hashlib.sha256(raw_key.encode()).hexdigest()
+        sub_id = f"sub_checkout_{uuid.uuid4().hex[:8]}"
 
         mock_event = {
             "type": "checkout.session.completed",
             "data": {"object": {
                 "id": "cs_test_123",
                 "customer": "cus_test_456",
-                "subscription": "sub_test_789",
+                "subscription": sub_id,
                 "metadata": {
                     "product": "shield",
                     "tier": "pro",
@@ -271,7 +274,7 @@ class TestShieldWebhookEndpoint:
         with patch("api.STRIPE_WEBHOOK_SECRET", "whsec_test"), \
              patch("stripe.Webhook.construct_event", return_value=mock_event):
             resp = client.post(
-                "/shield/webhook",
+                "/stripe/webhook",
                 content=b"{}",
                 headers={"stripe-signature": "test"},
             )
@@ -282,7 +285,7 @@ class TestShieldWebhookEndpoint:
         sub = _db.get_shield_subscription(key_hash)
         assert sub is not None
         assert sub["tier"] == "pro"
-        assert sub["stripe_subscription_id"] == "sub_test_789"
+        assert sub["stripe_subscription_id"] == sub_id
 
     def test_cancels_subscription(self, client):
         """customer.subscription.deleted should cancel the subscription."""
@@ -290,20 +293,21 @@ class TestShieldWebhookEndpoint:
         _db.init_db()
         raw_key = _db.create_api_key(customer_email="cancel@example.com", calls_total=100)
         key_hash = hashlib.sha256(raw_key.encode()).hexdigest()
+        sub_id = f"sub_cancel_{uuid.uuid4().hex[:8]}"
         _db.create_shield_subscription(
             api_key_hash=key_hash, tier="starter",
-            stripe_subscription_id="sub_to_cancel",
+            stripe_subscription_id=sub_id,
         )
 
         mock_event = {
             "type": "customer.subscription.deleted",
-            "data": {"object": {"id": "sub_to_cancel"}},
+            "data": {"object": {"id": sub_id}},
         }
 
         with patch("api.STRIPE_WEBHOOK_SECRET", "whsec_test"), \
              patch("stripe.Webhook.construct_event", return_value=mock_event):
             resp = client.post(
-                "/shield/webhook",
+                "/stripe/webhook",
                 content=b"{}",
                 headers={"stripe-signature": "test"},
             )
@@ -320,20 +324,21 @@ class TestShieldWebhookEndpoint:
         _db.init_db()
         raw_key = _db.create_api_key(customer_email="update@example.com", calls_total=100)
         key_hash = hashlib.sha256(raw_key.encode()).hexdigest()
+        sub_id = f"sub_update_{uuid.uuid4().hex[:8]}"
         _db.create_shield_subscription(
             api_key_hash=key_hash, tier="pro",
-            stripe_subscription_id="sub_to_update",
+            stripe_subscription_id=sub_id,
         )
 
         mock_event = {
             "type": "customer.subscription.updated",
-            "data": {"object": {"id": "sub_to_update", "status": "past_due"}},
+            "data": {"object": {"id": sub_id, "status": "past_due"}},
         }
 
         with patch("api.STRIPE_WEBHOOK_SECRET", "whsec_test"), \
              patch("stripe.Webhook.construct_event", return_value=mock_event):
             resp = client.post(
-                "/shield/webhook",
+                "/stripe/webhook",
                 content=b"{}",
                 headers={"stripe-signature": "test"},
             )
