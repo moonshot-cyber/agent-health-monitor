@@ -1,0 +1,856 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AHM Shield — Trust-Routed Payment Decisions for Agent Developers</title>
+<meta property="og:title" content="AHM Shield — Trust-Routed Payment Decisions for Agent Developers">
+<meta property="og:description" content="Automatic trust-routed payment decisions for agent developers. Python SDK. pip install ahm-shield.">
+<meta property="og:image" content="https://agenthealthmonitor.xyz/static/ahm-og-banner.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:url" content="https://agenthealthmonitor.xyz/shield">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="AHM Shield — Trust-Routed Payment Decisions for Agent Developers">
+<meta name="twitter:description" content="Automatic trust-routed payment decisions for agent developers. Python SDK. pip install ahm-shield.">
+<meta name="twitter:image" content="https://agenthealthmonitor.xyz/static/ahm-og-banner.png">
+<link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+<link rel="icon" type="image/png" sizes="32x32" href="/static/ahm-favicon-32.png">
+<link rel="apple-touch-icon" sizes="180x180" href="/static/ahm-favicon-180.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@300;400;500;600;700&family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #030609;
+    --bg2: #070d12;
+    --bg3: #0a1520;
+    --panel: #0d1f2d;
+    --border: #0e3a52;
+    --border-bright: #0ff;
+    --cyan: #00f5ff;
+    --cyan-dim: #007a88;
+    --green: #00ff88;
+    --green-dim: #004d2a;
+    --amber: #ffaa00;
+    --red: #ff3355;
+    --text: #c8e8f0;
+    --text-dim: #4a7a8a;
+    --text-bright: #e8f8ff;
+    --display: 'Orbitron', sans-serif;
+    --body: 'Rajdhani', sans-serif;
+    --mono: 'Share Tech Mono', monospace;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--body);
+    font-size: 16px;
+    line-height: 1.6;
+    overflow-x: hidden;
+  }
+
+  /* Scanlines */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,245,255,0.015) 2px, rgba(0,245,255,0.015) 4px);
+    pointer-events: none;
+    z-index: 9999;
+  }
+
+  /* Grid background */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(0,245,255,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,245,255,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: -1;
+  }
+
+  a { color: var(--cyan); text-decoration: none; }
+  a:hover { color: var(--text-bright); }
+
+  /* ── NAV ── */
+  header {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 2rem;
+    height: 60px;
+    background: rgba(3,6,9,0.85);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .logo {
+    font-family: var(--display);
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: var(--cyan);
+    letter-spacing: 0.15em;
+    text-shadow: 0 0 20px rgba(0,245,255,0.4);
+  }
+
+  .nav-links { display: flex; align-items: center; gap: 0.25rem; }
+
+  .nav-link {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.1em;
+    color: var(--text-dim);
+    padding: 0.5rem 0.85rem;
+    transition: color 0.2s;
+  }
+  .nav-link:hover { color: var(--cyan); }
+  .nav-link.active { color: var(--cyan); }
+
+  .nav-cta {
+    color: var(--bg);
+    background: var(--cyan);
+    border-radius: 3px;
+    font-weight: 700;
+    margin-left: 0.5rem;
+    text-shadow: none;
+    transition: background 0.2s, transform 0.2s;
+  }
+  .nav-cta:hover { background: var(--text-bright); color: var(--bg); transform: translateY(-1px); }
+
+  /* ── HERO ── */
+  .hero {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 80vh;
+    padding: 100px 2rem 4rem;
+    text-align: center;
+  }
+
+  .hero-badge {
+    font-family: var(--mono);
+    font-size: 0.6rem;
+    letter-spacing: 0.2em;
+    color: var(--green);
+    border: 1px solid var(--green-dim);
+    padding: 0.4rem 1.2rem;
+    border-radius: 3px;
+    margin-bottom: 2rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .badge-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--green);
+    animation: blink 2s ease-in-out infinite;
+  }
+
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+  .hero h1 {
+    font-family: var(--display);
+    font-size: clamp(1.5rem, 4vw, 2.8rem);
+    font-weight: 900;
+    color: var(--cyan);
+    letter-spacing: 0.05em;
+    margin-bottom: 1rem;
+    text-shadow: 0 0 60px rgba(0,245,255,0.3);
+    line-height: 1.2;
+  }
+
+  .hero-sub {
+    font-family: var(--body);
+    font-size: clamp(1rem, 2vw, 1.2rem);
+    color: var(--text-dim);
+    max-width: 640px;
+    margin-bottom: 2.5rem;
+    font-weight: 400;
+  }
+
+  /* Install command */
+  .install-cmd {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 1rem 2rem;
+    font-family: var(--mono);
+    font-size: 0.85rem;
+    color: var(--green);
+    display: inline-flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 2rem;
+    cursor: pointer;
+    transition: border-color 0.2s;
+    position: relative;
+  }
+  .install-cmd:hover { border-color: var(--cyan); }
+
+  .install-cmd .prompt { color: var(--text-dim); }
+
+  .copy-btn {
+    font-family: var(--mono);
+    font-size: 0.6rem;
+    letter-spacing: 0.1em;
+    color: var(--text-dim);
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 0.3rem 0.6rem;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .copy-btn:hover { color: var(--cyan); border-color: var(--cyan); }
+
+  .hero-links {
+    display: flex;
+    gap: 1.5rem;
+    align-items: center;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .hero-links a {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.1em;
+    color: var(--text-dim);
+    transition: color 0.2s;
+  }
+  .hero-links a:hover { color: var(--cyan); }
+
+  /* ── SECTIONS ── */
+  .section {
+    padding: 5rem 2rem;
+    max-width: 1100px;
+    margin: 0 auto;
+  }
+
+  .section-title {
+    font-family: var(--display);
+    font-size: clamp(0.9rem, 2vw, 1.3rem);
+    font-weight: 700;
+    color: var(--text-bright);
+    letter-spacing: 0.1em;
+    text-align: center;
+    margin-bottom: 0.5rem;
+  }
+
+  .section-tag {
+    font-family: var(--mono);
+    font-size: 0.6rem;
+    letter-spacing: 0.2em;
+    color: var(--cyan-dim);
+    text-align: center;
+    margin-bottom: 3rem;
+  }
+
+  /* ── HOW IT WORKS ── */
+  .flow-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+  }
+
+  .flow-card {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 2rem;
+    text-align: center;
+    transition: border-color 0.3s, transform 0.2s;
+  }
+  .flow-card:hover { border-color: var(--cyan); transform: translateY(-3px); }
+
+  .flow-step {
+    font-family: var(--display);
+    font-size: 1.8rem;
+    font-weight: 900;
+    color: var(--cyan);
+    text-shadow: 0 0 20px rgba(0,245,255,0.3);
+    margin-bottom: 0.75rem;
+  }
+
+  .flow-title {
+    font-family: var(--display);
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: var(--text-bright);
+    letter-spacing: 0.15em;
+    margin-bottom: 0.75rem;
+  }
+
+  .flow-desc {
+    font-family: var(--mono);
+    font-size: 0.6rem;
+    color: var(--text-dim);
+    letter-spacing: 0.05em;
+    line-height: 1.6;
+  }
+
+  .flow-formula {
+    text-align: center;
+    font-family: var(--display);
+    font-size: clamp(0.7rem, 1.5vw, 0.95rem);
+    font-weight: 700;
+    color: var(--text-bright);
+    padding: 1.5rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--bg3);
+    letter-spacing: 0.05em;
+  }
+  .flow-formula span { color: var(--cyan); }
+
+  /* ── CODE EXAMPLES ── */
+  .code-tabs {
+    display: flex;
+    gap: 0;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 0;
+  }
+
+  .code-tab {
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    letter-spacing: 0.1em;
+    color: var(--text-dim);
+    padding: 0.75rem 1.5rem;
+    cursor: pointer;
+    border: none;
+    background: none;
+    border-bottom: 2px solid transparent;
+    transition: all 0.2s;
+  }
+  .code-tab:hover { color: var(--cyan); }
+  .code-tab.active { color: var(--cyan); border-bottom-color: var(--cyan); background: rgba(0,245,255,0.03); }
+
+  .code-panel {
+    display: none;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-top: none;
+    border-radius: 0 0 6px 6px;
+    overflow: hidden;
+    position: relative;
+  }
+  .code-panel.active { display: block; }
+
+  .code-panel pre {
+    padding: 1.5rem 2rem;
+    overflow-x: auto;
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    line-height: 1.7;
+    color: var(--text);
+    margin: 0;
+  }
+
+  .code-panel .copy-code {
+    position: absolute;
+    top: 0.75rem;
+    right: 0.75rem;
+    font-family: var(--mono);
+    font-size: 0.55rem;
+    letter-spacing: 0.1em;
+    color: var(--text-dim);
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 0.3rem 0.6rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    z-index: 5;
+  }
+  .code-panel .copy-code:hover { color: var(--cyan); border-color: var(--cyan); }
+
+  /* Syntax highlighting */
+  .kw { color: var(--cyan); }
+  .str { color: var(--green); }
+  .cmt { color: var(--text-dim); }
+  .fn { color: var(--amber); }
+  .dec { color: var(--amber); }
+  .var { color: var(--text-bright); }
+
+  /* ── PRICING ── */
+  .pricing-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.25rem; }
+
+  .price-card {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 2.5rem 1.5rem;
+    text-align: center;
+    position: relative;
+    transition: border-color 0.3s, transform 0.2s;
+    display: flex;
+    flex-direction: column;
+  }
+  .price-card:hover { border-color: var(--cyan); transform: translateY(-3px); }
+
+  .price-card--popular { border-color: var(--cyan); }
+
+  .price-badge {
+    position: absolute;
+    top: -1px; left: 50%;
+    transform: translateX(-50%);
+    font-family: var(--mono);
+    font-size: 0.55rem;
+    font-weight: 700;
+    letter-spacing: 0.2em;
+    color: var(--bg);
+    background: var(--cyan);
+    padding: 0.25rem 1rem;
+    border-radius: 0 0 4px 4px;
+  }
+
+  .price-tier {
+    font-family: var(--display);
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: var(--text-bright);
+    letter-spacing: 0.15em;
+    margin-bottom: 1.25rem;
+  }
+
+  .price-amount {
+    font-family: var(--display);
+    font-size: 2.2rem;
+    font-weight: 900;
+    color: var(--cyan);
+    text-shadow: 0 0 30px rgba(0,245,255,0.3);
+    line-height: 1;
+    margin-bottom: 0.25rem;
+  }
+
+  .price-period {
+    font-family: var(--mono);
+    font-size: 0.6rem;
+    color: var(--text-dim);
+    letter-spacing: 0.15em;
+    margin-bottom: 1.5rem;
+  }
+
+  .price-detail {
+    font-family: var(--mono);
+    font-size: 0.6rem;
+    color: var(--text-dim);
+    letter-spacing: 0.1em;
+    line-height: 2;
+    margin-bottom: 2rem;
+    flex-grow: 1;
+  }
+
+  .price-detail span { color: var(--text); }
+
+  .price-cta {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    padding: 0.75rem 1.5rem;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    color: var(--text);
+    background: transparent;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .price-cta:hover { border-color: var(--cyan); color: var(--cyan); transform: translateY(-1px); }
+
+  .price-card--popular .price-cta {
+    background: var(--cyan);
+    color: var(--bg);
+    border-color: var(--cyan);
+  }
+  .price-card--popular .price-cta:hover { background: var(--text-bright); border-color: var(--text-bright); color: var(--bg); }
+
+  /* ── WHITE-LABEL / RESELLER ── */
+  .reseller-banner {
+    text-align: center;
+    padding: 4rem 2rem;
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    background: var(--bg2);
+  }
+
+  .reseller-banner h2 {
+    font-family: var(--display);
+    font-size: clamp(0.9rem, 2vw, 1.3rem);
+    font-weight: 700;
+    color: var(--text-bright);
+    letter-spacing: 0.1em;
+    margin-bottom: 0.5rem;
+  }
+
+  .reseller-tag {
+    font-family: var(--mono);
+    font-size: 0.6rem;
+    letter-spacing: 0.2em;
+    color: var(--cyan-dim);
+    margin-bottom: 1.5rem;
+  }
+
+  .reseller-desc {
+    font-family: var(--body);
+    font-size: 1rem;
+    color: var(--text-dim);
+    max-width: 600px;
+    margin: 0 auto 2rem;
+    line-height: 1.6;
+  }
+
+  .reseller-features {
+    display: flex;
+    justify-content: center;
+    gap: 2.5rem;
+    flex-wrap: wrap;
+    margin-bottom: 2rem;
+  }
+
+  .reseller-feat {
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    letter-spacing: 0.1em;
+    color: var(--text);
+  }
+  .reseller-feat::before {
+    content: '';
+    display: inline-block;
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--cyan);
+    margin-right: 0.5rem;
+    vertical-align: middle;
+  }
+
+  .btn {
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.1em;
+    padding: 0.85rem 1.75rem;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    cursor: pointer;
+    transition: all 0.2s;
+    color: var(--text);
+    background: transparent;
+    display: inline-block;
+  }
+  .btn:hover { border-color: var(--cyan); color: var(--cyan); transform: translateY(-1px); }
+
+  .btn-primary {
+    background: var(--cyan);
+    color: var(--bg);
+    border-color: var(--cyan);
+    font-weight: 700;
+  }
+  .btn-primary:hover { background: var(--text-bright); border-color: var(--text-bright); color: var(--bg); }
+
+  /* ── FOOTER ── */
+  footer {
+    padding: 2.5rem 2rem;
+    text-align: center;
+    border-top: 1px solid var(--border);
+  }
+
+  .footer-links {
+    display: flex;
+    justify-content: center;
+    gap: 1.5rem;
+    margin-bottom: 1rem;
+  }
+
+  .footer-link {
+    font-family: var(--mono);
+    font-size: 0.6rem;
+    letter-spacing: 0.15em;
+    color: var(--text-dim);
+    transition: color 0.2s;
+  }
+  .footer-link:hover { color: var(--cyan); }
+
+  .footer-sub {
+    font-family: var(--mono);
+    font-size: 0.55rem;
+    color: var(--text-dim);
+    letter-spacing: 0.1em;
+    opacity: 0.6;
+  }
+
+  /* ── RESPONSIVE ── */
+  @media (max-width: 900px) {
+    .pricing-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+  @media (max-width: 768px) {
+    header { padding: 0 1rem; }
+    .nav-link { padding: 0.5rem 0.5rem; font-size: 0.6rem; }
+    .flow-grid { grid-template-columns: 1fr; }
+    .pricing-grid { grid-template-columns: 1fr; }
+    .reseller-features { flex-direction: column; align-items: center; gap: 1rem; }
+    .install-cmd { font-size: 0.7rem; padding: 0.75rem 1rem; }
+  }
+  @media (max-width: 480px) {
+    .nav-links { gap: 0; }
+    .nav-link { padding: 0.4rem 0.35rem; font-size: 0.55rem; }
+    .nav-cta { margin-left: 0.25rem; padding: 0.4rem 0.6rem; }
+  }
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<header>
+  <a href="/" class="logo">AGENT HEALTH MONITOR</a>
+  <nav class="nav-links">
+    <a href="/dashboard" class="nav-link">DASHBOARD</a>
+    <a href="/endpoints/ahs" class="nav-link">ENDPOINTS</a>
+    <a href="/shield" class="nav-link active">SHIELD</a>
+    <a href="/roadmap" class="nav-link">ROADMAP</a>
+    <a href="/app" class="nav-link nav-cta">TRY IT &rarr;</a>
+  </nav>
+</header>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="hero-badge">
+    <div class="badge-dot"></div>
+    PYTHON SDK &middot; v0.1.0 LIVE ON PYPI
+  </div>
+
+  <h1>AHM SHIELD</h1>
+  <p class="hero-sub">Automatic trust-routed payment decisions for agent developers. One import. Three lines of code. Ship with confidence.</p>
+
+  <div class="install-cmd" onclick="copyInstall(this)">
+    <span class="prompt">$</span> pip install ahm-shield
+    <button class="copy-btn">COPY</button>
+  </div>
+
+  <div class="hero-links">
+    <a href="https://github.com/moonshot-cyber/ahm-shield">GitHub &rarr;</a>
+    <a href="https://pypi.org/project/ahm-shield/">PyPI &rarr;</a>
+    <a href="/endpoints/ahs">API Docs &rarr;</a>
+  </div>
+</section>
+
+<!-- HOW IT WORKS -->
+<section class="section">
+  <div class="section-title">HOW SHIELD WORKS</div>
+  <div class="section-tag">// THREE STEPS</div>
+  <div class="flow-grid">
+    <div class="flow-card">
+      <div class="flow-step">01</div>
+      <div class="flow-title">AGENT REQUESTS PAYMENT</div>
+      <div class="flow-desc">YOUR AGENT RECEIVES AN INCOMING PAYMENT OR INITIATES A SETTLEMENT WITH ANOTHER AGENT</div>
+    </div>
+    <div class="flow-card">
+      <div class="flow-step">02</div>
+      <div class="flow-title">SHIELD CHECKS TRUST</div>
+      <div class="flow-desc">SHIELD CALLS /AHS/ROUTE TO GET THE COUNTERPARTY'S HEALTH GRADE (A&ndash;F) IN &lt;50MS</div>
+    </div>
+    <div class="flow-card">
+      <div class="flow-step">03</div>
+      <div class="flow-title">ROUTE THE PAYMENT</div>
+      <div class="flow-desc">A/B &rarr; INSTANT SETTLE &middot; C &rarr; ESCROW &middot; D/E/F &rarr; REJECT. AUTOMATIC. ZERO MANUAL REVIEW</div>
+    </div>
+  </div>
+  <div class="flow-formula"><span>AHS Grade</span> &rarr; <span>Routing Decision</span> &rarr; <span>settle</span> / <span>escrow</span> / <span>reject</span></div>
+</section>
+
+<!-- CODE EXAMPLES -->
+<section class="section">
+  <div class="section-title">INTEGRATION PATTERNS</div>
+  <div class="section-tag">// COPY-PASTE READY</div>
+
+  <div class="code-tabs">
+    <button class="code-tab active" onclick="showTab('explicit')">EXPLICIT CHECK</button>
+    <button class="code-tab" onclick="showTab('decorator')">DECORATOR</button>
+    <button class="code-tab" onclick="showTab('fastapi')">FASTAPI MIDDLEWARE</button>
+  </div>
+
+  <div class="code-panel active" id="panel-explicit">
+    <button class="copy-code" onclick="copyCode('panel-explicit')">COPY</button>
+    <pre><span class="kw">from</span> <span class="var">ahm_shield</span> <span class="kw">import</span> <span class="var">AHMShield</span>
+
+<span class="var">shield</span> = <span class="fn">AHMShield</span>(api_key=<span class="str">"ahm_live_..."</span>)
+
+<span class="cmt"># Check a counterparty before settling</span>
+<span class="var">decision</span> = shield.<span class="fn">route</span>(<span class="str">"0x1234...abcd"</span>)
+
+<span class="kw">if</span> decision.recommendation == <span class="str">"instant_settle"</span>:
+    <span class="fn">settle_payment</span>(amount)
+<span class="kw">elif</span> decision.recommendation == <span class="str">"escrow"</span>:
+    <span class="fn">create_escrow</span>(amount, timeout=<span class="str">"24h"</span>)
+<span class="kw">else</span>:
+    <span class="fn">reject_payment</span>(<span class="str">"Counterparty trust too low"</span>)</pre>
+  </div>
+
+  <div class="code-panel" id="panel-decorator">
+    <button class="copy-code" onclick="copyCode('panel-decorator')">COPY</button>
+    <pre><span class="kw">from</span> <span class="var">ahm_shield</span> <span class="kw">import</span> <span class="var">AHMShield</span>
+
+<span class="var">shield</span> = <span class="fn">AHMShield</span>(api_key=<span class="str">"ahm_live_..."</span>)
+
+<span class="dec">@shield.guard</span>(min_grade=<span class="str">"C"</span>)
+<span class="kw">def</span> <span class="fn">process_payment</span>(sender: <span class="var">str</span>, amount: <span class="var">float</span>):
+    <span class="cmt"># Only runs if sender's AHS grade >= C</span>
+    <span class="cmt"># Raises AHMRejectError for D/E/F grades</span>
+    <span class="cmt"># Raises AHMEscrowFlag for escrow recommendations</span>
+    <span class="fn">transfer</span>(sender, amount)
+    <span class="kw">return</span> {<span class="str">"status"</span>: <span class="str">"settled"</span>}
+
+<span class="cmt"># Works with async too</span>
+<span class="dec">@shield.guard</span>(min_grade=<span class="str">"B"</span>)
+<span class="kw">async def</span> <span class="fn">high_value_transfer</span>(sender: <span class="var">str</span>, amount: <span class="var">float</span>):
+    <span class="kw">await</span> <span class="fn">settle_instantly</span>(sender, amount)</pre>
+  </div>
+
+  <div class="code-panel" id="panel-fastapi">
+    <button class="copy-code" onclick="copyCode('panel-fastapi')">COPY</button>
+    <pre><span class="kw">from</span> <span class="var">fastapi</span> <span class="kw">import</span> <span class="var">FastAPI</span>
+<span class="kw">from</span> <span class="var">ahm_shield.middleware</span> <span class="kw">import</span> <span class="var">AHMShieldMiddleware</span>
+
+<span class="var">app</span> = <span class="fn">FastAPI</span>()
+
+<span class="cmt"># Add Shield to your entire API</span>
+app.<span class="fn">add_middleware</span>(
+    <span class="var">AHMShieldMiddleware</span>,
+    api_key=<span class="str">"ahm_live_..."</span>,
+    address_param=<span class="str">"sender"</span>,   <span class="cmt"># query/path param name</span>
+    min_grade=<span class="str">"C"</span>,              <span class="cmt"># minimum acceptable grade</span>
+)
+
+<span class="dec">@app.post</span>(<span class="str">"/pay"</span>)
+<span class="kw">async def</span> <span class="fn">handle_payment</span>(sender: <span class="var">str</span>, amount: <span class="var">float</span>):
+    <span class="cmt"># Shield already checked the sender's trust</span>
+    <span class="cmt"># Request rejected with 403 if grade &lt; C</span>
+    <span class="kw">return</span> {<span class="str">"settled"</span>: amount}</pre>
+  </div>
+</section>
+
+<!-- PRICING -->
+<section class="section">
+  <div class="section-title">SHIELD PRICING</div>
+  <div class="section-tag">// ROUTE CHECKS INCLUDED</div>
+  <div class="pricing-grid">
+    <div class="price-card">
+      <div class="price-tier">FREE</div>
+      <div class="price-amount">$0</div>
+      <div class="price-period">DEV / TEST</div>
+      <div class="price-detail">
+        <span>100</span> ROUTE CHECKS / MO<br>
+        <span>1</span> AGENT<br>
+        COMMUNITY SUPPORT
+      </div>
+      <a href="#" class="price-cta">GET STARTED &rarr;</a>
+    </div>
+    <div class="price-card">
+      <div class="price-tier">STARTER</div>
+      <div class="price-amount">$29<span style="font-size:0.4em;color:var(--text-dim)">/MO</span></div>
+      <div class="price-period">MONTHLY</div>
+      <div class="price-detail">
+        <span>10K</span> ROUTE CHECKS / MO<br>
+        UP TO <span>5</span> AGENTS<br>
+        EMAIL SUPPORT
+      </div>
+      <a href="#" class="price-cta">GET STARTER &rarr;</a>
+    </div>
+    <div class="price-card price-card--popular">
+      <div class="price-badge">POPULAR</div>
+      <div class="price-tier">PRO</div>
+      <div class="price-amount">$99<span style="font-size:0.4em;color:var(--text-dim)">/MO</span></div>
+      <div class="price-period">MONTHLY</div>
+      <div class="price-detail">
+        <span>100K</span> ROUTE CHECKS / MO<br>
+        UP TO <span>50</span> AGENTS<br>
+        PRIORITY SUPPORT
+      </div>
+      <a href="#" class="price-cta">GET PRO &rarr;</a>
+    </div>
+    <div class="price-card">
+      <div class="price-tier">ENTERPRISE</div>
+      <div class="price-amount">$299<span style="font-size:0.4em;color:var(--text-dim)">/MO</span></div>
+      <div class="price-period">MONTHLY</div>
+      <div class="price-detail">
+        <span>UNLIMITED</span> AGENTS<br>
+        <span>UNLIMITED</span> ROUTE CHECKS<br>
+        SLA + DEDICATED SUPPORT
+      </div>
+      <a href="#" class="price-cta">CONTACT US &rarr;</a>
+    </div>
+  </div>
+</section>
+
+<!-- WHITE-LABEL / RESELLER -->
+<div class="reseller-banner">
+  <h2>BECOME A SHIELD RESELLER</h2>
+  <div class="reseller-tag">// WHITE-LABEL PARTNER PROGRAM</div>
+  <p class="reseller-desc">Building a payment product for agents? Embed trust-routed decisions directly into your platform. Wholesale pricing. Your brand. Our intelligence.</p>
+  <div class="reseller-features">
+    <span class="reseller-feat">WHOLESALE API RATES</span>
+    <span class="reseller-feat">X-PARTNER-ID ATTRIBUTION</span>
+    <span class="reseller-feat">USAGE REPORTING DASHBOARD</span>
+    <span class="reseller-feat">DEDICATED PARTNER KEY</span>
+  </div>
+  <a href="mailto:partners@agenthealthmonitor.xyz" class="btn">PARTNER WITH US &rarr;</a>
+</div>
+
+<!-- FOOTER -->
+<footer>
+  <div class="footer-links">
+    <a href="/" class="footer-link">HOME</a>
+    <a href="/dashboard" class="footer-link">DASHBOARD</a>
+    <a href="/endpoints/ahs" class="footer-link">ENDPOINTS</a>
+    <a href="/shield" class="footer-link">SHIELD</a>
+    <a href="/roadmap" class="footer-link">ROADMAP</a>
+    <a href="https://github.com/moonshot-cyber/ahm-shield" class="footer-link">GITHUB</a>
+  </div>
+  <div class="footer-sub">TRUST LAYER FOR THE AGENT ECONOMY &middot; @AHMprotocol</div>
+</footer>
+
+<script>
+function showTab(name) {
+  document.querySelectorAll('.code-tab').forEach(function(t) { t.classList.remove('active'); });
+  document.querySelectorAll('.code-panel').forEach(function(p) { p.classList.remove('active'); });
+  event.currentTarget.classList.add('active');
+  document.getElementById('panel-' + name).classList.add('active');
+}
+
+function copyInstall(el) {
+  navigator.clipboard.writeText('pip install ahm-shield').then(function() {
+    var btn = el.querySelector('.copy-btn');
+    btn.textContent = 'COPIED';
+    setTimeout(function() { btn.textContent = 'COPY'; }, 2000);
+  });
+}
+
+function copyCode(panelId) {
+  var pre = document.getElementById(panelId).querySelector('pre');
+  var text = pre.textContent || pre.innerText;
+  navigator.clipboard.writeText(text).then(function() {
+    var btn = document.getElementById(panelId).querySelector('.copy-code');
+    btn.textContent = 'COPIED';
+    setTimeout(function() { btn.textContent = 'COPY'; }, 2000);
+  });
+}
+</script>
+
+</body>
+</html>
