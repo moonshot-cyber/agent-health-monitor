@@ -227,18 +227,53 @@ Approach: don't cold pitch — show up in their threads with genuine insight fir
 
 ## Scheduled Reviews
 
-### Session Continuity Shadow Mode Review — 7 April 2026
+### Session Continuity Shadow Mode Review — 7 April 2026 — NOT PROMOTED
 
-Review shadow_signals data across the trust registry and decide whether to promote
-session continuity scoring from shadow mode to live D2 weighting.
+**Outcome (7 April 2026):** Shadow signal **not promoted** to live D2 weighting.
 
-Checklist:
-- [ ] Query scan results for distribution of session_continuity_score across all wallets
+**Reason:** Shadow signals were computed in `monitor.py:_calc_session_continuity_score()`
+and returned in the AHS API response, but never persisted to the `scans` table.
+The review checklist's first three items (distribution, stability, correlation)
+were all unrunnable because there was no historical shadow data on disk to
+analyse. Promoting blind would have made the AHS-v2 weighting decision without
+any evidence that the signal behaves as designed.
+
+**Action taken:** Persistence patch landed in PR `feat/d2-shadow-persistence`
+(schema v8, adds `scans.shadow_signals_json` column, wires `shadow_signals`
+through `db.log_scan()` and the AHS endpoint in `api.py`). From this point
+onward every AHS scan persists the full shadow-signals payload (including
+`session_continuity_score`, `abrupt_sessions`, `budget_exhaustion_count`,
+`total_sessions`, `avg_session_length`, and `shadow_patterns`).
+
+### Session Continuity Shadow Mode Review — 21 April 2026 (next gate)
+
+Re-run the review after a 2-week burn-in window with the persistence patch live.
+
+**Prerequisites before running this gate:**
+- [x] Persistence patch (`feat/d2-shadow-persistence`) merged and deployed
+- [ ] At least 2 weeks of `shadow_signals_json` data populated in production
+- [ ] **Smart-contract wallet coverage decision** — `calculate_d2_score_from_transfers()`
+      hardcodes `session_continuity_score: None` because token-transfer rows lack
+      `isError`/`txreceipt_status`. Before promoting the signal into live D2
+      weighting we need to either (a) extend the signal to the token-transfers
+      path, or (b) explicitly document that session-continuity only applies to
+      EOA-with-history wallets and gate the new D2 weight on
+      `d2_data_source == "txlist"`. The current "silently None" behaviour will
+      become a bug the moment the signal is load-bearing.
+
+**Checklist (re-run when prerequisites met):**
+- [ ] Query `scans.shadow_signals_json` for distribution of `session_continuity_score`
+      across all wallets, broken out by `d2_data_source` (txlist vs tokentx)
+- [ ] Confirm coverage rate — what % of AHS scans produced a non-None score?
+      What % were excluded by the ≥20-tx / ≥3-session gating in
+      `_calc_session_continuity_score`?
 - [ ] Confirm score distribution is stable (not causing unexpected AHS shifts)
 - [ ] Check how many wallets are triggering Budget Exhaustion shadow pattern
-- [ ] Review whether session_continuity_score correlates with existing D2 scores
-- [ ] If distribution looks stable, implement live D2 weighting (weight ~0.10,
-      redistribute from timing_regularity and retry_storm)
+- [ ] Compute correlation between `session_continuity_score` and live `d2_score`
+      on the same wallet — is it adding signal or duplicating existing D2 components?
+- [ ] If distribution looks stable AND correlation is low enough to add signal,
+      implement live D2 weighting (weight ~0.10, redistribute from
+      `timing_regularity` and `retry_storm`)
 - [ ] Update AHS model version to AHS-v2 when promoted to live
 
 ---

@@ -4040,6 +4040,7 @@ async def get_ahs_report(address: WalletAddress, request: Request):
         tx_count=result.tx_count, history_days=result.history_days,
         response_data={"agent_health_score": result.agent_health_score, "grade": result.grade,
                        "d1_score": result.d1_score, "d2_score": result.d2_score},
+        shadow_signals=shadow.model_dump(),
     ))
     return AHSResponse(status="ok", report=report)
 
