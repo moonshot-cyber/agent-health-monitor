@@ -1,15 +1,22 @@
-# ACP Nightly Scan — Automated Scheduling
+# Nightly Agent-Registry Scans — Automated Scheduling
 
-Automated nightly scanning of the ACP (agdp.io) agent ecosystem.
-Runs daily at **02:00 UTC**, scanning up to 500 agents and 100 wallets per run.
+Automated nightly scanning of every agent-registry source AHM tracks.
+All four scans run inside the FastAPI web process via APScheduler — no
+separate Railway cron service is needed.
+
+| Scan | Schedule (UTC) | Source |
+|------|----------------|--------|
+| ACP  | 02:00 | agdp.io REST API |
+| Olas | 02:30 | Olas ServiceRegistryL2 (Base) |
+| Celo | 02:45 | ERC-8004 IdentityRegistry (Celo mainnet) |
+| Arc  | 03:00 | ERC-8004 IdentityRegistry (Arc testnet) |
 
 ---
 
 ## Production: APScheduler (in-process)
 
-The ACP nightly scan runs inside the FastAPI web process via APScheduler. No separate Railway cron service is needed.
-
-The scheduler is configured in `api.py` lifespan:
+The scheduler is configured in `api.py` lifespan. Each scan adds an
+`add_job` call with a unique id and a `CronTrigger` at the time slot above:
 
 ```python
 scheduler.add_job(
@@ -35,6 +42,11 @@ scheduler.add_job(
 | `ACP_MAX_SCANS` | `100` | Max AHS scans per run |
 | `ACP_SORT` | `successfulJobCount:desc` | API sort order |
 | `ACP_MAX_RUNTIME` | `3600` | Safety timeout in seconds |
+| `OLAS_MAX_SCANS` | `200` | Max wallets to AHS-score per Olas run |
+| `CELO_MAX_SCANS` | `200` | Max wallets to AHS-score per Celo run |
+| `CELO_RPC_URL` | `https://forno.celo.org` | Celo mainnet RPC endpoint |
+| `CELO_CHECKPOINT_PATH` | `celo_scan_checkpoint.json` | Block checkpoint persistence |
+| `ARC_MAX_SCANS` | `200` | Max wallets to AHS-score per Arc run |
 
 ### Manual trigger
 
@@ -208,8 +220,14 @@ Runtime assumes ~4s per wallet (2× Blockscout calls with 2s delay each). Alread
 
 | File | Purpose |
 |------|---------|
-| `api.py` (`run_acp_scan`) | Production entry point — APScheduler job at 02:00 UTC |
+| `api.py` (`run_acp_scan`)  | Production entry point — APScheduler job at 02:00 UTC |
+| `api.py` (`run_olas_scan`) | APScheduler job at 02:30 UTC |
+| `api.py` (`run_celo_scan`) | APScheduler job at 02:45 UTC |
+| `api.py` (`run_arc_scan`)  | APScheduler job at 03:00 UTC |
 | `acp_proactive_scan.py` | Core scanner — discovery, dedup, AHS scanning, reporting |
+| `olas_scan.py` | Olas ServiceRegistryL2 (Base) discovery + AHS scoring |
+| `celo_scan.py` | Celo ERC-8004 IdentityRegistry discovery + AHS scoring |
+| `arc_scan.py`  | Arc ERC-8004 IdentityRegistry discovery + AHS scoring |
 | `cron_acp_scan.py` | Standalone CLI wrapper for manual runs |
 | `scripts/run_acp_scan.bat` | Windows batch runner with log rotation |
 | `scripts/acp_scan_task.xml` | Windows Task Scheduler task definition |

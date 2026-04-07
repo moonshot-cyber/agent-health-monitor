@@ -1380,6 +1380,15 @@ async def lifespan(app: FastAPI):
         max_instances=1,
     )
     scheduler.add_job(
+        run_celo_scan,
+        trigger=CronTrigger(hour=2, minute=45, timezone="UTC"),
+        id="celo_nightly_scan",
+        name="Celo Nightly Scan",
+        coalesce=True,
+        misfire_grace_time=3600,
+        max_instances=1,
+    )
+    scheduler.add_job(
         run_arc_scan,
         trigger=CronTrigger(hour=3, minute=0, timezone="UTC"),
         id="arc_nightly_scan",
@@ -1391,7 +1400,7 @@ async def lifespan(app: FastAPI):
     scheduler.start()
     app.state.scheduler = scheduler
 
-    bg_names = "alert_monitor, rescan_loop, acp_scheduler, olas_scheduler, arc_scheduler"
+    bg_names = "alert_monitor, rescan_loop, acp_scheduler, olas_scheduler, celo_scheduler, arc_scheduler"
     if erc8183_task:
         bg_names += ", erc8183_worker"
     logger.info("Background tasks started: %s", bg_names)
@@ -5420,6 +5429,48 @@ async def arc_scan_status(request: Request):
     }
 
 
+# -- Celo Scan Trigger & Status ----------------------------------------------
+
+@app.post("/celo-scan/trigger", tags=["Admin"])
+async def trigger_celo_scan(request: Request):
+    """Manually trigger the Celo nightly scan.
+
+    Protected by X-Internal-Key header. Returns immediately;
+    scan runs in the background.
+    """
+    internal_key = request.headers.get("X-Internal-Key", "")
+    if not INTERNAL_API_KEY or not hmac.compare_digest(internal_key, INTERNAL_API_KEY):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    if _celo_scan_lock.locked():
+        raise HTTPException(status_code=409, detail="Celo scan already running")
+
+    asyncio.create_task(run_celo_scan())
+    return {"status": "ok", "message": "Celo scan triggered"}
+
+
+@app.get("/celo-scan/status", tags=["Admin"])
+async def celo_scan_status(request: Request):
+    """Check if a Celo scan is currently running.
+
+    Protected by X-Internal-Key header.
+    """
+    internal_key = request.headers.get("X-Internal-Key", "")
+    if not INTERNAL_API_KEY or not hmac.compare_digest(internal_key, INTERNAL_API_KEY):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    next_run = None
+    scheduler = getattr(request.app.state, "scheduler", None)
+    if scheduler:
+        job = scheduler.get_job("celo_nightly_scan")
+        next_run = job.next_run_time.isoformat() if job and job.next_run_time else None
+
+    return {
+        "running": _celo_scan_lock.locked(),
+        "next_scheduled_run": next_run,
+    }
+
+
 # -- ERC-8183 Worker Status --------------------------------------------------
 
 @app.get("/erc8183/status", tags=["Admin"])
@@ -5609,6 +5660,48 @@ async def run_arc_scan():
         except Exception:
             elapsed = time.time() - start
             logger.exception("Arc nightly scan — FAILED after %.0fs", elapsed)
+
+
+# -- Celo Nightly Scan ------------------------------------------------------
+
+_celo_scan_lock = asyncio.Lock()
+
+
+async def run_celo_scan():
+    """Run the nightly Celo ERC-8004 scan in a background thread.
+
+    Discovers agent wallet addresses from the ERC-8004 IdentityRegistry
+    on Celo mainnet, then runs AHS scoring on new wallets. All sync I/O
+    is offloaded to the default executor via run_in_executor.
+    """
+    if _celo_scan_lock.locked():
+        logger.warning("Celo scan skipped: previous scan still running")
+        return
+
+    async with _celo_scan_lock:
+        logger.info("Celo nightly scan — START")
+        start = time.time()
+
+        max_scans = int(os.getenv("CELO_MAX_SCANS", "200"))
+        loop = asyncio.get_running_loop()
+
+        try:
+            from celo_scan import scan_celo_agents
+
+            wallets = await loop.run_in_executor(
+                None,
+                partial(scan_celo_agents, max_scans=max_scans),
+            )
+
+            elapsed = time.time() - start
+            logger.info(
+                "Celo nightly scan — COMPLETE (%.0fs, %d wallets discovered)",
+                elapsed, len(wallets),
+            )
+
+        except Exception:
+            elapsed = time.time() - start
+            logger.exception("Celo nightly scan — FAILED after %.0fs", elapsed)
 
 
 # -- Rescan Background Loop --------------------------------------------------
