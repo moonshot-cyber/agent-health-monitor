@@ -106,6 +106,7 @@ ERC-8210 verification schema names AHM as a reference implementation. AHS D1/D2/
 - [ ] AHS D3 infrastructure probing — expand probe coverage (uptime, latency, error rates)
 - [ ] Cross-dimensional pattern library — expand beyond Zombie Agent, Cascading Infrastructure Failure, Spam Drain, Gas Hemorrhage
 - [ ] Trend tracking improvements — JWT-based score history
+- [ ] **D4 Output Quality Score (concept, Phase 2)** — Potential future AHS dimension derived from aggregated post-transaction output quality verdicts across an agent's job history. If an agent consistently produces low-quality deliverables that get rejected by content verification evaluators (e.g. ThoughtProof-style DISSENT/HOLD verdicts), that rejection pattern should feed into their AHS score as a fourth dimension alongside D1 Solvency, D2 Behavioural Consistency, D3 Operational Stability. Would require either: (a) a data-sharing agreement with content verification providers, or (b) reading rejection patterns from on-chain ERC-8183 job history. No action until D3 is live and ERC-8183 mainnet job volume is measurable. Source: ThoughtProof research, Apr 7 2026
 - [x] **Smart contract wallet scoring** (completed Mar 24) — When `txlist` returns < 10 outgoing txs, `calculate_ahs()` now falls back to Blockscout V2 `token-transfers` API. D2 uses 4/8 signals (timing regularity, transfer diversity, counterparty breadth, activity gaps) with redistributed weights. Verified: ACP agents now score D2 10-68 (was baseline 50). EOA wallets unaffected (64/64 tests pass). New: `fetch_token_transfers()`, `calculate_d2_score_from_transfers()`, `_calc_token_transfer_diversity_score()`, `AHSResult.d2_data_source` field
 
 ---
@@ -203,6 +204,7 @@ Approach: don't cold pitch — show up in their threads with genuine insight fir
 - [ ] **DJD Agent Score** — Only other agent scoring system in the directory. Could be competitor or complementary — reach out to understand their angle. Differentiation or collab story TBD
 - [ ] **WoT Scoring API** — Agent identity/trust for Nostr. Different ecosystem (Nostr vs on-chain) but same problem space (agent reputation). Worth a conversation
 - [ ] **CertVera** — Compliance timestamps on Bitcoin. Natural fit alongside AHM's future Agent Certification concept (backlog Spike 13)
+- [ ] **ThoughtProof (thoughtproof.ai)** — Reasoning verification service. Core product: adversarial multi-model critique API returning ALLOW/HOLD/UNCERTAIN/DISSENT verdict + confidence score + objections. x402-gated on Base USDC. MCP server available (`@thoughtproof/mcp-server`). Also active ERC-8183 evaluator on Base Sepolia (first external evaluator, staked Apr 7 2026). Their evaluator role is **complementary not competing**: ThoughtProof evaluates deliverable quality post-submission, AHM evaluates counterparty trustworthiness pre-payment. Potential partnership pattern: AHM gates entry (should we trust this agent?), ThoughtProof gates completion (was the output correct?). Explore as a co-marketing or technical integration partner once AHM mainnet evaluator role is established. **Do not approach until then.**
 
 ### Tier 2 — Awareness / Co-marketing (medium priority)
 
