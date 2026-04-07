@@ -146,10 +146,19 @@ def _rpc_call_with_retry(fn, *args, label: str = "RPC call"):
     raise last_exc  # unreachable, but keeps type checkers happy
 
 
-def discover_olas_wallets(max_services: int = 500) -> list[dict]:
+def discover_olas_wallets(max_services: int | None = None) -> list[dict]:
     """Discover wallet addresses from Olas ServiceRegistryL2 on Base.
 
-    Iterates from the highest service ID downward (newest first).
+    Iterates from the highest service ID downward (newest first) and scans
+    the entire registry from totalSupply down to service ID 1 by default,
+    so coverage tracks registry growth automatically and no service is ever
+    silently dropped.
+
+    Args:
+        max_services: Optional cap on the discovery window for testing or
+            partial scans. If None (the default), the full registry is
+            walked end-to-end. Production callers should leave this None.
+
     Only includes services in DEPLOYED state (state == 4).
 
     Returns list of dicts:
@@ -173,9 +182,14 @@ def discover_olas_wallets(max_services: int = 500) -> list[dict]:
     skipped_count = 0
     error_count = 0
 
-    # Iterate from highest ID (most recent) to 1
+    # Iterate from highest ID (newest) downward. Default: full registry walk
+    # (totalSupply → 1) so coverage scales with registry growth. Optional
+    # max_services caps the window for tests or partial scans.
     start_id = total_supply
-    end_id = max(1, total_supply - max_services * 3)  # overshoot to find enough deployed
+    if max_services is None:
+        end_id = 1
+    else:
+        end_id = max(1, total_supply - max_services + 1)
 
     for service_id in range(start_id, end_id - 1, -1):
         try:
@@ -246,9 +260,10 @@ def discover_olas_wallets(max_services: int = 500) -> list[dict]:
         time.sleep(RPC_DELAY)
 
     logger.info(
-        "Olas discovery complete: %d total services checked, %d deployed, "
-        "%d unique wallets, %d errors",
-        start_id - end_id + 1, deployed_count, len(wallets), error_count,
+        "Olas discovery complete: %d total services checked (IDs %d→%d), "
+        "%d deployed, %d not-deployed (skipped), %d unique wallets, %d errors",
+        start_id - end_id + 1, start_id, end_id,
+        deployed_count, skipped_count, len(wallets), error_count,
     )
     return wallets
 
@@ -290,8 +305,9 @@ def scan_olas_services(max_scans: int = 200) -> list[dict]:
     )
     start_time = time.time()
 
-    # Phase 1: Discovery
-    wallets = discover_olas_wallets(max_services=max_scans * 3)
+    # Phase 1: Discovery — always walk the full registry so coverage tracks
+    # registry growth. max_scans only caps how many *new* wallets get scored.
+    wallets = discover_olas_wallets()
 
     if not wallets:
         logger.info("Olas scan: no wallets discovered")
@@ -305,8 +321,12 @@ def scan_olas_services(max_scans: int = 200) -> list[dict]:
     # Phase 2: Dedup against already-scanned
     already_scanned = get_already_scanned_olas_addresses()
     new_wallets = [w for w in wallets if w["address"] not in already_scanned]
-    logger.info("New wallets to scan: %d (skipping %d already scanned)",
-                len(new_wallets), len(wallets) - len(new_wallets))
+    skipped_already_scanned = len(wallets) - len(new_wallets)
+    logger.info(
+        "Coverage: %d wallets discovered | %d skipped (already scanned) | "
+        "%d new to score (cap=%d)",
+        len(wallets), skipped_already_scanned, len(new_wallets), max_scans,
+    )
 
     # Phase 3: AHS scoring
     db.init_db()
