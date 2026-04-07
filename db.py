@@ -17,7 +17,7 @@ logger = logging.getLogger("ahm.db")
 
 DB_PATH = os.getenv("DB_PATH", "./ahm_history.db")
 
-_SCHEMA_VERSION = 7
+_SCHEMA_VERSION = 8
 
 _SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS scans (
@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS scans (
     source            TEXT NOT NULL DEFAULT 'api',
     tx_count          INTEGER,
     history_days      INTEGER,
+    shadow_signals_json TEXT,
     created_at        TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
 );
 
@@ -222,6 +223,16 @@ def init_db():
         # v7: Add shield_subscriptions table (created via _SCHEMA_SQL above)
         # No ALTER needed — table is created by CREATE TABLE IF NOT EXISTS.
 
+        # v8: Add shadow_signals_json column to scans for D2 shadow-mode persistence.
+        # See ahm_backlog.md "Session Continuity Shadow Mode Review" — without this
+        # column, shadow signals computed in monitor.py are returned in the API
+        # response but never written to the DB, so distribution analysis is impossible.
+        if current < 8:
+            try:
+                conn.execute("ALTER TABLE scans ADD COLUMN shadow_signals_json TEXT")
+            except sqlite3.OperationalError:
+                pass  # Column already exists
+
         if current < _SCHEMA_VERSION:
             conn.execute("INSERT INTO schema_version (version) VALUES (?)", (_SCHEMA_VERSION,))
             conn.commit()
@@ -252,8 +263,14 @@ def log_scan(
     tx_count: int | None = None,
     history_days: int | None = None,
     label: str | None = None,
+    shadow_signals: dict | None = None,
 ):
-    """Insert a scan record and any detected patterns. Thread-safe."""
+    """Insert a scan record and any detected patterns. Thread-safe.
+
+    The optional shadow_signals dict is JSON-encoded and stored verbatim in
+    the scans.shadow_signals_json column. Used for D2 session-continuity
+    shadow-mode burn-in (see ahm_backlog.md).
+    """
     addr = address.lower()
     now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -264,6 +281,8 @@ def log_scan(
                 if k not in ("nansen_labels", "nansen_counterparties", "nansen_pnl")}
         response_json = json.dumps(safe, default=str)
 
+    shadow_json = json.dumps(shadow_signals, default=str) if shadow_signals else None
+
     conn = get_connection()
     try:
         cur = conn.execute(
@@ -271,12 +290,12 @@ def log_scan(
                 address, endpoint, scan_timestamp, health_score, risk_score,
                 ahs_score, cleanliness_score, grade, grade_label, confidence,
                 mode, d1_score, d2_score, d3_score, cdp_modifier,
-                response_json, source, tx_count, history_days
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                response_json, source, tx_count, history_days, shadow_signals_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (addr, endpoint, scan_timestamp, health_score, risk_score,
              ahs_score, cleanliness_score, grade, grade_label, confidence,
              mode, d1_score, d2_score, d3_score, cdp_modifier,
-             response_json, source, tx_count, history_days),
+             response_json, source, tx_count, history_days, shadow_json),
         )
         scan_id = cur.lastrowid
 
