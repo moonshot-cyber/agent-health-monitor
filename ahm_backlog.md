@@ -197,6 +197,18 @@ Full ecosystem scan of 402index.io service directory. 15,658 indexed services, b
 
 ---
 
+## Competitive Intelligence
+
+### Verdict Protocol (@verdictprotocol, verdict-protocol.xyz)
+- Joined: March 2026. 123 followers. Whitepaper published. $VRDCT token live on Virtuals.io.
+- Positioning: "The trust layer for agent commerce" — six-layer protocol above ERC-8183 covering Evaluator Network, Hook Registry, Trust & Reputation Index, Facilitator Layer, Policy & Underwriting, $VRDCT coordination
+- Direct overlap: Trust & Reputation Index (multidimensional scoring across providers, evaluators, hooks, clients) and Evaluator Network (routing and coordinating ERC-8183 evaluators)
+- No overlap: pre-transaction wallet health scoring (D1/D2/D3), zombie detection, AHM Shield runtime middleware
+- Key differentiator vs AHM: token-coordinated protocol play requiring $VRDCT staking/governance adoption — much heavier lift than AHM's direct API/SDK model
+- Strategic opportunity: Verdict lists "Reputation API" as Phase 5 (4 phases away). AHM has live reputation data today. Potential B2B data partnership — AHM as data provider for Verdict's Trust & Reputation Index rather than head-to-head competitor
+
+---
+
 ## Partnership & Outreach Targets (from 402index.io market analysis, March 2026)
 
 Approach: don't cold pitch — show up in their threads with genuine insight first, then find a specific integration angle.
