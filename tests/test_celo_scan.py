@@ -64,9 +64,18 @@ class TestCeloScanConfig:
         assert fn["inputs"][0]["type"] == "uint256"
         assert fn["outputs"][0]["type"] == "address"
 
-    def test_event_chunk_size_is_10k(self):
+    def test_event_chunk_size_is_conservative(self):
+        """Default chunk size must stay well under forno.celo.org's
+        eth_getLogs range limit (observed failures at 10,000 blocks)."""
         import celo_scan
-        assert celo_scan.EVENT_CHUNK_SIZE == 10_000
+        assert celo_scan.EVENT_CHUNK_SIZE <= 1_000
+        assert celo_scan.EVENT_CHUNK_SIZE >= celo_scan.MIN_EVENT_CHUNK_SIZE
+
+    def test_chunk_size_floor_is_defined(self):
+        """A non-zero floor must exist so adaptive halving can't degenerate."""
+        import celo_scan
+        assert celo_scan.MIN_EVENT_CHUNK_SIZE > 0
+        assert celo_scan.MIN_EVENT_CHUNK_SIZE <= celo_scan.EVENT_CHUNK_SIZE
 
 
 # ---------------------------------------------------------------------------
@@ -116,16 +125,19 @@ class TestCheckpoint:
 class TestFetchRegisteredEvents:
     """Test _fetch_registered_events chunked fetching."""
 
-    def test_fetches_in_10k_chunks(self):
+    def test_fetches_in_fixed_chunks(self):
         """Events should be fetched in EVENT_CHUNK_SIZE-block windows."""
         import celo_scan
 
+        chunk = celo_scan.EVENT_CHUNK_SIZE
+        # Pick a range that yields exactly 3 chunks: 0→(3*chunk - 1)
+        latest = chunk * 3 - 1
         mock_w3 = MagicMock()
-        mock_w3.eth.block_number = 25000  # 0→25000 = ~3 chunks of 10k
+        mock_w3.eth.block_number = latest
         mock_contract = MagicMock()
 
-        event1 = {"args": {"agentId": 1, "owner": "0xAAA"}, "blockNumber": 5000}
-        event2 = {"args": {"agentId": 2, "owner": "0xBBB"}, "blockNumber": 15000}
+        event1 = {"args": {"agentId": 1, "owner": "0xAAA"}, "blockNumber": chunk // 2}
+        event2 = {"args": {"agentId": 2, "owner": "0xBBB"}, "blockNumber": chunk + chunk // 2}
 
         call_count = 0
 
@@ -148,15 +160,17 @@ class TestFetchRegisteredEvents:
         assert len(events) == 2
         assert events[0] == event1
         assert events[1] == event2
-        # Should have made 3 chunk calls: 0-9999, 10000-19999, 20000-25000
+        # Three non-overlapping chunks: 0→c-1, c→2c-1, 2c→3c-1
         assert call_count == 3
 
     def test_reduces_chunk_on_413_error(self):
         """413 errors should trigger chunk size reduction and retry."""
         import celo_scan
 
+        chunk = celo_scan.EVENT_CHUNK_SIZE
         mock_w3 = MagicMock()
-        mock_w3.eth.block_number = 15000
+        # A range that definitely needs more than one chunk at default size
+        mock_w3.eth.block_number = chunk * 3
         mock_contract = MagicMock()
 
         call_history = []
@@ -167,7 +181,7 @@ class TestFetchRegisteredEvents:
             call_history.append((from_b, to_b))
             m = MagicMock()
 
-            # First call (0-9999): raise 413
+            # First call at full chunk size: raise 413
             if len(call_history) == 1:
                 raise Exception("413 Client Error: Request Entity Too Large")
 
@@ -180,17 +194,22 @@ class TestFetchRegisteredEvents:
         events = celo_scan._fetch_registered_events(mock_w3, mock_contract, from_block=0)
 
         assert len(events) == 0
-        # First call should be 0-9999, then retry with halved chunk 0-4999
-        assert call_history[0] == (0, 9999)
-        assert call_history[1][0] == 0
-        assert call_history[1][1] < 9999  # chunk was reduced
+        # First call should cover the full default chunk, the retry should
+        # start from the same block with a strictly smaller window.
+        first_from, first_to = call_history[0]
+        assert first_from == 0
+        assert first_to == chunk - 1
+        second_from, second_to = call_history[1]
+        assert second_from == 0
+        assert (second_to - second_from + 1) < chunk  # halved window
 
-    def test_raises_on_non_range_error(self):
-        """Non-range errors should propagate immediately."""
+    def test_raises_after_exhausting_chunk_halving(self):
+        """If a persistent error survives all halvings down to the floor,
+        the original exception type must propagate."""
         import celo_scan
 
         mock_w3 = MagicMock()
-        mock_w3.eth.block_number = 5000
+        mock_w3.eth.block_number = celo_scan.EVENT_CHUNK_SIZE * 2
         mock_contract = MagicMock()
 
         mock_contract.events.Registered.create_filter.side_effect = \
@@ -204,7 +223,7 @@ class TestFetchRegisteredEvents:
         import celo_scan
 
         mock_w3 = MagicMock()
-        mock_w3.eth.block_number = 5000
+        mock_w3.eth.block_number = celo_scan.EVENT_CHUNK_SIZE * 2
         mock_contract = MagicMock()
 
         retries = []
@@ -223,19 +242,20 @@ class TestFetchRegisteredEvents:
         events = celo_scan._fetch_registered_events(mock_w3, mock_contract, from_block=0)
         assert len(retries) > 1  # at least one retry happened
 
-    def test_chunk_reduction_floor_at_1000(self):
-        """Chunk size should never go below 1,000 blocks."""
+    def test_chunk_reduction_floor(self):
+        """Chunk size should never go below MIN_EVENT_CHUNK_SIZE blocks."""
         import celo_scan
 
         mock_w3 = MagicMock()
-        mock_w3.eth.block_number = 5000
+        mock_w3.eth.block_number = celo_scan.EVENT_CHUNK_SIZE * 2
         mock_contract = MagicMock()
 
-        call_count = 0
+        observed_sizes: list[int] = []
 
         def create_filter_side_effect(**kwargs):
-            nonlocal call_count
-            call_count += 1
+            from_b = kwargs.get("from_block", 0)
+            to_b = kwargs.get("to_block", 0)
+            observed_sizes.append(to_b - from_b + 1)
             raise Exception("413 Client Error: Request Entity Too Large")
 
         mock_contract.events.Registered.create_filter.side_effect = create_filter_side_effect
@@ -243,8 +263,34 @@ class TestFetchRegisteredEvents:
         with pytest.raises(Exception, match="413"):
             celo_scan._fetch_registered_events(mock_w3, mock_contract, from_block=0)
 
-        # Should have retried several times before giving up at 1000-block floor
-        assert call_count >= 3
+        # Should have halved at least once before propagating
+        assert len(observed_sizes) >= 2
+        # The smallest observed window must be >= the floor (never below)
+        assert min(observed_sizes) >= celo_scan.MIN_EVENT_CHUNK_SIZE
+
+    def test_logs_per_chunk_event_count(self, caplog):
+        """Each successful chunk should log its event count for diagnosis."""
+        import logging
+
+        import celo_scan
+
+        chunk = celo_scan.EVENT_CHUNK_SIZE
+        mock_w3 = MagicMock()
+        mock_w3.eth.block_number = chunk - 1  # exactly one chunk
+        mock_contract = MagicMock()
+
+        sentinel = {"args": {"agentId": 1, "owner": "0xAAA"}, "blockNumber": 1}
+        m = MagicMock()
+        m.get_all_entries.return_value = [sentinel]
+        mock_contract.events.Registered.create_filter.return_value = m
+
+        with caplog.at_level(logging.INFO, logger="ahm.celo_scan"):
+            events = celo_scan._fetch_registered_events(mock_w3, mock_contract, from_block=0)
+
+        assert len(events) == 1
+        # Per-chunk log must mention the event count so post-mortem is cheap
+        joined = " ".join(rec.getMessage() for rec in caplog.records)
+        assert "1 events" in joined
 
 
 # ---------------------------------------------------------------------------

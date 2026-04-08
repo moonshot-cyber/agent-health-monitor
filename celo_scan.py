@@ -93,7 +93,19 @@ ZERO_ADDRESS = "0x" + "0" * 40
 
 # Block checkpoint — avoids re-scanning from block 0 on every run.
 CHECKPOINT_PATH = Path(os.getenv("CELO_CHECKPOINT_PATH", "celo_scan_checkpoint.json"))
-EVENT_CHUNK_SIZE = 10_000  # blocks per eth_getLogs request
+
+# Blocks per eth_getLogs request. forno.celo.org is a shared public RPC and
+# rejects wide ranges much sooner than Base or Arc — observed failures at
+# 10,000 blocks. 500 keeps us comfortably below any documented limit while
+# still scanning ~300k blocks of nightly delta in a few minutes. Override
+# via CELO_EVENT_CHUNK_SIZE if forno relaxes its limits.
+EVENT_CHUNK_SIZE = int(os.getenv("CELO_EVENT_CHUNK_SIZE", "500"))
+
+# Floor for adaptive chunk-halving. Any chunk request that fails while
+# chunk_size is still above this floor is halved and retried. Once we reach
+# the floor and still fail, the exception propagates so the scan doesn't
+# silently hang.
+MIN_EVENT_CHUNK_SIZE = 50
 
 
 # ---------------------------------------------------------------------------
@@ -173,11 +185,17 @@ def _rpc_call_with_retry(fn, *args, label: str = "RPC call"):
 
 
 def _fetch_registered_events(w3, contract, from_block: int = 0) -> list[dict]:
-    """Fetch Registered events from the IdentityRegistry in fixed-size chunks.
+    """Fetch Registered events from the IdentityRegistry in adaptive chunks.
 
-    Uses EVENT_CHUNK_SIZE-block windows (default 10,000) to stay within
-    RPC payload limits. If a chunk still triggers a 413 / range error,
-    the chunk size is halved down to a 1,000-block floor.
+    Starts at EVENT_CHUNK_SIZE-block windows (default 500 — conservative for
+    forno.celo.org's rate-limited public RPC). On any exception the current
+    chunk is halved and retried, down to MIN_EVENT_CHUNK_SIZE. This handles
+    range-limit errors whether forno returns a recognisable keyword or an
+    opaque 5xx / timeout, without silently masking genuine bugs: once the
+    floor is reached, the underlying exception propagates.
+
+    Each successful chunk logs its event count so future failures can be
+    pinpointed from the logs alone.
     """
     latest_block = w3.eth.block_number
     total_range = latest_block - from_block
@@ -198,32 +216,42 @@ def _fetch_registered_events(w3, contract, from_block: int = 0) -> list[dict]:
                 from_block=start, to_block=end,
             )
             events = event_filter.get_all_entries()
-            all_events.extend(events)
-            start = end + 1
-            chunks_queried += 1
-
-            if chunks_queried % 100 == 0:
-                pct = (start - from_block) / max(total_range, 1) * 100
-                logger.info(
-                    "  progress: %d/%d blocks (%.0f%%), %d events so far",
-                    start - from_block, total_range, pct, len(all_events),
-                )
-
         except Exception as e:
-            err_str = str(e).lower()
-            is_range_error = (
-                "range" in err_str
-                or "too many" in err_str
-                or "limit" in err_str
-                or "too large" in err_str
-                or "413" in err_str
-                or "payload" in err_str
+            # Log the raw error verbosely — forno's error format is opaque
+            # and the only way to diagnose future regressions is to see
+            # the exact message that came back over the wire.
+            logger.warning(
+                "Celo discovery: chunk %d-%d (size=%d) failed: %s: %s",
+                start, end, chunk_size, type(e).__name__, str(e)[:200],
             )
-            if is_range_error and chunk_size > 1000:
-                chunk_size = max(1000, chunk_size // 2)
-                logger.info("Celo discovery: reducing chunk size to %d blocks", chunk_size)
+            if chunk_size > MIN_EVENT_CHUNK_SIZE:
+                chunk_size = max(MIN_EVENT_CHUNK_SIZE, chunk_size // 2)
+                logger.info(
+                    "Celo discovery: halving chunk size to %d blocks and retrying",
+                    chunk_size,
+                )
                 continue
+            # At the floor and still failing — let the caller decide.
+            logger.error(
+                "Celo discovery: chunk size already at floor (%d), propagating error",
+                MIN_EVENT_CHUNK_SIZE,
+            )
             raise
+
+        all_events.extend(events)
+        logger.info(
+            "Celo discovery: chunk %d-%d → %d events (total=%d)",
+            start, end, len(events), len(all_events),
+        )
+        start = end + 1
+        chunks_queried += 1
+
+        if chunks_queried % 100 == 0:
+            pct = (start - from_block) / max(total_range, 1) * 100
+            logger.info(
+                "  progress: %d/%d blocks (%.0f%%), %d events so far",
+                start - from_block, total_range, pct, len(all_events),
+            )
 
     logger.info(
         "Celo discovery: found %d Registered events in %d chunks",
