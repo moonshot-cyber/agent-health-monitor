@@ -123,10 +123,23 @@ class TestCheckpoint:
 # ---------------------------------------------------------------------------
 
 class TestFetchRegisteredEvents:
-    """Test _fetch_registered_events chunked fetching."""
+    """Test _fetch_registered_events chunked fetching.
+
+    These tests exercise the stateless ``w3.eth.get_logs`` path that
+    replaced the stateful ``contract.events.Registered.create_filter``
+    path (which broke on forno.celo.org with -32000 filter not found).
+    """
+
+    @staticmethod
+    def _passthrough_process_log(mock_contract):
+        """Wire ``contract.events.Registered().process_log(log)`` to return
+        the raw log unchanged so tests can feed dict "logs" end-to-end."""
+        mock_contract.events.Registered.return_value.process_log.side_effect = \
+            lambda log: log
 
     def test_fetches_in_fixed_chunks(self):
-        """Events should be fetched in EVENT_CHUNK_SIZE-block windows."""
+        """Events should be fetched in EVENT_CHUNK_SIZE-block windows via
+        stateless eth_getLogs."""
         import celo_scan
 
         chunk = celo_scan.EVENT_CHUNK_SIZE
@@ -135,25 +148,23 @@ class TestFetchRegisteredEvents:
         mock_w3 = MagicMock()
         mock_w3.eth.block_number = latest
         mock_contract = MagicMock()
+        self._passthrough_process_log(mock_contract)
 
         event1 = {"args": {"agentId": 1, "owner": "0xAAA"}, "blockNumber": chunk // 2}
         event2 = {"args": {"agentId": 2, "owner": "0xBBB"}, "blockNumber": chunk + chunk // 2}
 
         call_count = 0
 
-        def create_filter_side_effect(**kwargs):
+        def get_logs_side_effect(filter_params):
             nonlocal call_count
             call_count += 1
-            m = MagicMock()
             if call_count == 1:
-                m.get_all_entries.return_value = [event1]
+                return [event1]
             elif call_count == 2:
-                m.get_all_entries.return_value = [event2]
-            else:
-                m.get_all_entries.return_value = []
-            return m
+                return [event2]
+            return []
 
-        mock_contract.events.Registered.create_filter.side_effect = create_filter_side_effect
+        mock_w3.eth.get_logs.side_effect = get_logs_side_effect
 
         events = celo_scan._fetch_registered_events(mock_w3, mock_contract, from_block=0)
 
@@ -162,6 +173,59 @@ class TestFetchRegisteredEvents:
         assert events[1] == event2
         # Three non-overlapping chunks: 0→c-1, c→2c-1, 2c→3c-1
         assert call_count == 3
+
+    def test_uses_stateless_get_logs_not_create_filter(self):
+        """Must use w3.eth.get_logs (stateless) not contract.events.X.create_filter
+        (stateful) because forno.celo.org returns -32000 filter not found on
+        the follow-up eth_getFilterLogs call."""
+        import celo_scan
+
+        mock_w3 = MagicMock()
+        mock_w3.eth.block_number = celo_scan.EVENT_CHUNK_SIZE - 1
+        mock_contract = MagicMock()
+        self._passthrough_process_log(mock_contract)
+        mock_w3.eth.get_logs.return_value = []
+
+        celo_scan._fetch_registered_events(mock_w3, mock_contract, from_block=0)
+
+        # Must have used the stateless endpoint
+        assert mock_w3.eth.get_logs.called
+        # Must NOT have touched the stateful filter API
+        assert not mock_contract.events.Registered.create_filter.called
+
+    def test_get_logs_includes_registered_topic_and_address(self):
+        """eth_getLogs filter params must specify the contract address and
+        the Registered event topic0 so the RPC can prefilter server-side
+        and we don't accidentally pull unrelated logs."""
+        from web3 import Web3
+
+        import celo_scan
+
+        mock_w3 = MagicMock()
+        mock_w3.eth.block_number = celo_scan.EVENT_CHUNK_SIZE - 1
+        mock_contract = MagicMock()
+        mock_contract.address = "0x8004A169FB4a3325136EB29fA0ceB6D2e539a432"
+        self._passthrough_process_log(mock_contract)
+
+        captured: list[dict] = []
+
+        def capture(params):
+            captured.append(params)
+            return []
+
+        mock_w3.eth.get_logs.side_effect = capture
+
+        celo_scan._fetch_registered_events(mock_w3, mock_contract, from_block=0)
+
+        assert len(captured) >= 1
+        params = captured[0]
+        assert params["address"] == mock_contract.address
+        assert params["fromBlock"] == 0
+        assert params["toBlock"] == celo_scan.EVENT_CHUNK_SIZE - 1
+        expected_topic = Web3.to_hex(
+            Web3.keccak(text="Registered(uint256,string,address)")
+        )
+        assert params["topics"] == [expected_topic]
 
     def test_reduces_chunk_on_413_error(self):
         """413 errors should trigger chunk size reduction and retry."""
@@ -172,24 +236,22 @@ class TestFetchRegisteredEvents:
         # A range that definitely needs more than one chunk at default size
         mock_w3.eth.block_number = chunk * 3
         mock_contract = MagicMock()
+        self._passthrough_process_log(mock_contract)
 
-        call_history = []
+        call_history: list[tuple[int, int]] = []
 
-        def create_filter_side_effect(**kwargs):
-            from_b = kwargs.get("from_block", 0)
-            to_b = kwargs.get("to_block", 0)
+        def get_logs_side_effect(filter_params):
+            from_b = filter_params["fromBlock"]
+            to_b = filter_params["toBlock"]
             call_history.append((from_b, to_b))
-            m = MagicMock()
 
             # First call at full chunk size: raise 413
             if len(call_history) == 1:
                 raise Exception("413 Client Error: Request Entity Too Large")
-
             # All subsequent calls succeed with no events
-            m.get_all_entries.return_value = []
-            return m
+            return []
 
-        mock_contract.events.Registered.create_filter.side_effect = create_filter_side_effect
+        mock_w3.eth.get_logs.side_effect = get_logs_side_effect
 
         events = celo_scan._fetch_registered_events(mock_w3, mock_contract, from_block=0)
 
@@ -211,12 +273,37 @@ class TestFetchRegisteredEvents:
         mock_w3 = MagicMock()
         mock_w3.eth.block_number = celo_scan.EVENT_CHUNK_SIZE * 2
         mock_contract = MagicMock()
+        self._passthrough_process_log(mock_contract)
 
-        mock_contract.events.Registered.create_filter.side_effect = \
-            ConnectionError("RPC node unreachable")
+        mock_w3.eth.get_logs.side_effect = ConnectionError("RPC node unreachable")
 
         with pytest.raises(ConnectionError, match="RPC node unreachable"):
             celo_scan._fetch_registered_events(mock_w3, mock_contract, from_block=0)
+
+    def test_handles_filter_not_found_error(self):
+        """The specific forno error (-32000 filter not found) — and any
+        other opaque RPC error — must be caught by the halving fallback."""
+        import celo_scan
+
+        mock_w3 = MagicMock()
+        mock_w3.eth.block_number = celo_scan.EVENT_CHUNK_SIZE * 2
+        mock_contract = MagicMock()
+        self._passthrough_process_log(mock_contract)
+
+        retries: list[dict] = []
+
+        def get_logs_side_effect(params):
+            retries.append(params)
+            if len(retries) == 1:
+                raise Exception("{'code': -32000, 'message': 'filter not found'}")
+            return []
+
+        mock_w3.eth.get_logs.side_effect = get_logs_side_effect
+
+        # Should NOT raise — even the opaque -32000 error triggers halving
+        events = celo_scan._fetch_registered_events(mock_w3, mock_contract, from_block=0)
+        assert events == []
+        assert len(retries) > 1  # at least one halving retry fired
 
     def test_handles_too_large_in_error_string(self):
         """Various RPC error formats containing 'too large' should be caught."""
@@ -225,21 +312,21 @@ class TestFetchRegisteredEvents:
         mock_w3 = MagicMock()
         mock_w3.eth.block_number = celo_scan.EVENT_CHUNK_SIZE * 2
         mock_contract = MagicMock()
+        self._passthrough_process_log(mock_contract)
 
-        retries = []
+        retries: list[dict] = []
 
-        def create_filter_side_effect(**kwargs):
-            retries.append(kwargs)
+        def get_logs_side_effect(params):
+            retries.append(params)
             if len(retries) == 1:
                 raise Exception("Response payload too large")
-            m = MagicMock()
-            m.get_all_entries.return_value = []
-            return m
+            return []
 
-        mock_contract.events.Registered.create_filter.side_effect = create_filter_side_effect
+        mock_w3.eth.get_logs.side_effect = get_logs_side_effect
 
         # Should not raise — the "too large" error is caught and chunk is reduced
         events = celo_scan._fetch_registered_events(mock_w3, mock_contract, from_block=0)
+        assert events == []
         assert len(retries) > 1  # at least one retry happened
 
     def test_chunk_reduction_floor(self):
@@ -249,16 +336,17 @@ class TestFetchRegisteredEvents:
         mock_w3 = MagicMock()
         mock_w3.eth.block_number = celo_scan.EVENT_CHUNK_SIZE * 2
         mock_contract = MagicMock()
+        self._passthrough_process_log(mock_contract)
 
         observed_sizes: list[int] = []
 
-        def create_filter_side_effect(**kwargs):
-            from_b = kwargs.get("from_block", 0)
-            to_b = kwargs.get("to_block", 0)
+        def get_logs_side_effect(params):
+            from_b = params["fromBlock"]
+            to_b = params["toBlock"]
             observed_sizes.append(to_b - from_b + 1)
             raise Exception("413 Client Error: Request Entity Too Large")
 
-        mock_contract.events.Registered.create_filter.side_effect = create_filter_side_effect
+        mock_w3.eth.get_logs.side_effect = get_logs_side_effect
 
         with pytest.raises(Exception, match="413"):
             celo_scan._fetch_registered_events(mock_w3, mock_contract, from_block=0)
@@ -278,11 +366,10 @@ class TestFetchRegisteredEvents:
         mock_w3 = MagicMock()
         mock_w3.eth.block_number = chunk - 1  # exactly one chunk
         mock_contract = MagicMock()
+        self._passthrough_process_log(mock_contract)
 
         sentinel = {"args": {"agentId": 1, "owner": "0xAAA"}, "blockNumber": 1}
-        m = MagicMock()
-        m.get_all_entries.return_value = [sentinel]
-        mock_contract.events.Registered.create_filter.return_value = m
+        mock_w3.eth.get_logs.return_value = [sentinel]
 
         with caplog.at_level(logging.INFO, logger="ahm.celo_scan"):
             events = celo_scan._fetch_registered_events(mock_w3, mock_contract, from_block=0)
@@ -643,14 +730,21 @@ class TestCeloScanEndpoints:
         assert resp.status_code == 401
 
     def test_celo_scan_trigger_with_valid_key(self, client):
-        """Trigger endpoint should accept requests with valid key."""
+        """Trigger endpoint should accept requests with valid key.
+
+        The real scan_celo_agents is patched so the background executor
+        thread completes instantly — otherwise it would connect to live
+        forno.celo.org and scan millions of blocks, blocking pytest's
+        executor teardown for its 300s timeout.
+        """
         from api import INTERNAL_API_KEY
-        resp = client.post(
-            "/celo-scan/trigger",
-            headers={"X-Internal-Key": INTERNAL_API_KEY},
-        )
-        # Should be 200 (triggered) or 409 (already running)
-        assert resp.status_code in (200, 409)
+        with patch("celo_scan.scan_celo_agents", return_value=[]):
+            resp = client.post(
+                "/celo-scan/trigger",
+                headers={"X-Internal-Key": INTERNAL_API_KEY},
+            )
+            # Should be 200 (triggered) or 409 (already running)
+            assert resp.status_code in (200, 409)
 
     def test_celo_scan_status_wrong_key(self, client):
         """Status endpoint should reject wrong key."""

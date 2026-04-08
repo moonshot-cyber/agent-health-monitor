@@ -187,22 +187,40 @@ def _rpc_call_with_retry(fn, *args, label: str = "RPC call"):
 def _fetch_registered_events(w3, contract, from_block: int = 0) -> list[dict]:
     """Fetch Registered events from the IdentityRegistry in adaptive chunks.
 
-    Starts at EVENT_CHUNK_SIZE-block windows (default 500 — conservative for
+    Uses the stateless ``eth_getLogs`` JSON-RPC method via
+    ``w3.eth.get_logs({...})`` rather than ``contract.events.X.create_filter``
+    (which routes through the stateful ``eth_newFilter`` /
+    ``eth_getFilterLogs`` pair). Many public RPCs — notably
+    ``forno.celo.org`` — either don't persist filter state at all or expire
+    it aggressively, returning ``-32000 filter not found`` on the follow-up
+    lookup. ``eth_getLogs`` is a single stateless call that is widely
+    supported and has no such pitfall.
+
+    Chunks start at EVENT_CHUNK_SIZE blocks (default 500 — conservative for
     forno.celo.org's rate-limited public RPC). On any exception the current
-    chunk is halved and retried, down to MIN_EVENT_CHUNK_SIZE. This handles
-    range-limit errors whether forno returns a recognisable keyword or an
-    opaque 5xx / timeout, without silently masking genuine bugs: once the
-    floor is reached, the underlying exception propagates.
+    chunk is halved and retried down to MIN_EVENT_CHUNK_SIZE. Once the floor
+    is reached, the underlying exception propagates so we don't silently
+    mask genuine bugs.
 
     Each successful chunk logs its event count so future failures can be
     pinpointed from the logs alone.
     """
+    from web3 import Web3
+
     latest_block = w3.eth.block_number
     total_range = latest_block - from_block
     logger.info(
         "Celo discovery: fetching Registered events blocks %d→%d (%d blocks, chunk=%d)",
         from_block, latest_block, total_range, EVENT_CHUNK_SIZE,
     )
+
+    # Topic0 for Registered(uint256,string,address) — computed once per
+    # invocation. Using Web3.to_hex ensures the "0x"-prefixed lowercase
+    # string form that eth_getLogs expects, independent of hexbytes version.
+    registered_topic = Web3.to_hex(
+        Web3.keccak(text="Registered(uint256,string,address)")
+    )
+    registered_event = contract.events.Registered()
 
     all_events: list[dict] = []
     chunk_size = EVENT_CHUNK_SIZE
@@ -212,10 +230,16 @@ def _fetch_registered_events(w3, contract, from_block: int = 0) -> list[dict]:
     while start <= latest_block:
         end = min(start + chunk_size - 1, latest_block)
         try:
-            event_filter = contract.events.Registered.create_filter(
-                from_block=start, to_block=end,
-            )
-            events = event_filter.get_all_entries()
+            raw_logs = w3.eth.get_logs({
+                "fromBlock": start,
+                "toBlock": end,
+                "address": contract.address,
+                "topics": [registered_topic],
+            })
+            # Decode raw logs into the same AttributeDict shape that
+            # get_all_entries() used to return (with .args.agentId etc.)
+            # so every caller downstream keeps working unchanged.
+            decoded = [registered_event.process_log(log) for log in raw_logs]
         except Exception as e:
             # Log the raw error verbosely — forno's error format is opaque
             # and the only way to diagnose future regressions is to see
@@ -238,10 +262,10 @@ def _fetch_registered_events(w3, contract, from_block: int = 0) -> list[dict]:
             )
             raise
 
-        all_events.extend(events)
+        all_events.extend(decoded)
         logger.info(
             "Celo discovery: chunk %d-%d → %d events (total=%d)",
-            start, end, len(events), len(all_events),
+            start, end, len(decoded), len(all_events),
         )
         start = end + 1
         chunks_queried += 1
