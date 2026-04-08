@@ -157,6 +157,24 @@ A live public dashboard showing aggregate health stats across all agent wallets 
 
 ---
 
+## Phase 3 — Future Products
+
+### AHM Verify — Post-Transaction Output Quality Scoring
+
+- Standalone service (separate repo: `ahm-verify`, separate Railway project)
+- Multi-LLM adjudication panel (3-model: Claude, GPT, Gemini) scores delivered output against pre-registered job spec
+- Core moat: AHM trust registry cross-reference makes verdicts stateful and identity-anchored — ThoughtProof cannot replicate without building a competing registry
+- Architecture: Option C — standalone service with read-only access to AHM core via `/internal/agent-profile/{address}`
+- Monetisation: $0.25/verdict (single), $0.35 combined verdict+AHS report, subscription TBD
+- Submission flow MVP: client-submitted only. Phase 2: agent self-submission. Phase 3: ERC-8183 evaluator role
+- D4 composite feedback into AHM core AHS: deferred until >500 verdicts/week and D3 is live
+- Full feasibility spike saved at `docs/ahm_verify_spike.md`
+- Positioning: Monitor (before) + Shield (during) + Verify (after) = complete agent health lifecycle
+- **Do not build yet.** Next step: prompt design doc + 20-30 hand-labelled test set to validate panel agreement rate before any code
+- Spike completed: Apr 8 2026
+
+---
+
 ## Market Research — 402index.io Analysis (March 2026)
 
 Full ecosystem scan of 402index.io service directory. 15,658 indexed services, but ~3,000 real unique services after removing spam (single provider "lowpaymentfee" accounts for ~10,000+ duplicate "Premium API Access" entries at $0.02/call).
