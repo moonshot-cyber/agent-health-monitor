@@ -164,6 +164,17 @@ A live public dashboard showing aggregate health stats across all agent wallets 
 
 ---
 
+## Ecosystem & Protocol
+
+### EvaluatorRegistry Metadata Field — Methodology Declaration
+- Bakugo32 (Arc protocol team) proposed adding a metadata field to EvaluatorRegistry so evaluators can declare their methodology on-chain
+- AHM should declare its methodology when this field ships: counterparty trust scoring (D1 solvency, D2 behavioural consistency, D3 operational stability) — distinct from output quality evaluation
+- This enables clients to select evaluators by methodology rather than address alone
+- Monitor ERC-8183 thread for formal proposal — support it when raised
+- First noted: Apr 9 2026
+
+---
+
 ## Phase 3 — Future Products
 
 ### AHM Verify — Post-Transaction Output Quality Scoring
