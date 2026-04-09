@@ -112,6 +112,13 @@ ERC-8210 verification schema names AHM as a reference implementation. AHS D1/D2/
 - [ ] **Reputation decay scoring (concept)** — Agents that were once healthy but have gone dormant should score progressively lower over time. Influence/score should decay without fresh verified on-chain activity — health must be continuously re-earned. Aligns with AHM's existing Zombie Agent pattern detection — decay is the scoring complement to zombie flagging. Rationale: validated by RNWY's public reputation decay concept (Apr 8 2026). **Do not build yet.** Review alongside D3 Operational Stability
 - [x] **Smart contract wallet scoring** (completed Mar 24) — When `txlist` returns < 10 outgoing txs, `calculate_ahs()` now falls back to Blockscout V2 `token-transfers` API. D2 uses 4/8 signals (timing regularity, transfer diversity, counterparty breadth, activity gaps) with redistributed weights. Verified: ACP agents now score D2 10-68 (was baseline 50). EOA wallets unaffected (64/64 tests pass). New: `fetch_token_transfers()`, `calculate_d2_score_from_transfers()`, `_calc_token_transfer_diversity_score()`, `AHSResult.d2_data_source` field
 
+### Bootstrapping Problem — Zero-History Wallet Treatment
+- Currently a wallet with no on-chain history scores similarly to one with demonstrably degraded patterns due to D2 behavioural consistency weighting (70%)
+- Raised by Bakugo32 (Arc/ERC-8183 protocol team) Apr 9 2026 after Job #7 evaluation
+- Fix: introduce a separate scoring path for zero-history wallets — score as "Unrated" rather than mapping to D/E grade
+- Unrated wallets should route to escrow (not reject) by default — client assumes counterparty risk with funds protected
+- Review alongside D2 session continuity gate (April 21 2026)
+
 ---
 
 ## P3 — Tech Debt / Frontend Fixes
