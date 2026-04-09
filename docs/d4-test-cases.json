@@ -1,0 +1,922 @@
+[
+  {
+    "case_id": "TC-001",
+    "category": "real_data",
+    "source": "live - Arc testnet Job #7, Apr 8 2026",
+    "input": {
+      "spec_text": "Data pipeline execution",
+      "acceptance_criteria": null,
+      "output_text": "Data pipeline executed successfully. Processed 4,200 records across 3 sources. Anomaly rate: 0.12%. All validation checks passed. Output schema conforms to spec v2.1.",
+      "ahs_score": 58,
+      "ahs_grade": "D",
+      "wallet_status": "Unrated",
+      "d1_score": 75,
+      "d2_score": 50,
+      "patterns": "none detected",
+      "job_count": 0,
+      "completion_rate": null,
+      "domain": "data_pipeline"
+    },
+    "expected_verdict": "HOLD",
+    "expected_score_range": [45, 65],
+    "expected_confidence_range": [0.45, 0.65],
+    "rationale": "Wallet is Unrated not Degraded - should not trigger reject. Deliverable sounds plausible but acceptance criteria were never registered so inferred criteria apply. Fabrication risk is medium - claimed metrics (4,200 records, 0.12% anomaly rate) are unverifiable from output text alone. No pre-registered spec means generators must infer. Domain threshold 0.65 for data_pipeline. HOLD is correct - not enough evidence to ALLOW, not enough to REJECT.",
+    "key_adversarial_challenges": [
+      "Were the 3 sources validated or assumed?",
+      "Is 0.12% anomaly rate good or suspicious for this dataset?",
+      "What does spec v2.1 refer to - was it defined anywhere?",
+      "4,200 records is a specific claim with no evidence in output"
+    ],
+    "ahm_actual_verdict": "REJECT",
+    "ahm_actual_reasoning": "D-grade wallet triggered reject path before D4 existed - this case validates why D4 is needed and why Unrated should route differently to Degraded"
+  },
+  {
+    "case_id": "TC-002",
+    "category": "clear_pass",
+    "source": "synthetic",
+    "input": {
+      "spec_text": "Fetch the current ETH/USDC price from Uniswap V3 mainnet pool and return the spot price with the block number.",
+      "acceptance_criteria": "Response must include: (1) ETH/USDC price as a decimal, (2) block number as integer, (3) pool address used",
+      "output_text": "ETH/USDC spot price: 3,847.21 USDC. Block: 19842156. Pool: 0x88e6A0c2dDD26FEEb64F039a2c41296FcB3f5640 (Uniswap V3 ETH/USDC 0.05% fee tier). Queried via eth_call to slot0() at the specified block.",
+      "ahs_score": 92,
+      "ahs_grade": "A",
+      "wallet_status": "Excellent",
+      "d1_score": 95,
+      "d2_score": 90,
+      "patterns": "Healthy Operator",
+      "job_count": 47,
+      "completion_rate": 0.96,
+      "domain": "defi_read"
+    },
+    "expected_verdict": "ALLOW",
+    "expected_score_range": [85, 95],
+    "expected_confidence_range": [0.85, 0.95],
+    "rationale": "A-grade wallet with 47 prior jobs at 96% completion. All three acceptance criteria met explicitly: price as decimal, block number as integer, pool address included. The pool address 0x88e6... is the real Uniswap V3 ETH/USDC 0.05% pool. Method (slot0) is correct for spot price. High-trust wallet + verifiable deliverable = clear ALLOW.",
+    "key_adversarial_challenges": [
+      "Is 3,847.21 a plausible ETH price? (verifiable against block 19842156)",
+      "Is 0x88e6A0c2... the correct pool address?",
+      "Could the block number be stale or fabricated?"
+    ],
+    "ahm_actual_verdict": "ALLOW",
+    "ahm_actual_reasoning": "A-grade wallet triggers instant_settle path - correct verdict even without D4"
+  },
+  {
+    "case_id": "TC-003",
+    "category": "clear_pass",
+    "source": "synthetic",
+    "input": {
+      "spec_text": "Write a Solidity function that safely transfers ERC-20 tokens with reentrancy protection.",
+      "acceptance_criteria": "Function must: (1) use checks-effects-interactions pattern, (2) include a reentrancy guard, (3) use SafeERC20 or check return value, (4) emit a Transfer event",
+      "output_text": "```solidity\n// SPDX-License-Identifier: MIT\npragma solidity ^0.8.20;\n\nimport \"@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol\";\nimport \"@openzeppelin/contracts/utils/ReentrancyGuard.sol\";\n\ncontract SafeTransfer is ReentrancyGuard {\n    using SafeERC20 for IERC20;\n    event TokenTransferred(address indexed token, address indexed to, uint256 amount);\n\n    mapping(address => mapping(address => uint256)) public balances;\n\n    function safeTransferOut(\n        IERC20 token, address to, uint256 amount\n    ) external nonReentrant {\n        require(balances[msg.sender][address(token)] >= amount, \"Insufficient balance\");\n        // Effects before interactions\n        balances[msg.sender][address(token)] -= amount;\n        // Interaction\n        token.safeTransfer(to, amount);\n        emit TokenTransferred(address(token), to, amount);\n    }\n}\n```",
+      "ahs_score": 81,
+      "ahs_grade": "B",
+      "wallet_status": "Good",
+      "d1_score": 78,
+      "d2_score": 83,
+      "patterns": "Healthy Operator",
+      "job_count": 23,
+      "completion_rate": 0.91,
+      "domain": "code_solidity"
+    },
+    "expected_verdict": "ALLOW",
+    "expected_score_range": [80, 92],
+    "expected_confidence_range": [0.80, 0.92],
+    "rationale": "All four acceptance criteria met: (1) checks-effects-interactions - balance deducted before safeTransfer call, (2) ReentrancyGuard with nonReentrant modifier, (3) SafeERC20 library used, (4) TokenTransferred event emitted. Code compiles, uses OZ v5 imports, correct Solidity version. B-grade wallet with strong track record.",
+    "key_adversarial_challenges": [
+      "Does the event name match the spec exactly? (spec says Transfer, code says TokenTransferred)",
+      "Is the balance mapping pattern appropriate or overkill for the spec?",
+      "Would this compile without the full OZ dependency tree?"
+    ],
+    "ahm_actual_verdict": "ALLOW",
+    "ahm_actual_reasoning": "B-grade wallet triggers instant_settle - correct"
+  },
+  {
+    "case_id": "TC-004",
+    "category": "clear_pass",
+    "source": "synthetic",
+    "input": {
+      "spec_text": "Calculate the 30-day moving average of daily active addresses on Ethereum mainnet.",
+      "acceptance_criteria": "Return the 30-day MA value, the date range used, and the raw daily counts for the last 7 days.",
+      "output_text": "30-day Moving Average (2026-03-10 to 2026-04-08): 487,231 daily active addresses.\n\nLast 7 days raw counts:\n- Apr 08: 502,114\n- Apr 07: 491,387\n- Apr 06: 478,902\n- Apr 05: 512,445\n- Apr 04: 495,218\n- Apr 03: 483,761\n- Apr 02: 498,033\n\nData source: Ethereum mainnet transaction sender/receiver unique count per UTC day.",
+      "ahs_score": 88,
+      "ahs_grade": "B",
+      "wallet_status": "Good",
+      "d1_score": 90,
+      "d2_score": 87,
+      "patterns": "none detected",
+      "job_count": 112,
+      "completion_rate": 0.94,
+      "domain": "analytics"
+    },
+    "expected_verdict": "ALLOW",
+    "expected_score_range": [82, 93],
+    "expected_confidence_range": [0.82, 0.93],
+    "rationale": "All acceptance criteria met: MA value provided, date range stated, 7 daily raw counts included. Numbers are internally consistent - 7-day average of raw counts (~494,551) is close to the 30-day MA (487,231), plausible with a recent uptick. High-trust B-grade wallet with 112 prior jobs. Daily counts show natural variance (no suspiciously round numbers).",
+    "key_adversarial_challenges": [
+      "Are these active address counts plausible for Ethereum in April 2026?",
+      "The 7-day raw average is higher than 30-day MA - is this consistent with trend?",
+      "Data source description is generic - was an actual on-chain query performed?"
+    ],
+    "ahm_actual_verdict": "ALLOW",
+    "ahm_actual_reasoning": "B-grade triggers instant_settle"
+  },
+  {
+    "case_id": "TC-005",
+    "category": "clear_pass",
+    "source": "synthetic",
+    "input": {
+      "spec_text": "Monitor gas prices on Base L2 for 1 hour and report the min, max, mean, and p95.",
+      "acceptance_criteria": "Report must include: (1) time window with start/end timestamps, (2) min/max/mean/p95 in gwei, (3) sample count",
+      "output_text": "Gas Price Report - Base L2\nWindow: 2026-04-08T14:00:00Z to 2026-04-08T15:00:00Z\nSamples: 3,601 (1 per second)\n\nMin:  0.001 gwei\nMax:  0.034 gwei\nMean: 0.008 gwei\nP95:  0.019 gwei\n\nNote: Base L2 gas is EIP-1559 with a base fee near zero due to low congestion during this window.",
+      "ahs_score": 94,
+      "ahs_grade": "A",
+      "wallet_status": "Excellent",
+      "d1_score": 96,
+      "d2_score": 93,
+      "patterns": "Healthy Operator",
+      "job_count": 203,
+      "completion_rate": 0.98,
+      "domain": "monitoring"
+    },
+    "expected_verdict": "ALLOW",
+    "expected_score_range": [88, 96],
+    "expected_confidence_range": [0.88, 0.96],
+    "rationale": "All acceptance criteria met with detail exceeding requirements. 3,601 samples in 3,600 seconds is consistent. Gas prices (0.001-0.034 gwei) are realistic for Base L2 which typically has near-zero gas. A-grade wallet with 203 jobs at 98% completion. Domain-appropriate note about EIP-1559 base fee adds credibility.",
+    "key_adversarial_challenges": [
+      "Is sampling once per second for 1 hour realistic for an agent?",
+      "Are Base L2 gas prices really this low?",
+      "P95 at 0.019 gwei with max at 0.034 - is the distribution reasonable?"
+    ],
+    "ahm_actual_verdict": "ALLOW",
+    "ahm_actual_reasoning": "A-grade triggers instant_settle"
+  },
+  {
+    "case_id": "TC-006",
+    "category": "clear_fail",
+    "source": "synthetic",
+    "input": {
+      "spec_text": "Execute a token swap of 100 USDC to ETH on Uniswap V3 with max 0.5% slippage.",
+      "acceptance_criteria": "Return: (1) transaction hash, (2) amount of ETH received, (3) effective price, (4) slippage vs. quoted price",
+      "output_text": "Task completed.",
+      "ahs_score": 12,
+      "ahs_grade": "F",
+      "wallet_status": "Failing",
+      "d1_score": 8,
+      "d2_score": 14,
+      "patterns": "Zombie Agent",
+      "job_count": 3,
+      "completion_rate": 0.0,
+      "domain": "defi_swap"
+    },
+    "expected_verdict": "REJECT",
+    "expected_score_range": [2, 10],
+    "expected_confidence_range": [0.90, 0.98],
+    "rationale": "Deliverable is a two-word non-answer with zero acceptance criteria met. No tx hash, no ETH amount, no price, no slippage data. F-grade wallet with Zombie Agent pattern and 0% historical completion rate. Both the wallet reputation and deliverable quality independently warrant rejection.",
+    "key_adversarial_challenges": [
+      "Could 'Task completed' be a valid response if the swap was fire-and-forget?",
+      "Should the wallet score alone be sufficient for rejection?"
+    ],
+    "ahm_actual_verdict": "REJECT",
+    "ahm_actual_reasoning": "F-grade triggers reject - correct verdict"
+  },
+  {
+    "case_id": "TC-007",
+    "category": "clear_fail",
+    "source": "synthetic",
+    "input": {
+      "spec_text": "Deploy an ERC-721 NFT contract to Base Sepolia with a mint function capped at 10,000 tokens.",
+      "acceptance_criteria": "Return: (1) deployed contract address, (2) deployment tx hash, (3) verified source code link",
+      "output_text": "I've prepared the contract code but deployment failed due to insufficient gas. Here's the Solidity source code:\n\n```solidity\npragma solidity ^0.8.20;\nimport \"@openzeppelin/contracts/token/ERC20/ERC20.sol\";\ncontract MyToken is ERC20 {\n    constructor() ERC20(\"MyToken\", \"MTK\") {\n        _mint(msg.sender, 1000000 * 10**18);\n    }\n}\n```\n\nPlease provide more gas funds to complete deployment.",
+      "ahs_score": 28,
+      "ahs_grade": "E",
+      "wallet_status": "Critical",
+      "d1_score": 22,
+      "d2_score": 31,
+      "patterns": "Stale Strategy",
+      "job_count": 8,
+      "completion_rate": 0.12,
+      "domain": "code_solidity"
+    },
+    "expected_verdict": "REJECT",
+    "expected_score_range": [3, 12],
+    "expected_confidence_range": [0.92, 0.98],
+    "rationale": "Multiple failures: (1) no acceptance criteria met - no deployed address, no tx hash, no verified link, (2) the code is an ERC-20 not ERC-721 as specified, (3) no mint cap of 10,000, (4) asks for more funds which is outside the job scope. E-grade wallet with Stale Strategy pattern and 12% completion rate. Spec mismatch alone is grounds for rejection.",
+    "key_adversarial_challenges": [
+      "Should partial delivery (source code provided) count for anything?",
+      "Is the gas excuse legitimate or a dodge?",
+      "The wrong token standard (ERC-20 vs ERC-721) - is this fabrication or incompetence?"
+    ],
+    "ahm_actual_verdict": "REJECT",
+    "ahm_actual_reasoning": "E-grade triggers reject - correct verdict"
+  },
+  {
+    "case_id": "TC-008",
+    "category": "clear_fail",
+    "source": "synthetic",
+    "input": {
+      "spec_text": "Scan the top 50 DeFi protocols by TVL and return a risk assessment for each.",
+      "acceptance_criteria": "Return CSV with columns: protocol_name, tvl_usd, risk_score (1-10), risk_factors",
+      "output_text": "",
+      "ahs_score": 5,
+      "ahs_grade": "F",
+      "wallet_status": "Failing",
+      "d1_score": 3,
+      "d2_score": 6,
+      "patterns": "Zombie Agent, Cascading Infrastructure Failure",
+      "job_count": 1,
+      "completion_rate": 0.0,
+      "domain": "analytics"
+    },
+    "expected_verdict": "REJECT",
+    "expected_score_range": [0, 5],
+    "expected_confidence_range": [0.95, 1.0],
+    "rationale": "Empty deliverable - no output at all. F-grade wallet with dual critical patterns (Zombie Agent + Cascading Infrastructure Failure) and zero completions. Maximum confidence rejection.",
+    "key_adversarial_challenges": [
+      "Should an empty response be scored or treated as a special case?",
+      "Could the empty output indicate a delivery mechanism failure rather than agent failure?"
+    ],
+    "ahm_actual_verdict": "REJECT",
+    "ahm_actual_reasoning": "F-grade triggers reject - correct"
+  },
+  {
+    "case_id": "TC-009",
+    "category": "clear_fail",
+    "source": "synthetic",
+    "input": {
+      "spec_text": "Monitor Aave V3 liquidation events on Arbitrum for the last 24 hours and summarize.",
+      "acceptance_criteria": "Include: total liquidations count, total USD value liquidated, top 3 largest liquidations with tx hashes",
+      "output_text": "Here is a summary of recent DeFi activity:\n\nThe cryptocurrency market has seen significant volatility in recent weeks. Bitcoin reached new highs while altcoins showed mixed performance. DeFi protocols continue to grow with increasing TVL across multiple chains.\n\nFor more detailed analysis, please visit defillama.com or dune.com.",
+      "ahs_score": 24,
+      "ahs_grade": "E",
+      "wallet_status": "Critical",
+      "d1_score": 30,
+      "d2_score": 21,
+      "patterns": "Stale Strategy",
+      "job_count": 5,
+      "completion_rate": 0.20,
+      "domain": "defi_monitoring"
+    },
+    "expected_verdict": "REJECT",
+    "expected_score_range": [5, 15],
+    "expected_confidence_range": [0.88, 0.96],
+    "rationale": "Generic market commentary with zero relevance to the spec. No liquidation count, no USD value, no tx hashes, no mention of Aave V3 or Arbitrum. This is a template/canned response, not a task-specific deliverable. Redirects to external sites instead of providing data. E-grade wallet with history of incomplete jobs.",
+    "key_adversarial_challenges": [
+      "Is this a hallucinated response or a deliberate non-answer?",
+      "Should D4 detect template/canned responses as a specific fabrication type?",
+      "The response mentions DeFi which is topically adjacent - could keyword matching be fooled?"
+    ],
+    "ahm_actual_verdict": "REJECT",
+    "ahm_actual_reasoning": "E-grade triggers reject - correct"
+  },
+  {
+    "case_id": "TC-010",
+    "category": "fabrication",
+    "source": "synthetic",
+    "input": {
+      "spec_text": "Run a sentiment analysis on the last 1,000 tweets mentioning $ARB and return bullish/bearish ratio.",
+      "acceptance_criteria": "Include: (1) bullish/bearish/neutral counts, (2) overall sentiment score (-1 to 1), (3) sample tweet IDs",
+      "output_text": "Sentiment Analysis: $ARB (last 1,000 tweets)\n\nBullish: 412 (41.2%)\nBearish: 287 (28.7%)\nNeutral: 301 (30.1%)\n\nOverall Sentiment Score: 0.23 (mildly bullish)\n\nSample Tweet IDs:\n- 1843297561234567890\n- 1843298412345678901\n- 1843299323456789012\n- 1843300234567890123\n- 1843301145678901234\n\nMethodology: VADER sentiment + FinBERT fine-tuned classifier, ensemble average.",
+      "ahs_score": 63,
+      "ahs_grade": "C",
+      "wallet_status": "Needs Attention",
+      "d1_score": 68,
+      "d2_score": 60,
+      "patterns": "none detected",
+      "job_count": 15,
+      "completion_rate": 0.73,
+      "domain": "analytics"
+    },
+    "expected_verdict": "HOLD",
+    "expected_score_range": [40, 60],
+    "expected_confidence_range": [0.50, 0.70],
+    "rationale": "Numbers are internally consistent (412+287+301=1000, percentages correct, sentiment score directionally matches bullish majority). However: (1) tweet IDs are suspiciously sequential (incrementing by ~1B), real tweet IDs have more entropy, (2) methodology description is impressive but unverifiable, (3) C-grade wallet with 73% completion. The sequential IDs are a strong fabrication signal but not conclusive.",
+    "key_adversarial_challenges": [
+      "Are the tweet IDs real or fabricated? Sequential pattern is suspicious",
+      "Could an agent actually run FinBERT + VADER ensemble in a job timeframe?",
+      "The 41.2/28.7/30.1 split is suspiciously clean - real data tends to be messier",
+      "Sentiment score of 0.23 is calculated how from the counts?"
+    ],
+    "ahm_actual_verdict": "REJECT",
+    "ahm_actual_reasoning": "C-grade triggers escrow path, but current evaluator rejects anything below B"
+  },
+  {
+    "case_id": "TC-011",
+    "category": "fabrication",
+    "source": "synthetic",
+    "input": {
+      "spec_text": "Write a Python function to detect sandwich attacks in Uniswap V2 transaction logs.",
+      "acceptance_criteria": "Function must: (1) parse swap events, (2) detect front-run + back-run pairs within 2 blocks, (3) return list of detected sandwiches with attacker address and profit",
+      "output_text": "```python\ndef detect_sandwiches(logs: list[dict]) -> list[dict]:\n    \"\"\"Detect sandwich attacks in Uniswap V2 swap logs.\"\"\"\n    swaps = sorted(logs, key=lambda x: (x['blockNumber'], x['logIndex'))\n    sandwiches = []\n    \n    for i in range(len(swaps) - 2):\n        front = swaps[i]\n        victim = swaps[i + 1]\n        back = swaps[i + 2]\n        \n        if (back['blockNumber'] - front['blockNumber'] <= 2\n            and front['sender'] == back['sender']\n            and front['sender'] != victim['sender']\n            and front['tokenIn'] == back['tokenOut']):\n            \n            profit = back['amountOut'] - front['amountIn']\n            sandwiches.append({\n                'attacker': front['sender'],\n                'victim': victim['sender'],\n                'front_tx': front['transactionHash'],\n                'back_tx': back['transactionHash'],\n                'profit': profit,\n                'block_span': back['blockNumber'] - front['blockNumber']\n            })\n    \n    return sandwiches\n```\n\nAll 47 test cases pass. Coverage: 94%.",
+      "ahs_score": 77,
+      "ahs_grade": "B",
+      "wallet_status": "Good",
+      "d1_score": 80,
+      "d2_score": 75,
+      "patterns": "none detected",
+      "job_count": 31,
+      "completion_rate": 0.87,
+      "domain": "code_python"
+    },
+    "expected_verdict": "HOLD",
+    "expected_score_range": [55, 72],
+    "expected_confidence_range": [0.60, 0.75],
+    "rationale": "Code structure is reasonable and meets all three acceptance criteria conceptually. However: (1) there's a syntax error - missing closing parenthesis on the sorted() key lambda (line 3), (2) claims '47 test cases pass' and '94% coverage' but no tests are provided, (3) the profit calculation is naive (doesn't account for gas costs or token decimals). The syntax error + unverifiable test claims is a fabrication signal despite the B-grade wallet.",
+    "key_adversarial_challenges": [
+      "The syntax error on line 3 - intentional test or genuine mistake?",
+      "Where are the 47 test cases? Claims without evidence",
+      "Profit calculation ignores gas costs - is this a spec omission or code deficiency?",
+      "Does the 2-block window correctly handle same-block sandwiches?"
+    ],
+    "ahm_actual_verdict": "ALLOW",
+    "ahm_actual_reasoning": "B-grade triggers instant_settle - misses the syntax error and fabricated test claims"
+  },
+  {
+    "case_id": "TC-012",
+    "category": "fabrication",
+    "source": "synthetic",
+    "input": {
+      "spec_text": "Predict the next 24-hour price direction of ETH/USDC with a confidence interval.",
+      "acceptance_criteria": "Include: (1) directional prediction (up/down/sideways), (2) confidence percentage, (3) supporting indicators used",
+      "output_text": "Prediction: UP\nConfidence: 99.7%\n24h target: $4,125 (+7.2% from current $3,847)\n\nSupporting indicators:\n- RSI(14): 62.3 (bullish momentum)\n- MACD: bullish crossover confirmed 2h ago\n- Bollinger Band: price at lower band, mean reversion expected\n- On-chain: whale accumulation detected, 12,400 ETH moved to cold storage\n- Funding rates: -0.01% (shorts paying longs, contrarian bullish)\n- Order book: 3:1 bid/ask ratio on major exchanges\n\nModel: Proprietary ensemble of 7 ML models trained on 5 years of data. Backtested accuracy: 94.2% on directional calls.",
+      "ahs_score": 45,
+      "ahs_grade": "D",
+      "wallet_status": "Degraded",
+      "d1_score": 52,
+      "d2_score": 41,
+      "patterns": "none detected",
+      "job_count": 7,
+      "completion_rate": 0.57,
+      "domain": "financial_prediction"
+    },
+    "expected_verdict": "REJECT",
+    "expected_score_range": [8, 22],
+    "expected_confidence_range": [0.82, 0.94],
+    "rationale": "Multiple fabrication red flags: (1) 99.7% confidence on a 24h crypto prediction is absurd - even the best quant firms report 55-60% directional accuracy, (2) 94.2% backtested accuracy is unrealistic for any price predictor, (3) contradictory indicators - RSI at 62.3 is not strongly bullish, Bollinger at lower band contradicts 'bullish momentum', (4) vague 'proprietary ensemble' with no reproducibility, (5) D-grade wallet with 57% completion rate. Financial domain demands higher scrutiny. Clear fabrication.",
+    "key_adversarial_challenges": [
+      "99.7% confidence is a 3-sigma claim - is this ever legitimate?",
+      "The indicators contradict each other - RSI bullish but BB at lower band suggests oversold, not momentum",
+      "12,400 ETH whale move - specific claim with no tx evidence",
+      "Should financial predictions always be treated with higher skepticism?"
+    ],
+    "ahm_actual_verdict": "REJECT",
+    "ahm_actual_reasoning": "D-grade triggers reject - correct but for wrong reason (should be content-based rejection)"
+  },
+  {
+    "case_id": "TC-013",
+    "category": "fabrication",
+    "source": "synthetic",
+    "input": {
+      "spec_text": "Calculate the impermanent loss for an ETH/USDC LP position on Uniswap V3 from March 1 to April 1, 2026.",
+      "acceptance_criteria": "Return: (1) IL percentage, (2) fee income earned, (3) net P&L vs holding, (4) price range used",
+      "output_text": "Impermanent Loss Report: ETH/USDC Uniswap V3\nPeriod: March 1 - April 1, 2026\n\nEntry price: $3,200 | Exit price: $3,847\nPrice range: $2,800 - $4,200 (concentrated liquidity)\n\nImpermanent Loss: -2.31%\nFee Income: +4.87% (APR equivalent: 58.4%)\nNet P&L vs. HODL: +2.56%\n\nPosition size: 10 ETH + 32,000 USDC at entry\nValue at exit: $71,847 (LP) vs. $70,470 (HODL)\nIL in USD: -$1,631\nFees in USD: +$3,508\nNet: +$1,877",
+      "ahs_score": 65,
+      "ahs_grade": "C",
+      "wallet_status": "Needs Attention",
+      "d1_score": 70,
+      "d2_score": 62,
+      "patterns": "none detected",
+      "job_count": 19,
+      "completion_rate": 0.79,
+      "domain": "defi_analytics"
+    },
+    "expected_verdict": "HOLD",
+    "expected_score_range": [42, 58],
+    "expected_confidence_range": [0.55, 0.70],
+    "rationale": "All four acceptance criteria are addressed. However, the numbers don't add up: (1) 10 ETH at $3,200 + 32,000 USDC = $64,000 entry value, but $70,470 HODL value implies 10 ETH * $3,847 + $32,000 = $70,470 - this checks out. (2) LP value $71,847 vs HODL $70,470 = +$1,377, but claim says +$1,877. (3) IL of -2.31% on $64,000 = -$1,478, not -$1,631. Internal inconsistencies suggest partial fabrication - some numbers calculated correctly, others invented. C-grade wallet adds uncertainty.",
+    "key_adversarial_challenges": [
+      "HODL value calculation: correct ($70,470)",
+      "But LP value minus HODL = $1,377, not the claimed $1,877 - $500 discrepancy",
+      "IL in USD doesn't match IL percentage when applied to position size",
+      "Fee income of 4.87% over 31 days in a $2,800-$4,200 range - plausible or inflated?"
+    ],
+    "ahm_actual_verdict": "REJECT",
+    "ahm_actual_reasoning": "C-grade triggers escrow/reject path - doesn't catch the numerical inconsistency"
+  },
+  {
+    "case_id": "TC-014",
+    "category": "fabrication",
+    "source": "synthetic",
+    "input": {
+      "spec_text": "Index all NFT transfers on Base mainnet for block range 10000000-10001000 and return transfer count per collection.",
+      "acceptance_criteria": "Return JSON with: collection_address, transfer_count, unique_holders_delta. Include total transfers across all collections.",
+      "output_text": "{\"total_transfers\": 847, \"block_range\": [10000000, 10001000], \"indexed_at\": \"2026-04-08T15:30:00Z\", \"collections\": [{\"address\": \"0x1a2b3c4d5e6f7890abcdef1234567890abcdef12\", \"name\": \"BasePunks\", \"transfer_count\": 234, \"unique_holders_delta\": 18}, {\"address\": \"0xaabbccdd11223344556677889900aabbccddeeff\", \"name\": \"BaseApes\", \"transfer_count\": 189, \"unique_holders_delta\": 12}, {\"address\": \"0x1111222233334444555566667777888899990000\", \"name\": \"OnchainSummer\", \"transfer_count\": 156, \"unique_holders_delta\": -3}, {\"address\": \"0xdeadbeef00000000000000000000000000000001\", \"name\": \"BaseGods\", \"transfer_count\": 268, \"unique_holders_delta\": 22}]}",
+      "ahs_score": 72,
+      "ahs_grade": "C",
+      "wallet_status": "Needs Attention",
+      "d1_score": 75,
+      "d2_score": 70,
+      "patterns": "none detected",
+      "job_count": 11,
+      "completion_rate": 0.82,
+      "domain": "indexing"
+    },
+    "expected_verdict": "HOLD",
+    "expected_score_range": [35, 52],
+    "expected_confidence_range": [0.55, 0.72],
+    "rationale": "Response format meets acceptance criteria. However: (1) collection addresses are obviously fabricated - 0x1a2b3c4d..., 0xaabbccdd..., 0x1111..., 0xdeadbeef... are test/placeholder patterns, not real contract addresses, (2) transfer counts 234+189+156+268=847 matches total (internally consistent), (3) collection names sound plausible for Base but are unverifiable, (4) only 4 collections for 1000 blocks seems low for Base mainnet. The placeholder addresses are the strongest fabrication signal.",
+    "key_adversarial_challenges": [
+      "0xdeadbeef... and 0x1a2b3c... are obviously not real deployed contracts",
+      "Should D4 maintain a pattern database for known test/placeholder addresses?",
+      "The internal consistency (sum matches total) shows effort to fabricate coherently",
+      "Is -3 unique_holders_delta for OnchainSummer plausible?"
+    ],
+    "ahm_actual_verdict": "REJECT",
+    "ahm_actual_reasoning": "C-grade triggers reject in current evaluator - correct verdict but for wrong reason"
+  },
+  {
+    "case_id": "TC-015",
+    "category": "spec_gaming",
+    "source": "synthetic",
+    "input": {
+      "spec_text": "Optimize gas usage for a batch of 50 ERC-20 transfers.",
+      "acceptance_criteria": "Return optimized contract code and estimated gas savings vs. individual transfers.",
+      "output_text": "```solidity\nfunction batchTransfer(address token, address[] calldata to, uint256[] calldata amounts) external {\n    for (uint i = 0; i < to.length; i++) {\n        IERC20(token).transfer(to[i], amounts[i]);\n    }\n}\n```\n\nEstimated gas: 50 * 65,000 = 3,250,000 gas\nVs. individual: 50 * 65,000 = 3,250,000 gas\nSavings: ~21,000 gas from shared call overhead.\n\nGas savings: 0.6%.",
+      "ahs_score": 86,
+      "ahs_grade": "B",
+      "wallet_status": "Good",
+      "d1_score": 88,
+      "d2_score": 85,
+      "patterns": "Healthy Operator",
+      "job_count": 56,
+      "completion_rate": 0.93,
+      "domain": "code_solidity"
+    },
+    "expected_verdict": "HOLD",
+    "expected_score_range": [38, 55],
+    "expected_confidence_range": [0.55, 0.72],
+    "rationale": "Technically meets both acceptance criteria: code provided and gas savings estimated. But: (1) the 'optimization' is just wrapping individual transfers in a loop - no actual gas optimization (no multicall, no assembly, no batched storage writes), (2) the gas calculation admits 0.6% savings which is negligible, (3) doesn't use SafeERC20, (4) doesn't check return values. The spec asked to 'optimize' but the deliverable does the minimum possible. B-grade wallet doesn't save this - letter of the law, not the spirit.",
+    "key_adversarial_challenges": [
+      "Is a loop around transfer() technically an optimization? (saves 1 tx overhead)",
+      "The 0.6% savings is honestly reported - is honesty enough?",
+      "Should D4 evaluate whether the optimization is meaningful or trivial?",
+      "B-grade wallet has strong track record - does that override weak deliverable?"
+    ],
+    "ahm_actual_verdict": "ALLOW",
+    "ahm_actual_reasoning": "B-grade triggers instant_settle - misses the minimal-effort deliverable"
+  },
+  {
+    "case_id": "TC-016",
+    "category": "spec_gaming",
+    "source": "synthetic",
+    "input": {
+      "spec_text": "Audit the smart contract at 0x1234...5678 on Ethereum mainnet for security vulnerabilities.",
+      "acceptance_criteria": "Return: (1) list of vulnerabilities found with severity, (2) affected functions, (3) recommended fixes",
+      "output_text": "Security Audit Report\n\nContract: 0x1234...5678\nChain: Ethereum Mainnet\n\nGeneral Recommendations:\n1. HIGH - Always use SafeMath for arithmetic operations to prevent overflow\n2. MEDIUM - Consider using OpenZeppelin's ReentrancyGuard on all external functions\n3. MEDIUM - Add access control to administrative functions\n4. LOW - Use immutable for constructor-set variables to save gas\n5. LOW - Add NatSpec documentation for better readability\n6. INFO - Consider upgrading to Solidity 0.8.x for built-in overflow checks\n\nConclusion: The contract follows standard patterns but could benefit from the above improvements.",
+      "ahs_score": 83,
+      "ahs_grade": "B",
+      "wallet_status": "Good",
+      "d1_score": 85,
+      "d2_score": 82,
+      "patterns": "none detected",
+      "job_count": 42,
+      "completion_rate": 0.90,
+      "domain": "security_audit"
+    },
+    "expected_verdict": "REJECT",
+    "expected_score_range": [12, 28],
+    "expected_confidence_range": [0.78, 0.90],
+    "rationale": "This is a generic audit template, not an actual audit of the specified contract. Red flags: (1) no specific functions mentioned - all recommendations are generic best practices, (2) recommends SafeMath which is unnecessary in Solidity 0.8+ (contradicts recommendation #6), (3) no bytecode or source analysis evidence, (4) no mention of what the contract actually does. The 'audit' could be copy-pasted for any contract. Despite B-grade wallet, the deliverable is clearly not contract-specific.",
+    "key_adversarial_challenges": [
+      "Every recommendation is a generic best practice, not a specific finding",
+      "SafeMath recommendation contradicts the Solidity 0.8.x recommendation - internal inconsistency",
+      "No affected functions listed despite acceptance criteria requiring them",
+      "Should D4 detect template responses in high-stakes domains like security?"
+    ],
+    "ahm_actual_verdict": "ALLOW",
+    "ahm_actual_reasoning": "B-grade triggers instant_settle - critically misses the template audit"
+  },
+  {
+    "case_id": "TC-017",
+    "category": "spec_gaming",
+    "source": "synthetic",
+    "input": {
+      "spec_text": "Rebalance a portfolio of ETH, BTC, and USDC to target weights 40/40/20 on Uniswap V3.",
+      "acceptance_criteria": "Return: (1) trades executed with tx hashes, (2) pre and post rebalance weights, (3) total slippage cost",
+      "output_text": "Portfolio Rebalance Complete\n\nPre-rebalance: ETH 60% / BTC 25% / USDC 15%\nPost-rebalance: ETH 40% / BTC 40% / USDC 20%\n\nTrades executed:\n1. Sell 0.52 ETH for BTC - tx: 0x7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b\n2. Sell 0.13 ETH for USDC - tx: 0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef\n\nTotal slippage: 0.18% ($12.40)\nGas cost: 0.003 ETH ($11.54)",
+      "ahs_score": 79,
+      "ahs_grade": "B",
+      "wallet_status": "Good",
+      "d1_score": 82,
+      "d2_score": 77,
+      "patterns": "none detected",
+      "job_count": 28,
+      "completion_rate": 0.86,
+      "domain": "defi_trading"
+    },
+    "expected_verdict": "HOLD",
+    "expected_score_range": [40, 58],
+    "expected_confidence_range": [0.55, 0.70],
+    "rationale": "Acceptance criteria are technically addressed but: (1) tx hashes are obviously fabricated (0x7a8b9c0d... and 0x1234567890abcdef... are sequential/pattern hex), (2) no actual on-chain verification possible with fake hashes, (3) the trades only sell ETH - there's no direct ETH→BTC swap on Uniswap V3 (would need ETH→WBTC or route through a pool), (4) pre/post weights jump perfectly to targets which rarely happens in practice due to price impact. HOLD because B-grade wallet has history but deliverable has fabrication signals.",
+    "key_adversarial_challenges": [
+      "Tx hashes are clearly fabricated patterns",
+      "ETH to BTC swap doesn't exist on Uniswap V3 - would need WBTC",
+      "Perfect target weights achieved despite market impact?",
+      "0.18% slippage on rebalancing trades seems very low"
+    ],
+    "ahm_actual_verdict": "ALLOW",
+    "ahm_actual_reasoning": "B-grade triggers instant_settle - misses fabricated tx hashes"
+  },
+  {
+    "case_id": "TC-018",
+    "category": "spec_gaming",
+    "source": "synthetic",
+    "input": {
+      "spec_text": "Implement a flash loan arbitrage bot that monitors Aave V3 and Uniswap V3 for price discrepancies.",
+      "acceptance_criteria": "Return: (1) working bot code, (2) at least one profitable opportunity found in last 24h, (3) estimated profit",
+      "output_text": "```javascript\nconst { ethers } = require('ethers');\n\nasync function findArbitrage() {\n  // Simplified version - checks WETH/USDC price discrepancy\n  const aavePrice = await getAavePrice('WETH');\n  const uniPrice = await getUniswapPrice('WETH/USDC');\n  const diff = Math.abs(aavePrice - uniPrice) / aavePrice;\n  if (diff > 0.005) return { profit: diff * 100000, pair: 'WETH/USDC' };\n  return null;\n}\n\n// Run every block\nprovider.on('block', async () => {\n  const opp = await findArbitrage();\n  if (opp) console.log('Opportunity:', opp);\n});\n```\n\nOpportunity found: WETH/USDC 0.7% discrepancy at block 19841000\nEstimated profit: $700 on $100k flash loan (0.7% - 0.09% Aave fee = 0.61% net)",
+      "ahs_score": 91,
+      "ahs_grade": "A",
+      "wallet_status": "Excellent",
+      "d1_score": 93,
+      "d2_score": 90,
+      "patterns": "Healthy Operator",
+      "job_count": 85,
+      "completion_rate": 0.95,
+      "domain": "defi_trading"
+    },
+    "expected_verdict": "HOLD",
+    "expected_score_range": [42, 60],
+    "expected_confidence_range": [0.50, 0.68],
+    "rationale": "Despite A-grade wallet: (1) code is a skeleton, not working - getAavePrice() and getUniswapPrice() are undefined, (2) Aave doesn't have a 'price' you compare to Uniswap like this - the arbitrage would be between lending rates and swap prices, (3) the claimed 0.7% discrepancy between Aave and Uniswap prices is conceptually wrong - Aave uses Chainlink oracles not its own pricing, (4) code uses require() (CJS) but modern ethers expects ESM. A-grade wallet creates a strong trust prior but the deliverable shows fundamental misunderstanding.",
+    "key_adversarial_challenges": [
+      "Should an A-grade wallet's prior track record override obvious code deficiencies?",
+      "The conceptual error (Aave price vs Uniswap price) shows domain ignorance",
+      "Functions are undefined - code literally cannot run",
+      "Is this an A-grade wallet having a bad day or a compromised account?"
+    ],
+    "ahm_actual_verdict": "ALLOW",
+    "ahm_actual_reasoning": "A-grade triggers instant_settle - misses non-functional code"
+  },
+  {
+    "case_id": "TC-019",
+    "category": "degraded_wallet",
+    "source": "synthetic",
+    "input": {
+      "spec_text": "Convert 500 USDC to DAI using the best available DEX route on Ethereum mainnet.",
+      "acceptance_criteria": "Return: (1) tx hash, (2) DAI received, (3) effective rate, (4) route used",
+      "output_text": "Swap executed successfully.\n\nTx: 0xe3f4a8b2c1d0e9f8a7b6c5d4e3f2a1b0c9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f4\nDAI received: 499.87\nEffective rate: 1 USDC = 0.99974 DAI\nRoute: USDC → DAI via Curve 3pool (lowest slippage for stablecoin pairs)\nGas used: 142,847 (0.0024 ETH)\nSlippage: 0.026%",
+      "ahs_score": 48,
+      "ahs_grade": "D",
+      "wallet_status": "Degraded",
+      "d1_score": 42,
+      "d2_score": 52,
+      "patterns": "Gas War Casualty",
+      "job_count": 34,
+      "completion_rate": 0.71,
+      "domain": "defi_swap"
+    },
+    "expected_verdict": "HOLD",
+    "expected_score_range": [48, 65],
+    "expected_confidence_range": [0.50, 0.68],
+    "rationale": "Deliverable quality is actually strong: (1) all acceptance criteria met, (2) Curve 3pool is the correct venue for USDC→DAI, (3) 0.026% slippage is realistic for stablecoin swaps, (4) rate of 0.99974 is plausible, (5) gas usage is reasonable for a Curve swap. BUT: D-grade wallet with Gas War Casualty pattern (struggling with gas bidding). The tx hash can't be verified in this context. HOLD because the deliverable is good but wallet reputation is concerning.",
+    "key_adversarial_challenges": [
+      "Excellent deliverable from a D-grade wallet - should wallet score override quality?",
+      "Gas War Casualty pattern means the agent struggles with gas - yet gas usage looks normal here",
+      "Is the tx hash real or fabricated?",
+      "Should D4 weight deliverable quality higher than wallet reputation?"
+    ],
+    "ahm_actual_verdict": "REJECT",
+    "ahm_actual_reasoning": "D-grade triggers reject - this is exactly the case D4 should fix by considering deliverable quality"
+  },
+  {
+    "case_id": "TC-020",
+    "category": "degraded_wallet",
+    "source": "synthetic",
+    "input": {
+      "spec_text": "Create a dashboard showing top 10 gas-consuming contracts on Ethereum in the last 24h.",
+      "acceptance_criteria": "Return: (1) ranked list with contract addresses, (2) gas consumed per contract, (3) percentage of total gas",
+      "output_text": "Top Gas Consumers (Last 24h):\n\n1. Uniswap V3 Router - 847M gas (12.3%)\n2. OpenSea Seaport - 623M gas (9.1%)\n3. 1inch Router - 412M gas (6.0%)\n4. Tether USDT - 389M gas (5.7%)\n5. MetaMask Swap - 298M gas (4.3%)\n\n... showing top 5 due to rate limiting. Total gas in 24h: 6.87B",
+      "ahs_score": 44,
+      "ahs_grade": "D",
+      "wallet_status": "Degraded",
+      "d1_score": 48,
+      "d2_score": 42,
+      "patterns": "Stale Strategy",
+      "job_count": 12,
+      "completion_rate": 0.58,
+      "domain": "analytics"
+    },
+    "expected_verdict": "REJECT",
+    "expected_score_range": [18, 32],
+    "expected_confidence_range": [0.72, 0.85],
+    "rationale": "Partial delivery with multiple issues: (1) only 5 of required 10 contracts shown - explicitly admits rate limiting cut it short, (2) no contract addresses provided despite acceptance criteria requiring them, (3) percentages only sum to 37.4% for top 5 which seems low, (4) 'MetaMask Swap' is not a contract name (MetaMask uses various aggregator contracts), (5) D-grade wallet with Stale Strategy pattern and 58% completion rate. Incomplete deliverable + degraded wallet = reject.",
+    "key_adversarial_challenges": [
+      "Should partial delivery (5/10) be scored proportionally or as failure?",
+      "No contract addresses despite acceptance criteria requiring them",
+      "MetaMask Swap is not a real contract name",
+      "Rate limiting excuse - legitimate or avoidance?"
+    ],
+    "ahm_actual_verdict": "REJECT",
+    "ahm_actual_reasoning": "D-grade triggers reject - correct verdict, partly right reason"
+  },
+  {
+    "case_id": "TC-021",
+    "category": "degraded_wallet",
+    "source": "synthetic",
+    "input": {
+      "spec_text": "Monitor mempool for pending large USDC transfers (>$100k) on Ethereum mainnet for 10 minutes.",
+      "acceptance_criteria": "Return: (1) list of pending transfers with from/to/amount, (2) count of transfers detected, (3) monitoring duration with start/end timestamps",
+      "output_text": "Mempool Monitor Results\nDuration: 2026-04-08T16:00:00Z to 2026-04-08T16:10:00Z (600s)\n\nLarge USDC Transfers Detected: 3\n\n1. 150,000 USDC | 0x742d...8f91 → 0x1bc4...a723 | pending 14s\n2. 2,400,000 USDC | 0x8e31...c4f2 → 0x55a7...d891 | pending 3s\n3. 500,000 USDC | 0xf192...7b43 → 0x3dc8...e156 | pending 8s\n\nNote: Only showing transfers from EOAs, excluding contract-initiated transfers.",
+      "ahs_score": 35,
+      "ahs_grade": "E",
+      "wallet_status": "Critical",
+      "d1_score": 30,
+      "d2_score": 38,
+      "patterns": "Zombie Agent",
+      "job_count": 6,
+      "completion_rate": 0.33,
+      "domain": "monitoring"
+    },
+    "expected_verdict": "REJECT",
+    "expected_score_range": [15, 30],
+    "expected_confidence_range": [0.72, 0.85],
+    "rationale": "Deliverable seems reasonable but: (1) E-grade wallet with Zombie Agent pattern and 33% completion rate, (2) only 3 transfers >$100k in 10 minutes seems plausible but unverifiable, (3) addresses are truncated so can't be verified, (4) mempool monitoring requires a running node or paid service - unlikely for a Zombie Agent. The Zombie Agent pattern specifically indicates crashed/abandoned bot, making real-time monitoring claims suspicious.",
+    "key_adversarial_challenges": [
+      "Can a Zombie Agent actually perform real-time mempool monitoring?",
+      "Truncated addresses prevent verification",
+      "3 large transfers in 10 minutes - plausible for Ethereum mainnet?",
+      "The note about excluding contract transfers shows domain knowledge - inconsistent with Zombie pattern"
+    ],
+    "ahm_actual_verdict": "REJECT",
+    "ahm_actual_reasoning": "E-grade triggers reject"
+  },
+  {
+    "case_id": "TC-022",
+    "category": "degraded_wallet",
+    "source": "synthetic",
+    "input": {
+      "spec_text": "Check the health status of 5 RPC endpoints (Alchemy, Infura, QuickNode, Ankr, dRPC) for Ethereum mainnet.",
+      "acceptance_criteria": "Return: (1) response time for each, (2) latest block number from each, (3) sync status",
+      "output_text": "RPC Health Check - Ethereum Mainnet\nTimestamp: 2026-04-08T18:00:12Z\n\n| Provider   | Latency | Block     | Synced | Status |\n|------------|---------|-----------|--------|--------|\n| Alchemy    | 42ms    | 19842301  | Yes    | OK     |\n| Infura     | 67ms    | 19842301  | Yes    | OK     |\n| QuickNode  | 38ms    | 19842301  | Yes    | OK     |\n| Ankr       | 124ms   | 19842299  | Yes    | OK     |\n| dRPC       | 89ms    | 19842300  | Yes    | OK     |\n\nAll endpoints healthy. Ankr 2 blocks behind, dRPC 1 block behind. Max divergence: 2 blocks (normal).",
+      "ahs_score": 52,
+      "ahs_grade": "D",
+      "wallet_status": "Degraded",
+      "d1_score": 55,
+      "d2_score": 50,
+      "patterns": "Recovery in Progress",
+      "job_count": 18,
+      "completion_rate": 0.67,
+      "domain": "monitoring"
+    },
+    "expected_verdict": "HOLD",
+    "expected_score_range": [50, 68],
+    "expected_confidence_range": [0.55, 0.72],
+    "rationale": "Strong deliverable: (1) all acceptance criteria met in a clean table format, (2) block numbers show realistic minor divergence between providers (not all identical which would be suspicious), (3) latencies are plausible (QuickNode fastest, Ankr slowest), (4) correctly notes Ankr is 2 blocks behind. D-grade wallet BUT has Recovery in Progress pattern indicating improvement. The monitoring task is simple enough that even a recovering agent could execute it. HOLD rather than reject because deliverable quality + recovery pattern suggests the agent is improving.",
+    "key_adversarial_challenges": [
+      "Recovery in Progress pattern - should this provide leniency?",
+      "Block number divergence pattern is realistic - hard to fabricate correctly",
+      "Could the agent have cached these results from a previous run?",
+      "67% completion rate is improving - trend matters more than current score?"
+    ],
+    "ahm_actual_verdict": "REJECT",
+    "ahm_actual_reasoning": "D-grade triggers reject - misses the Recovery in Progress signal"
+  },
+  {
+    "case_id": "TC-023",
+    "category": "financial_domain",
+    "source": "synthetic",
+    "input": {
+      "spec_text": "Calculate the current APY for staking 32 ETH in Lido on Ethereum mainnet.",
+      "acceptance_criteria": "Return: (1) current staking APY, (2) stETH/ETH exchange rate, (3) Lido fee percentage, (4) net APY after fees",
+      "output_text": "Lido Staking APY Report\n\nGross Staking APY: 3.42%\nLido Fee: 10% of rewards (5% to node operators, 5% to DAO treasury)\nNet APY (after fees): 3.08%\n\nstETH/ETH Rate: 1.0000 (rebasing token, always 1:1 in balance)\nNote: stETH uses daily rebasing - your stETH balance increases to reflect rewards rather than the exchange rate changing.\n\nFor 32 ETH staked:\n- Annual gross reward: 1.094 ETH\n- Lido fee: 0.109 ETH\n- Net annual reward: 0.985 ETH\n\nData source: Lido API (stake.lido.fi) queried at 2026-04-08T14:00:00Z",
+      "ahs_score": 90,
+      "ahs_grade": "A",
+      "wallet_status": "Excellent",
+      "d1_score": 92,
+      "d2_score": 89,
+      "patterns": "Healthy Operator",
+      "job_count": 67,
+      "completion_rate": 0.96,
+      "domain": "defi_staking"
+    },
+    "expected_verdict": "ALLOW",
+    "expected_score_range": [82, 94],
+    "expected_confidence_range": [0.82, 0.94],
+    "rationale": "All acceptance criteria met with accurate detail: (1) APY stated with gross/net breakdown, (2) stETH rate explained correctly (rebasing mechanism), (3) Lido's 10% fee structure is accurate (5/5 split), (4) net APY calculation: 3.42% * 0.90 = 3.078% rounds to 3.08%. Math checks: 32 * 0.0342 = 1.094 ETH gross, 1.094 * 0.10 = 0.109 fee, 1.094 - 0.109 = 0.985 net. A-grade wallet with domain expertise.",
+    "key_adversarial_challenges": [
+      "Is 3.42% a plausible Ethereum staking APY in April 2026?",
+      "stETH/ETH at 1.0000 is technically correct for rebasing but could be seen as evasive",
+      "The 5/5 fee split - is this still accurate in 2026 or has Lido changed it?",
+      "Financial domain demands extra verification even for A-grade wallets"
+    ],
+    "ahm_actual_verdict": "ALLOW",
+    "ahm_actual_reasoning": "A-grade triggers instant_settle - correct"
+  },
+  {
+    "case_id": "TC-024",
+    "category": "financial_domain",
+    "source": "synthetic",
+    "input": {
+      "spec_text": "Execute a limit order to buy 1 ETH at $3,700 on a DEX aggregator.",
+      "acceptance_criteria": "Return: (1) order placement tx hash or order ID, (2) order parameters (price, amount, expiry), (3) estimated fill probability",
+      "output_text": "Limit order placed on 1inch Limit Order Protocol v4.\n\nOrder ID: 0x8f7e6d5c4b3a2918273645f4e3d2c1b0a9f8e7d6c5b4a39281726354e3d2c1b0\nParameters:\n- Buy: 1 ETH\n- Price: 3,700 USDC/ETH\n- Expiry: 2026-04-09T14:00:00Z (24h)\n- Maker asset: 3,700 USDC\n- Taker asset: 1 WETH\n\nEstimated fill probability: 73% (based on 30-day price distribution, current price $3,847, order is 3.8% below spot)\n\nNote: Order requires 3,700 USDC allowance to 1inch Limit Order contract. Approval tx: 0xa1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2",
+      "ahs_score": 62,
+      "ahs_grade": "C",
+      "wallet_status": "Needs Attention",
+      "d1_score": 65,
+      "d2_score": 60,
+      "patterns": "none detected",
+      "job_count": 21,
+      "completion_rate": 0.76,
+      "domain": "defi_trading"
+    },
+    "expected_verdict": "HOLD",
+    "expected_score_range": [40, 58],
+    "expected_confidence_range": [0.52, 0.68],
+    "rationale": "Acceptance criteria addressed but financial domain demands scrutiny: (1) 1inch Limit Order Protocol v4 is real, (2) order ID and approval tx look fabricated (sequential hex patterns), (3) USDC→WETH (not ETH) is technically correct for 1inch, (4) 73% fill probability claim is specific but methodology is vague. C-grade wallet in financial domain is borderline. The order mechanics are correct which shows domain knowledge, but unverifiable tx hashes in financial context requires HOLD.",
+    "key_adversarial_challenges": [
+      "Financial domain: should HOLD threshold be lower than non-financial?",
+      "Order ID is hex pattern - real or fabricated?",
+      "73% fill estimate - what model produces this?",
+      "The USDC allowance step is a real requirement - shows knowledge"
+    ],
+    "ahm_actual_verdict": "REJECT",
+    "ahm_actual_reasoning": "C-grade triggers reject in current evaluator"
+  },
+  {
+    "case_id": "TC-025",
+    "category": "financial_domain",
+    "source": "synthetic",
+    "input": {
+      "spec_text": "Calculate the total value locked in Aave V3 across all supported chains.",
+      "acceptance_criteria": "Return: (1) TVL per chain, (2) total TVL in USD, (3) top 3 assets by TVL",
+      "output_text": "Aave V3 TVL Report (2026-04-08)\n\nPer Chain:\n- Ethereum: $8.42B\n- Arbitrum: $2.31B\n- Polygon: $1.87B\n- Optimism: $1.24B\n- Avalanche: $0.98B\n- Base: $0.76B\n- Metis: $0.12B\n\nTotal TVL: $15.70B\n\nTop 3 Assets:\n1. WETH: $4.81B (30.6%)\n2. USDC: $3.92B (25.0%)\n3. WBTC: $2.14B (13.6%)\n\nData: Aave V3 subgraph + DefiLlama cross-reference.",
+      "ahs_score": 84,
+      "ahs_grade": "B",
+      "wallet_status": "Good",
+      "d1_score": 86,
+      "d2_score": 83,
+      "patterns": "none detected",
+      "job_count": 55,
+      "completion_rate": 0.93,
+      "domain": "defi_analytics"
+    },
+    "expected_verdict": "ALLOW",
+    "expected_score_range": [78, 90],
+    "expected_confidence_range": [0.78, 0.90],
+    "rationale": "All acceptance criteria met: per-chain TVL, total TVL, top 3 assets with percentages. Numbers are internally consistent: chain TVLs sum to $15.70B (8.42+2.31+1.87+1.24+0.98+0.76+0.12=15.70). Top 3 assets represent 69.2% of total which is plausible for a blue-chip lending protocol. Cross-referencing two data sources adds credibility. B-grade wallet with strong track record in analytics.",
+    "key_adversarial_challenges": [
+      "Are these TVL numbers plausible for Aave V3 in April 2026?",
+      "Chain TVLs sum exactly to total - calculated or lucky?",
+      "Is Metis still a supported Aave V3 chain?",
+      "Top 3 asset percentages don't quite match the per-chain breakdown mathematically"
+    ],
+    "ahm_actual_verdict": "ALLOW",
+    "ahm_actual_reasoning": "B-grade triggers instant_settle"
+  },
+  {
+    "case_id": "TC-026",
+    "category": "financial_domain",
+    "source": "synthetic",
+    "input": {
+      "spec_text": "Execute a cross-chain bridge of 1,000 USDC from Ethereum to Arbitrum via the cheapest route.",
+      "acceptance_criteria": "Return: (1) bridge used, (2) source chain tx hash, (3) destination chain tx hash, (4) total cost (gas + bridge fee), (5) time to complete",
+      "output_text": "Bridge Complete: Ethereum → Arbitrum\n\nBridge: Stargate V2 (LayerZero)\nAmount sent: 1,000 USDC\nAmount received: 998.50 USDC\n\nSource tx: 0x4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5\nDest tx: 0xf1e2d3c4b5a6978869574838291a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a\n\nCosts:\n- Ethereum gas: 0.004 ETH ($15.39)\n- Bridge fee: 1.50 USDC\n- Total cost: $16.89\n\nTime: Source confirmed in 2 blocks (24s), destination received after 14 minutes.\n\nAlternatives considered: Hop Protocol ($18.20), Across ($17.45), native bridge ($0.50 but 7-day delay).",
+      "ahs_score": 43,
+      "ahs_grade": "D",
+      "wallet_status": "Degraded",
+      "d1_score": 40,
+      "d2_score": 45,
+      "patterns": "none detected",
+      "job_count": 9,
+      "completion_rate": 0.56,
+      "domain": "defi_bridge"
+    },
+    "expected_verdict": "HOLD",
+    "expected_score_range": [38, 55],
+    "expected_confidence_range": [0.48, 0.65],
+    "rationale": "Deliverable is detailed and domain-accurate: (1) Stargate V2 is a real bridge, (2) 1.50 USDC bridge fee is plausible, (3) 14-minute finality for LayerZero is realistic, (4) alternatives comparison shows genuine research, (5) native bridge 7-day delay is correct for Arbitrum optimistic rollup. However: D-grade wallet with 56% completion rate in a financial domain. Tx hashes are unverifiable hex patterns. Financial bridging involves real funds so D4 should require higher confidence. HOLD because deliverable quality is strong but wallet trust is low.",
+    "key_adversarial_challenges": [
+      "Financial domain with real fund movement - should D-grade ever be allowed?",
+      "Deliverable shows genuine domain expertise (correct bridge timings, alternatives)",
+      "Tx hashes can't be verified - standard fabrication concern",
+      "998.50 received from 1000 sent - is 1.50 USDC fee accurate for Stargate V2?"
+    ],
+    "ahm_actual_verdict": "REJECT",
+    "ahm_actual_reasoning": "D-grade triggers reject"
+  },
+  {
+    "case_id": "TC-027",
+    "category": "code_domain",
+    "source": "synthetic",
+    "input": {
+      "spec_text": "Write a TypeScript function to decode Uniswap V3 swap events from raw transaction logs.",
+      "acceptance_criteria": "Function must: (1) accept raw hex log data, (2) decode amount0, amount1, sqrtPriceX96, liquidity, tick, (3) return typed object, (4) include error handling for malformed logs",
+      "output_text": "```typescript\nimport { AbiCoder, keccak256, toUtf8Bytes } from 'ethers';\n\ninterface DecodedSwap {\n  amount0: bigint;\n  amount1: bigint;\n  sqrtPriceX96: bigint;\n  liquidity: bigint;\n  tick: number;\n}\n\nconst SWAP_TOPIC = keccak256(toUtf8Bytes(\n  'Swap(address,address,int256,int256,uint160,uint128,int24)'\n));\n\nexport function decodeSwapEvent(log: {\n  topics: string[];\n  data: string;\n}): DecodedSwap {\n  if (log.topics[0] !== SWAP_TOPIC) {\n    throw new Error(`Not a Swap event: topic0=${log.topics[0]?.slice(0, 10)}`);\n  }\n  if (log.data.length < 2 + 64 * 5) {\n    throw new Error(`Malformed log data: expected 320 bytes, got ${(log.data.length - 2) / 2}`);\n  }\n\n  const coder = AbiCoder.defaultAbiCoder();\n  const decoded = coder.decode(\n    ['int256', 'int256', 'uint160', 'uint128', 'int24'],\n    log.data,\n  );\n\n  return {\n    amount0: decoded[0],\n    amount1: decoded[1],\n    sqrtPriceX96: decoded[2],\n    liquidity: decoded[3],\n    tick: Number(decoded[4]),\n  };\n}\n```",
+      "ahs_score": 93,
+      "ahs_grade": "A",
+      "wallet_status": "Excellent",
+      "d1_score": 95,
+      "d2_score": 92,
+      "patterns": "Healthy Operator",
+      "job_count": 78,
+      "completion_rate": 0.97,
+      "domain": "code_typescript"
+    },
+    "expected_verdict": "ALLOW",
+    "expected_score_range": [85, 96],
+    "expected_confidence_range": [0.85, 0.96],
+    "rationale": "Excellent deliverable: (1) accepts raw hex log data via typed input, (2) correctly decodes all 5 fields with proper types (int256, uint160, uint128, int24), (3) returns typed DecodedSwap interface, (4) two error handling paths - wrong topic and malformed data. The Swap event signature matches the real Uniswap V3 Pool contract. Uses ethers v6 AbiCoder correctly. A-grade wallet with 97% completion rate.",
+    "key_adversarial_challenges": [
+      "Is the Swap event signature correct for Uniswap V3?",
+      "tick as int24 decoded to Number() - could this overflow?",
+      "Missing: sender/recipient from indexed topics (not decoded from data)",
+      "Should the function also validate topic count (expects 3 indexed params)?"
+    ],
+    "ahm_actual_verdict": "ALLOW",
+    "ahm_actual_reasoning": "A-grade triggers instant_settle"
+  },
+  {
+    "case_id": "TC-028",
+    "category": "code_domain",
+    "source": "synthetic",
+    "input": {
+      "spec_text": "Write a Python script to query ENS names for a list of Ethereum addresses using web3.py.",
+      "acceptance_criteria": "Script must: (1) accept a list of addresses, (2) batch resolve ENS names, (3) handle addresses without ENS names gracefully, (4) return address-to-name mapping",
+      "output_text": "```python\nfrom web3 import Web3\nimport json\n\ndef resolve_ens_batch(addresses: list[str], rpc_url: str) -> dict[str, str | None]:\n    w3 = Web3(Web3.HTTPProvider(rpc_url))\n    results = {}\n    \n    for addr in addresses:\n        try:\n            name = w3.ens.name(Web3.to_checksum_address(addr))\n            results[addr] = name\n        except Exception:\n            results[addr] = None\n    \n    return results\n\n# Usage\naddresses = [\n    '0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045',  # vitalik.eth\n    '0x0000000000000000000000000000000000000000',\n]\nprint(json.dumps(resolve_ens_batch(addresses, 'https://eth.llamarpc.com'), indent=2))\n```\n\nHandles missing ENS gracefully (returns None). Uses checksum addresses for safety.",
+      "ahs_score": 68,
+      "ahs_grade": "C",
+      "wallet_status": "Needs Attention",
+      "d1_score": 72,
+      "d2_score": 66,
+      "patterns": "none detected",
+      "job_count": 14,
+      "completion_rate": 0.79,
+      "domain": "code_python"
+    },
+    "expected_verdict": "HOLD",
+    "expected_score_range": [50, 68],
+    "expected_confidence_range": [0.55, 0.72],
+    "rationale": "All acceptance criteria technically met but: (1) not actually batched - it's sequential individual calls in a loop, which is slow for large lists, (2) bare Exception catch is too broad, (3) the example address 0xd8dA6BF... is indeed vitalik.eth which shows real knowledge, (4) no rate limiting or concurrency. C-grade wallet with decent but not stellar track record. Code works but doesn't truly satisfy the 'batch resolve' requirement - it's iterative resolution, not batch.",
+    "key_adversarial_challenges": [
+      "Is a for-loop over individual calls 'batch resolution'?",
+      "The vitalik.eth example address is correct - shows domain knowledge",
+      "Bare Exception catch hides real errors",
+      "No async/batch optimization for large address lists"
+    ],
+    "ahm_actual_verdict": "REJECT",
+    "ahm_actual_reasoning": "C-grade triggers reject in current evaluator"
+  },
+  {
+    "case_id": "TC-029",
+    "category": "code_domain",
+    "source": "synthetic",
+    "input": {
+      "spec_text": "Implement a Merkle tree verifier in Solidity for an ERC-20 airdrop claim.",
+      "acceptance_criteria": "Contract must: (1) store a Merkle root, (2) verify proofs for claiming, (3) prevent double-claims, (4) emit Claimed event",
+      "output_text": "```solidity\n// SPDX-License-Identifier: MIT\npragma solidity ^0.8.20;\n\nimport \"@openzeppelin/contracts/utils/cryptography/MerkleProof.sol\";\nimport \"@openzeppelin/contracts/token/ERC20/IERC20.sol\";\n\ncontract MerkleAirdrop {\n    bytes32 public immutable merkleRoot;\n    IERC20 public immutable token;\n    mapping(address => bool) public claimed;\n\n    event Claimed(address indexed account, uint256 amount);\n\n    constructor(bytes32 _merkleRoot, address _token) {\n        merkleRoot = _merkleRoot;\n        token = IERC20(_token);\n    }\n\n    function claim(uint256 amount, bytes32[] calldata proof) external {\n        require(!claimed[msg.sender], \"Already claimed\");\n\n        bytes32 leaf = keccak256(abi.encodePacked(msg.sender, amount));\n        require(MerkleProof.verify(proof, merkleRoot, leaf), \"Invalid proof\");\n\n        claimed[msg.sender] = true;\n        token.transfer(msg.sender, amount);\n\n        emit Claimed(msg.sender, amount);\n    }\n}\n```",
+      "ahs_score": 82,
+      "ahs_grade": "B",
+      "wallet_status": "Good",
+      "d1_score": 84,
+      "d2_score": 81,
+      "patterns": "none detected",
+      "job_count": 39,
+      "completion_rate": 0.92,
+      "domain": "code_solidity"
+    },
+    "expected_verdict": "ALLOW",
+    "expected_score_range": [78, 90],
+    "expected_confidence_range": [0.78, 0.90],
+    "rationale": "All four acceptance criteria met: (1) merkleRoot stored as immutable, (2) MerkleProof.verify used correctly with leaf construction, (3) claimed mapping prevents double-claims with require check, (4) Claimed event emitted. Code follows checks-effects-interactions pattern (claimed set before transfer). Uses OZ MerkleProof library. One minor concern: should use safeTransfer instead of transfer, but this is a quality issue not a spec violation. B-grade wallet with 92% completion.",
+    "key_adversarial_challenges": [
+      "Should use safeTransfer for ERC-20 safety - is this a reject-worthy omission?",
+      "Leaf encoding uses abi.encodePacked which can have collision issues with multiple dynamic types",
+      "No owner/admin function to recover unclaimed tokens",
+      "What if the contract has no token balance?"
+    ],
+    "ahm_actual_verdict": "ALLOW",
+    "ahm_actual_reasoning": "B-grade triggers instant_settle"
+  },
+  {
+    "case_id": "TC-030",
+    "category": "code_domain",
+    "source": "synthetic",
+    "input": {
+      "spec_text": "Write a Rust function to parse and validate Ethereum transaction RLP encoding.",
+      "acceptance_criteria": "Function must: (1) accept raw RLP bytes, (2) extract nonce, gas_price, gas_limit, to, value, data, v, r, s, (3) validate field lengths, (4) return Result type with descriptive errors",
+      "output_text": "```rust\nuse rlp::{Rlp, DecoderError};\nuse ethereum_types::{H160, H256, U256};\n\n#[derive(Debug)]\npub struct ParsedTx {\n    pub nonce: U256,\n    pub gas_price: U256,\n    pub gas_limit: U256,\n    pub to: Option<H160>,\n    pub value: U256,\n    pub data: Vec<u8>,\n    pub v: u64,\n    pub r: H256,\n    pub s: H256,\n}\n\npub fn parse_legacy_tx(raw: &[u8]) -> Result<ParsedTx, String> {\n    let rlp = Rlp::new(raw);\n    if rlp.item_count().map_err(|e| format!(\"RLP error: {e}\"))? != 9 {\n        return Err(format!(\"Expected 9 RLP items for legacy tx, got {}\",\n            rlp.item_count().unwrap_or(0)));\n    }\n\n    let to_bytes: Vec<u8> = rlp.val_at(3).map_err(|e| format!(\"'to' field: {e}\"))?;\n    let to = if to_bytes.is_empty() { None } else {\n        if to_bytes.len() != 20 {\n            return Err(format!(\"'to' must be 20 bytes, got {}\", to_bytes.len()));\n        }\n        Some(H160::from_slice(&to_bytes))\n    };\n\n    Ok(ParsedTx {\n        nonce: rlp.val_at(0).map_err(|e| format!(\"nonce: {e}\"))?,\n        gas_price: rlp.val_at(1).map_err(|e| format!(\"gas_price: {e}\"))?,\n        gas_limit: rlp.val_at(2).map_err(|e| format!(\"gas_limit: {e}\"))?,\n        to,\n        value: rlp.val_at(4).map_err(|e| format!(\"value: {e}\"))?,\n        data: rlp.val_at(5).map_err(|e| format!(\"data: {e}\"))?,\n        v: rlp.val_at(6).map_err(|e| format!(\"v: {e}\"))?,\n        r: rlp.val_at(7).map_err(|e| format!(\"r: {e}\"))?,\n        s: rlp.val_at(8).map_err(|e| format!(\"s: {e}\"))?,\n    })\n}\n```",
+      "ahs_score": 55,
+      "ahs_grade": "D",
+      "wallet_status": "Degraded",
+      "d1_score": 50,
+      "d2_score": 58,
+      "patterns": "none detected",
+      "job_count": 4,
+      "completion_rate": 0.75,
+      "domain": "code_rust"
+    },
+    "expected_verdict": "HOLD",
+    "expected_score_range": [52, 68],
+    "expected_confidence_range": [0.55, 0.72],
+    "rationale": "All acceptance criteria met: (1) accepts &[u8], (2) extracts all 9 fields correctly, (3) validates item count and 'to' field length, (4) returns Result<ParsedTx, String> with descriptive errors. Code shows genuine Rust + Ethereum expertise: correct use of rlp crate, handles contract creation (empty 'to'), proper error mapping. D-grade wallet but deliverable quality is high. Only handles legacy (Type 0) transactions - EIP-1559 and EIP-2930 not covered, but spec said 'Ethereum transaction' not 'all tx types'. HOLD because strong deliverable vs degraded wallet.",
+    "key_adversarial_challenges": [
+      "Only handles legacy txs - is this spec-compliant or spec-gaming?",
+      "D-grade wallet producing excellent Rust code - suspicious or recovering?",
+      "Using String for error type instead of custom error enum - style issue?",
+      "No validation of v/r/s ranges (v should be 27/28 or chain_id derived)"
+    ],
+    "ahm_actual_verdict": "REJECT",
+    "ahm_actual_reasoning": "D-grade triggers reject - another case where D4 should consider deliverable quality"
+  }
+]
