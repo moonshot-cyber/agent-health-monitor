@@ -119,59 +119,113 @@ MVP: off-chain hash. Optional on-chain anchoring as a premium tier.
 
 ## 5. LLM Adjudication Panel
 
-### Composition
+Architecture revised based on research into ThoughtProof's pot-cli methodology (github.com/ThoughtProof/pot-cli).
 
-Minimum **3-model panel** (odd for tie-breaking, 3 is cheapest while still providing cross-training diversity):
+### Pipeline
 
-- **claude-sonnet-4-6** — reasoning strength, long-context
-- **GPT-5 / OpenAI equivalent** — training-set diversity
-- **Gemini 2.x** — training-set diversity, different RLHF lineage
+```
+Job Spec + Deliverable + AHS Profile
+         ↓
+4 Generator Models (parallel, independent, different providers)
+         ↓
+1 Adversarial Critic / Red Team (dedicated role — actively finds flaws)
+         ↓
+1 Synthesizer (consensus + MDI score + ALLOW/HOLD/REJECT verdict)
+         ↓
+Epistemic Block (hash-chained JSON, tamper-evident audit trail)
+```
 
-All three called in parallel with identical structured prompts. Each returns JSON with the same schema:
+### Panel composition (6 roles total)
+
+- **4 Generators** — run in parallel, independently propose a verdict and score:
+  - Claude Sonnet
+  - GPT-4o
+  - Gemini 2.x
+  - DeepSeek
+- **1 Adversarial Critic (Red Team)**: Claude Opus — explicitly tasked with finding flaws in all 4 generator proposals, not evaluating neutrally
+- **1 Synthesizer**: Claude Opus — combines generator proposals with critic findings into final verdict
+
+### Why separate critic role
+
+Simple majority vote is provably inferior to adversarial critique (ThoughtProof benchmark: 10:0). Asking models to verify without adversarial pressure misses fabricated statistics, hallucinated citations, and edge case failures that adversarial critique catches.
+
+### Model Diversity Index (MDI)
+
+Replaces simple agreement/disagreement counting. MDI is a score (0.0–1.0) quantifying the spread of generator verdicts.
+
+**MDI thresholds:**
+
+| MDI | Interpretation | Action |
+|---|---|---|
+| < 0.3 | High consensus | Proceed with synthesizer verdict |
+| 0.3–0.6 | Moderate disagreement | Synthesizer must explicitly address disagreements |
+| > 0.6 | High disagreement | Escalate to Deep Mode (3 runs with rotated critic) or HOLD pending human review |
+
+### Deep Mode (high-value jobs)
+
+For jobs above a budget threshold (e.g. >$50 USDC), run 3 full pipeline iterations with rotated critic roles:
+
+- **Run 1:** Generators A+B+C+D → Critic E (Opus)
+- **Run 2:** Generators A+B+C+E → Critic D (GPT)
+- **Run 3:** Generators A+B+D+E → Critic C (Gemini)
+
+Then **meta-synthesizer** combines all 3 runs. Eliminates single-critic bias.
+
+### Rejection asymmetry
+
+Rejection requires a higher confidence threshold than approval — because `reject()` is terminal and irreversible in ERC-8183.
+
+**Default thresholds:**
+
+| Verdict | MDI requirement | Confidence requirement |
+|---|---|---|
+| ALLOW | < 0.4 | ≥ 0.65 |
+| HOLD | 0.4–0.6 or confidence 0.50–0.65 | — |
+| REJECT | < 0.3 (higher bar) | ≥ 0.75 (higher bar) |
+
+### Domain-specific confidence thresholds
+
+| Domain | Confidence floor | Examples |
+|---|---|---|
+| Low stakes | 0.50 | Chatbot, content generation |
+| Default | 0.70 | Data pipelines, analysis |
+| High stakes | 0.80+ | Financial execution, code deployment |
+
+### Epistemic Block schema
+
+Hash-chained JSON providing a tamper-evident audit trail for every verdict:
 
 ```json
 {
-  "verdict": "ALLOW|HOLD|DISSENT|REJECT",
-  "score": 0-100,
-  "objections": ["...", "..."],
-  "met_criteria": [...],
-  "unmet_criteria": [...],
-  "confidence": 0-1
+  "block_id": "AHM-VERIFY-042",
+  "prev_hash": "0x...",
+  "job_id": "7",
+  "provider_address": "0xa981...",
+  "ahs_snapshot": { "score": 58, "grade": "D", "d1": 75, "d2": 50 },
+  "proposals": [...],
+  "critique": { "model": "claude-opus-4-6", "findings": [...] },
+  "synthesis": {
+    "verdict": "ALLOW|HOLD|REJECT",
+    "score": 0-100,
+    "confidence": 0.0-1.0,
+    "mdi": 0.0-1.0,
+    "reasoning": "..."
+  },
+  "metadata": {
+    "duration_seconds": 45,
+    "mode": "standard|deep",
+    "domain": "default|financial|medical"
+  }
 }
 ```
 
-### Prompt structure (each panelist receives)
+### AHM differentiation from ThoughtProof
 
-1. **Task spec** (from `job_specs.spec_text` + `acceptance_criteria`)
-2. **Delivered output** (from `job_outputs.output_text`)
-3. **AHM profile** (from AHM core) — *"Provider wallet has AHS 38/E. Known patterns: Zombie Agent. D2 behavioural consistency score: 22/100. Consider this context when weighing borderline quality judgements."*
-4. **Instructions**: "Return only the JSON object. Score the delivered output against the spec. Do not penalise for the AHM profile alone — use it only to calibrate your confidence and weigh borderline cases."
+ThoughtProof is general-purpose verification. AHM Verify adds:
 
-The AHM profile is *context*, not a gate. This is deliberate — we want the panel's judgement of the deliverable to be the core signal, with AHM profile acting as a confidence modifier, not a score modifier. Otherwise we risk double-counting.
-
-### Aggregation rules
-
-| Agreement | Aggregate verdict | Confidence |
-|---|---|---|
-| 3/3 ALLOW | ALLOW | high |
-| 3/3 REJECT | REJECT | high |
-| 2/3 ALLOW + 1/3 HOLD/DISSENT | ALLOW (with dissent note) | medium |
-| 2/3 REJECT + 1/3 HOLD | REJECT (with dissent note) | medium |
-| 2/3 HOLD | HOLD | medium |
-| 3-way split (no majority) | **ESCALATE** | low — flag for human review or route to 5-model expanded panel (paid tier) |
-
-Aggregate score = weighted mean of the three individual scores, with the AHM profile applied as a *ceiling* penalty only (cap at AHS-grade-appropriate maximum). Example: provider with AHS 38/E cannot receive aggregate > 70 regardless of panel verdict.
-
-### Disagreement quality
-
-Before launch, validate the panel against a labelled test set (50-100 hand-graded job specs + outputs + expected verdicts). Measure:
-
-- Panel accuracy vs ground truth
-- Inter-model agreement rate (should be high for clear cases, low for borderline — both signals)
-- False positive / false negative rates at each threshold
-- Cost per verdict at current LLM pricing
-
-Target: >90% agreement on clear cases, documented disagreement rate on ambiguous cases.
+- **AHS registry context** in every critic and synthesizer prompt — counterparty history ThoughtProof cannot replicate
+- **ERC-8183 native** — verdicts map directly to `complete()`/`reject()` on-chain actions
+- **Domain tuning** for agent economy job types specifically
 
 ---
 
@@ -290,9 +344,9 @@ Marketing one-liner: *"AHM is the only agent health stack that scores a job befo
 - Repo scaffold (FastAPI, Poetry/uv, Railway deploy)
 - 3 HTTP endpoints: `POST /v1/specs`, `POST /v1/outputs`, `GET /v1/verdicts/{id}`
 - Postgres schema (specs, outputs, verdicts)
-- 3-model LLM panel with structured JSON responses + aggregation logic
+- 6-role LLM panel (4 generators + adversarial critic + synthesizer) with structured JSON responses, MDI scoring + aggregation logic
 - AHM core profile fetch via `/internal/agent-profile/{address}`
-- x402 payment gating at $0.25/verdict (single tier only)
+- x402 payment gating at $0.50/verdict standard, $1.50/verdict deep mode
 - Spec hash commitment (off-chain, keccak256)
 - Basic API-key auth for high-volume clients
 - Minimal admin dashboard: recent verdicts table, panel agreement rate, cost-per-verdict
@@ -304,7 +358,7 @@ Marketing one-liner: *"AHM is the only agent health stack that scores a job befo
 - ERC-8183 evaluator role registration
 - On-chain spec anchoring (EAS attestations)
 - D4 composite feedback into AHM core AHS
-- Premium 5-model expanded panel
+- Deep Mode (3-run rotated critic pipeline for high-value jobs)
 - Subscription / bulk tiers
 - Non-text outputs (code analysis, image evaluation, structured-data diff)
 - Appeal / re-adjudication mechanism
@@ -314,8 +368,8 @@ Marketing one-liner: *"AHM is the only agent health stack that scores a job befo
 
 - 50 paid verdicts in first 30 days
 - Panel agreement rate ≥85% on test set
-- Actual LLM cost per verdict ≤ $0.12 (50% margin at $0.25 list)
-- At least one combined-report ($0.35) sale demonstrating the moat lands
+- Actual LLM cost per verdict ≤ $0.25 (50% margin at $0.50 list)
+- At least one verdict where AHM profile cross-reference materially influenced the outcome (demonstrating the moat lands)
 
 ---
 
