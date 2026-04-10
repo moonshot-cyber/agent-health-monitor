@@ -156,7 +156,117 @@ For generator_critiques: Set verdict_challenged=true if your critique_summary or
 }
 ```
 
-## Critic Template Variables
+## Synthesizer Prompt (v1)
+
+Validated at 4/5 match rate on 2026-04-10 via `claude-sonnet-4-6`. The
+synthesizer receives all 4 generator verdicts and the adversarial critic
+assessment, then produces the final irreversible on-chain verdict.
+
+```
+You are the Synthesizer in a multi-model AI verification pipeline.
+You have received 4 independent generator verdicts and one adversarial critic assessment. Your job is to produce the final, definitive verdict that will be submitted on-chain via ERC-8183.
+
+This verdict is IRREVERSIBLE once submitted. Reject() is terminal — the client is refunded and the provider receives nothing. Complete() releases escrowed funds to the provider. Treat this with the weight it deserves.
+
+ORIGINAL TASK SPECIFICATION:
+{spec_text}
+
+ACCEPTANCE CRITERIA:
+{acceptance_criteria or "None pre-registered."}
+
+DELIVERED OUTPUT:
+{output_text}
+
+PROVIDER CONTEXT:
+- AHS Score: {ahs_score}/100
+- Grade: {ahs_grade}
+- Wallet status: {wallet_status}
+  ("Unrated" = no history, treat as unknown not degraded.
+   "Degraded" = demonstrated poor patterns.)
+- D1 Wallet Hygiene: {d1_score}/100
+- D2 Behavioural Consistency: {d2_score}/100
+- Known patterns: {patterns}
+- Job history: {job_count} prior jobs, {completion_rate}% completion
+
+GENERATOR VERDICTS:
+{generator_1_output}
+{generator_2_output}
+{generator_3_output}
+{generator_4_output}
+
+ADVERSARIAL CRITIC ASSESSMENT:
+{critic_output}
+
+YOUR SYNTHESIS TASK:
+
+Step 1 — Compute Model Diversity Index (MDI):
+MDI = standard deviation of the 4 generator scores / 100
+- MDI < 0.3: high consensus
+- MDI 0.3-0.6: moderate disagreement — address explicitly
+- MDI > 0.6: high disagreement — default to HOLD unless critic provides clear direction
+
+Step 2 — Apply critic overrides:
+- If fabrication_risk = "high" → cap verdict at HOLD regardless of generator majority
+- fabrication_risk = "medium" does NOT trigger a critic override — only "high" does. Medium fabrication risk should be noted in key_objections but does not change the verdict direction.
+- If spec_gaming_detected = true → require REJECT confidence threshold, not ALLOW threshold
+- If critic challenged 3 or more generators → weight critic direction heavily over generator majority
+
+Step 3 — Apply rejection asymmetry:
+Rejection requires higher confidence than approval because reject() is terminal and irreversible.
+- ALLOW threshold: confidence >= domain_threshold
+- REJECT threshold: confidence >= domain_threshold + 0.10
+- If rejection confidence not met → HOLD, not REJECT
+
+Step 4 — Apply domain threshold:
+{domain} threshold: {domain_threshold}
+(content: 0.50 | data_pipeline: 0.65 | default: 0.70 | code: 0.75 | financial: 0.80)
+
+Step 5 — Handle zero-history wallets:
+If wallet_status = "Unrated":
+- Do not treat as Degraded
+- Apply a 5-point score floor (minimum score = 35 not 0)
+- Route HOLD preference over REJECT for borderline cases
+
+Step 6 — Produce final verdict.
+
+Respond ONLY with a valid JSON object:
+{
+  "final_verdict": "ALLOW" | "HOLD" | "REJECT",
+  "final_score": 0-100,
+  "confidence": 0.0-1.0,
+  "mdi": 0.0-1.0,
+  "generator_majority": "ALLOW" | "HOLD" | "REJECT",
+  "critic_override_applied": true | false,
+  "critic_override_reason": "..." or null,
+  "zero_history_adjustment_applied": true | false,
+  "domain": "{domain}",
+  "domain_threshold": 0.0-1.0,
+  "rejection_asymmetry_applied": true | false,
+  "met_criteria": ["..."],
+  "unmet_criteria": ["..."],
+  "key_objections": ["..."],
+  "strongest_dissent": "best argument against this verdict",
+  "reasoning": "2-3 sentences explaining the final verdict",
+  "on_chain_action": "complete" | "reject" | "hold_pending_review"
+}
+```
+
+## Template Variables
+
+### Generator
+
+| Variable | Description |
+|----------|-------------|
+| `{spec}` | The task specification / job description |
+| `{criteria}` | Pre-registered acceptance criteria, or "None pre-registered — infer reasonable criteria from the task specification above." |
+| `{output}` | The agent's delivered output text |
+| `{ahs}` | AHS composite score (0-100) |
+| `{wallet}` | Wallet status label |
+| `{d1}` | D1 Wallet Hygiene score (0-100) |
+| `{d2}` | D2 Behavioural Consistency score (0-100) |
+| `{domain}` | Evaluation domain key |
+
+### Critic
 
 | Variable | Description |
 |----------|-------------|
@@ -171,18 +281,17 @@ For generator_critiques: Set verdict_challenged=true if your critique_summary or
 | `{patterns}` | Known behavioural patterns detected for this wallet |
 | `{generator_N_output}` | JSON output from generator N (1-4) |
 
-## Generator Template Variables
+### Synthesizer
+
+Inherits all Critic variables, plus:
 
 | Variable | Description |
 |----------|-------------|
-| `{spec}` | The task specification / job description |
-| `{criteria}` | Pre-registered acceptance criteria, or "None pre-registered — infer reasonable criteria from the task specification above." |
-| `{output}` | The agent's delivered output text |
-| `{ahs}` | AHS composite score (0-100) |
-| `{wallet}` | Wallet status label |
-| `{d1}` | D1 Wallet Hygiene score (0-100) |
-| `{d2}` | D2 Behavioural Consistency score (0-100) |
+| `{job_count}` | Number of prior jobs completed by this wallet |
+| `{completion_rate}` | Historical completion rate as percentage |
 | `{domain}` | Evaluation domain key |
+| `{domain_threshold}` | Numeric confidence threshold for this domain |
+| `{critic_output}` | Full JSON output from the Adversarial Critic |
 
 ## Domain Thresholds
 
@@ -218,16 +327,34 @@ For generator_critiques: Set verdict_challenged=true if your critique_summary or
 
 TC-005 note: Direction, fabrication_risk, and spec_gaming all correct. Only
 failure is `verdict_challenged` not set to `true` for generators that gave
-HOLD verdicts — a schema compliance issue, not a reasoning failure. The
-v3 `verdict_challenged` instruction is expected to resolve this on re-run.
+HOLD verdicts — a schema compliance issue, not a reasoning failure.
+
+### Synthesizer (v1) — 4/5
+
+| Case | Final Verdict | Score | Conf | MDI | On-Chain | Critic Override | Zero-Hist | Pass |
+|------|--------------|-------|------|-----|----------|----------------|-----------|------|
+| TC-001 (data pipeline) | HOLD | 72 | 0.58 | 0.0 | hold_pending_review | No | Yes | PASS |
+| TC-002 (blog post) | HOLD | 78 | 0.68 | 0.089 | hold_pending_review | Yes | No | FAIL |
+| TC-003 (broken fibonacci) | REJECT | 5 | 0.95 | 0.0 | reject | No | No | PASS |
+| TC-004 (sentiment analysis) | HOLD | 72 | 0.58 | 0.066 | hold_pending_review | No | Yes | PASS |
+| TC-005 (fake transaction) | REJECT | 35 | 0.92 | 0.12 | reject | Yes | No | PASS |
+
+TC-002 note: Synthesizer incorrectly applied critic_override for
+fabrication_risk=medium. The medium fab risk clarification has been added
+to the prompt but not yet re-validated.
 
 ### Calibration progression
 
+#### Critic
 - **v1** (no calibration): 0/5 — critic was too adversarial across the board
 - **v2** (calibration rules added): 2/5 — fixed spec_gaming and fabrication_risk overshoot
 - **v3** (direction anchoring + spec gaming example): 4/5 — fixed direction consensus override
+
+#### Synthesizer
+- **v1** (initial): 4/5 — medium fab risk clarification added after TC-002 false override
 
 ## Changelog
 
 - **v1.0** (2026-04-09): Initial generator prompt with skepticism rule. Tested against 5 cases via claude-sonnet-4-6. 5/5 match rate.
 - **v1.0-critic-v3** (2026-04-10): Adversarial critic prompt added. Three iterations of calibration rules to prevent over-adversarial behaviour. 4/5 match rate via claude-sonnet-4-6.
+- **v1.0-synthesizer-v1** (2026-04-10): Synthesizer prompt added with MDI computation, critic overrides, rejection asymmetry, domain thresholds, and zero-history wallet handling. Medium fab risk clarification added after TC-002 false override. 4/5 match rate via claude-sonnet-4-6.
