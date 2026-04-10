@@ -114,10 +114,22 @@ ERC-8210 verification schema names AHM as a reference implementation. AHS D1/D2/
 
 ### Bootstrapping Problem — Zero-History Wallet Treatment
 - Currently a wallet with no on-chain history scores similarly to one with demonstrably degraded patterns due to D2 behavioural consistency weighting (70%)
-- Raised by Bakugo32 (Arc/ERC-8183 protocol team) Apr 9 2026 after Job #7 evaluation
+- Raised by Bakugo32 (Arc/ERC-8183 protocol team) Apr 9 2026 after Job #7 evaluation — D grade on zero-history wallet triggered reject when HOLD was more appropriate
 - Fix: introduce a separate scoring path for zero-history wallets — score as "Unrated" rather than mapping to D/E grade
 - Unrated wallets should route to escrow (not reject) by default — client assumes counterparty risk with funds protected
 - Review alongside D2 session continuity gate (April 21 2026)
+
+---
+
+## Future Dimensions
+
+### Spike: D5 Security Posture
+- Explore whether on-chain security signals could form a new AHM scoring dimension
+- Signal sources to investigate: flagged contract interactions, known exploit wallets, phishing-adjacent addresses, sanctioned addresses (Chainalysis/OFAC lists)
+- Context: Project Glasswing (Anthropic + Linux Foundation + Microsoft/Google/NVIDIA coalition) launched Apr 8 2026 — focused on code/software vulnerability detection via Claude Mythos Preview
+- AHM angle: Glasswing secures agent code, AHM monitors live runtime behaviour — complementary positioning opportunity
+- Linux Foundation is also an x402 founding partner — potential ecosystem overlap worth monitoring
+- Do not build yet. Review after D3 Operational Stability is live.
 
 ---
 
@@ -171,6 +183,30 @@ A live public dashboard showing aggregate health stats across all agent wallets 
 - AHM should declare its methodology when this field ships: counterparty trust scoring (D1 solvency, D2 behavioural consistency, D3 operational stability) — distinct from output quality evaluation
 - This enables clients to select evaluators by methodology rather than address alone
 - Monitor ERC-8183 thread for formal proposal — support it when raised
+- First noted: Apr 9 2026
+
+### x402 "Upto" Scheme — Variable Cost Endpoint Support
+- Coinbase shipped the "upto" payment scheme for x402 on Apr 9 2026
+- "Upto" authorises up to a maximum amount and charges only what is consumed — designed for variable-cost services like LLM inference
+- Current AHM core endpoints are all "exact" scheme (fixed price) — no change needed
+- Relevant for AHM Verify: LLM panel cost per verdict varies by spec/deliverable length, domain, and whether deep mode is triggered — "upto" is the natural payment scheme for /verify endpoints
+- Relevant for AHM Shield Phase 2: if Shield evolves toward risk-premium pricing, variable per-agent costs map better to "upto" than "exact"
+- Action: adopt "upto" scheme for AHM Verify payment endpoints when building the service. Review x402 SDK upto implementation before AHM Verify v0.1 build starts.
+- First noted: Apr 9 2026
+
+### Arc Mainnet Migration — Evaluator Readiness
+- Arc announced open sourcing of testnet code and approach to mainnet on Apr 9 2026
+- Bug bounty live on HackerOne (hackerone.com/circle-bbp)
+- AHM is live as ERC-8183 evaluator on Arc testnet (evaluator wallet: 0x35eeDdcbE5E1AE01396Cb93Fc8606cE4C713d7BC)
+- Bakugo32 confirmed contract redeployment this week with new addresses — AHM must restake on new contracts
+- Mainnet migration = real USDC evaluator fees, real economic value for AHM evaluator role
+- Actions required:
+  1. Watch ERC-8183 ETH Magicians thread for new contract addresses (email notification active)
+  2. Restake on new contracts immediately when posted — Bakugo32 confirmed they will fund AHM wallet with VRT and ETH
+  3. Remove ON_CHAIN_START_BLOCK env var from Railway after Job #7 resolved (DONE Apr 9 2026)
+  4. Update ARC_CONTRACT_ADDRESS in Railway env vars when new contracts are live
+  5. Monitor Arc mainnet timeline — when mainnet launches, evaluator daemon needs pointing at mainnet RPC and contract addresses
+- Arc testnet code now open source — review for wallet behaviour patterns that could feed AHM D1/D2 scoring signals
 - First noted: Apr 9 2026
 
 ---
@@ -235,13 +271,72 @@ Full ecosystem scan of 402index.io service directory. 15,658 indexed services, b
 
 ## Competitive Intelligence
 
-### Verdict Protocol (@verdictprotocol, verdict-protocol.xyz)
+### Verdict Protocol (@verdictprotocol, verdict-protocol.xyz) — ELEVATED THREAT
 - Joined: March 2026. 123 followers. Whitepaper published. $VRDCT token live on Virtuals.io.
 - Positioning: "The trust layer for agent commerce" — six-layer protocol above ERC-8183 covering Evaluator Network, Hook Registry, Trust & Reputation Index, Facilitator Layer, Policy & Underwriting, $VRDCT coordination
 - Direct overlap: Trust & Reputation Index (multidimensional scoring across providers, evaluators, hooks, clients) and Evaluator Network (routing and coordinating ERC-8183 evaluators)
 - No overlap: pre-transaction wallet health scoring (D1/D2/D3), zombie detection, AHM Shield runtime middleware
 - Key differentiator vs AHM: token-coordinated protocol play requiring $VRDCT staking/governance adoption — much heavier lift than AHM's direct API/SDK model
 - Strategic opportunity: Verdict lists "Reputation API" as Phase 5 (4 phases away). AHM has live reputation data today. Potential B2B data partnership — AHM as data provider for Verdict's Trust & Reputation Index rather than head-to-head competitor
+- Threat level: Medium-high long term if they execute. 6-12 month window before they can meaningfully compete on reputation data — use it to establish AHM as default scoring layer
+- Action: Monitor only. Do not engage publicly. Review positioning if they reach Phase 3+ or follower count exceeds 1K.
+- First noted: Apr 8 2026
+
+### AgentProof (@agentproof, agentproof.sh) — ELEVATED THREAT, NEEDS INVESTIGATION
+- Positioning: "Know Your Agent" — on-chain reputation oracle for AI agents
+- Scale: 158.2K agents indexed, 222.7K evaluations, 375.7K+ screenings, 21 chains, oracle live
+- Notable features: agent leaderboard with trust scores, Deployer Storm visualisation (shared deployer rings, coordinated deployment detection, wallet age colour coding), live threat intelligence, flagged agents, zero-history deployer detection, Agent Directory
+- Direct overlap: on-chain reputation scoring, agent leaderboard, sybil/collusion detection, multi-chain coverage (21 chains vs AHM's 5)
+- Scale gap: 158K indexed agents vs AHM's 5K — significant
+- Notable: tweet from @BuilderBenv1 "You basically outlined AgentProof..." — suggests AHM concept maps closely to their existing product
+- Not previously captured in competitive intelligence — discovered Apr 8 2026
+- Threat level: ELEVATED. Larger scale, more chains, live oracle, sophisticated visualisations.
+- Action: Full competitive analysis needed. Investigate funding, team, API, pricing, and differentiation from AHM. Schedule for next session.
+
+### t54.ai (@t54ai, t54.ai) — ELEVATED THREAT
+- Founded: September 2024. San Francisco. 10.6K followers.
+- Funding: $5M seed — Anagram, PL Capital, Franklin Templeton (strategic), Ripple (strategic). Hiring DevRel/BD and AI Researcher.
+- Positioning: "Empowering Trusted Agentic Economy" — full-stack trust infrastructure
+- Product suite: KYA verification + programmable guardrail, Trustline (real-time risk controls: identity, code audit, mandates, behavioural patterns, device context), x402 Merchant (verified identity layer), x402 Secure (security layer for A2A payments, real-time ranking/scores, anomaly detection), official x402 server leaderboard supported by Coinbase x402 Bazaar
+- Direct overlap: Trustline (behavioural patterns, anomaly detection, real-time scoring = AHM D1/D2/D3), x402 Secure dashboard (agent ranking + security scores = AHM public dashboard)
+- Critical differentiator vs AHM: official Coinbase x402 Bazaar relationship — direct distribution through x402 ecosystem
+- AHM differentiation: ERC-8183 evaluator live (t54 has no visible ERC-8183 presence), protocol registry scanning (ACP, Olas, Arc, Celo, ERC-8004), AHS publicly callable API, 5K+ scanned agents live today
+- Also published ARS paper (arxiv 2604.03976) with Microsoft Research, Google DeepMind, Columbia
+- Threat level: HIGH. Best-funded competitor seen to date. Coinbase relationship, Franklin Templeton signals regulated finance ambitions.
+- Action: Monitor closely. Accelerate Invoica design partner lock-in. Double down on ERC-8183 as unclaimed territory. Explore B2B data partnership angle.
+- First noted: Apr 8 2026
+
+---
+
+## Strategic Positioning
+
+### ARS (Agentic Risk Standard) — Positioning Opportunity
+- Paper: "Quantifying Trust: Financial Risk Management for Trustworthy AI Agents" (arxiv 2604.03976)
+- Authors: Microsoft Research, Google DeepMind, Columbia, Virtuals ACP (t54.ai)
+- Published/promoted Apr 8 2026 — 509K impressions on Virtuals Protocol tweet within hours
+- Relationship to AHM: complementary. ARS defines settlement/compensation when things go wrong. AHM defines whether to trust the counterparty before things go wrong.
+- Key paper quote: "This shifts the trustworthy-agent problem from model-internal safety to a measurement problem: estimating failure probabilities and loss magnitudes." AHM is that measurement layer.
+- ARS explicitly states the bottleneck is risk modeling not settlement mechanics — AHM's AHS scoring is the risk model ARS underwriters need to price correctly.
+
+#### Three backlog items arising from ARS:
+
+##### Fee-only vs Fund-involving Task Distinction in Tiered Trust Routing
+- ARS distinguishes fee-only jobs (only service fee at risk) from fund-involving jobs (agent controls user capital pre-execution)
+- AHM's current A/B/C/D/F routing treats all jobs the same — should apply higher AHS grade thresholds for fund-involving jobs
+- Example: fund-involving job requires grade B minimum; fee-only job accepts grade C
+- Review alongside D3 Operational Stability and tiered routing design
+
+##### AHM Shield as Underwriting Intelligence Layer (Phase 2)
+- ARS defines underwriter role: prices outcome risk, requires collateral, commits to reimbursement on failure
+- AHM Shield currently routes on AHS grade — Phase 2 could evolve to quote a risk premium per job
+- This is the "underwriting intelligence layer" ARS says does not yet exist — AHM Shield is positioned to build it
+- Do not build yet. Review after Invoica design partner locked in and Shield v1 adoption measured.
+
+##### AHM Verify as ARS EvaluateOutcome Implementation
+- ARS requires evaluator to emit auditable outcome record with evidence reference (EvaluateOutcome action)
+- AHM Verify's verdict + evidence object is exactly that evaluator implementation
+- Strengthens AHM Verify positioning: not just a quality scorer but a standards-compliant ARS evaluator
+- Reference when drafting AHM Verify launch messaging
 
 ---
 
