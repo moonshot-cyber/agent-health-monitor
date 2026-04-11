@@ -5316,6 +5316,30 @@ async def trust_registry(request: Request):
     return stats
 
 
+# -- Agent Profile (internal, for ahm-verify) --------------------------------
+
+@app.get("/internal/agent-profile/{address}", tags=["Admin"])
+async def internal_agent_profile(address: str, request: Request):
+    """Return AHS profile context for a single agent address.
+
+    Protected by X-Internal-Key header. Used by ahm-verify to fetch
+    agent scoring context for the adjudication panel.
+    """
+    internal_key = request.headers.get("X-Internal-Key", "")
+    if not INTERNAL_API_KEY or not hmac.compare_digest(internal_key, INTERNAL_API_KEY):
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    loop = asyncio.get_running_loop()
+    profile = await loop.run_in_executor(
+        None, lambda: scan_db.get_agent_profile(address)
+    )
+
+    if profile is None:
+        return {"address": address.lower(), "status": "unrated"}
+
+    return profile
+
+
 # -- ACP Scan Trigger & Status -----------------------------------------------
 
 @app.post("/acp-scan/trigger", tags=["Admin"])
