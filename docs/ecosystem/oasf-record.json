@@ -1,0 +1,55 @@
+{
+  "name": "Agent Health Monitor (AHM)",
+  "version": "1.0.0",
+  "schema_version": "0.7.0",
+  "description": "AHM is a trust and health scoring system for AI agents. It produces D2/D3 trust scores by ingesting agent metadata, behavioral telemetry, and provenance signals. AHM evaluates agents across dimensions including reliability, safety, compliance, and performance to generate composite trust scores that can be published as verifiable credentials.",
+  "authors": [
+    "Digital Intensity Ltd <hello@agenthealthmonitor.xyz>"
+  ],
+  "created_at": "2026-04-11T00:00:00Z",
+  "skills": [
+    {
+      "name": "security/trust_evaluation/agent_trust_scoring",
+      "description": "Produces D2 and D3 trust scores for AI agents based on multi-dimensional evaluation criteria including reliability, safety, compliance, and behavioral analysis."
+    },
+    {
+      "name": "security/trust_evaluation/health_monitoring",
+      "description": "Continuous health monitoring of agent systems, tracking uptime, error rates, latency, and behavioral drift."
+    },
+    {
+      "name": "security/trust_evaluation/credential_issuance",
+      "description": "Issues verifiable credentials encapsulating trust scores and health assessments for evaluated agents."
+    },
+    {
+      "name": "analytics/evaluation/agent_metadata_analysis",
+      "description": "Ingests and analyzes OASF metadata records, provenance data, and behavioral telemetry to derive scoring inputs."
+    }
+  ],
+  "locators": [
+    {
+      "type": "source_code",
+      "url": "https://github.com/moonshot-cyber/agent-health-monitor"
+    },
+    {
+      "type": "agent_service",
+      "url": "https://agenthealthmonitor.xyz"
+    }
+  ],
+  "modules": {
+    "integration": {
+      "input_formats": ["oasf_json", "a2a_agent_card", "behavioral_telemetry_json"],
+      "output_formats": ["trust_score_json", "verifiable_credential_json_ld"],
+      "protocols": ["https", "a2a"]
+    },
+    "evaluation": {
+      "scoring_dimensions": ["reliability", "safety", "compliance", "performance", "provenance"],
+      "score_levels": ["D1", "D2", "D3"],
+      "overall_rating_scale": "0.0-1.0"
+    }
+  },
+  "domains": [
+    "trust_and_safety",
+    "agent_evaluation",
+    "identity_and_credentials"
+  ]
+}

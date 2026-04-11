@@ -2799,6 +2799,15 @@ async def agent_registration():
     return FileResponse(STATIC_DIR / "agent-registration.json", media_type="application/json")
 
 
+@app.get("/.well-known/agent.json", tags=["Discovery & Info"])
+async def a2a_agent_card():
+    """A2A Agent Card — public discovery endpoint per A2A protocol spec."""
+    return FileResponse(
+        pathlib.Path(__file__).parent / "docs" / "ecosystem" / "agent-card.json",
+        media_type="application/json",
+    )
+
+
 @app.get("/.well-known/402index-verify.txt", tags=["Discovery & Info"])
 async def verify_402index():
     """402index.io domain verification token."""
