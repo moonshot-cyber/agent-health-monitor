@@ -1,0 +1,67 @@
+{
+  "@context": [
+    "https://www.w3.org/ns/credentials/v2",
+    "https://spec.identity.agntcy.org/contexts/v1",
+    "https://agenthealthmonitor.xyz/contexts/trust-score/v1"
+  ],
+  "id": "urn:uuid:a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "type": [
+    "VerifiableCredential",
+    "AgentTrustScoreBadge"
+  ],
+  "issuer": {
+    "id": "did:web:agenthealthmonitor.xyz",
+    "name": "Agent Health Monitor (AHM)"
+  },
+  "validFrom": "2026-04-11T12:00:00Z",
+  "validUntil": "2026-07-11T12:00:00Z",
+  "credentialSubject": {
+    "id": "did:web:agents.example.com:agent:weather-bot-v2",
+    "trustScore": {
+      "scoreVersion": "1.0.0",
+      "overallScore": 0.87,
+      "scoreLevel": "D3",
+      "dimensions": {
+        "reliability": {
+          "score": 0.92,
+          "signals": ["uptime_99.9%", "error_rate_0.1%", "latency_p99_200ms"]
+        },
+        "safety": {
+          "score": 0.85,
+          "signals": ["content_filter_pass", "injection_resistance_high", "guardrails_enabled"]
+        },
+        "compliance": {
+          "score": 0.88,
+          "signals": ["oasf_record_valid", "sigstore_signed", "identity_verified"]
+        },
+        "performance": {
+          "score": 0.83,
+          "signals": ["task_completion_rate_94%", "accuracy_benchmark_0.91"]
+        },
+        "provenance": {
+          "score": 0.89,
+          "signals": ["source_verified", "build_reproducible", "dependencies_audited"]
+        }
+      },
+      "evaluationMetadata": {
+        "evaluationDate": "2026-04-11T11:30:00Z",
+        "evaluationPeriod": "P30D",
+        "dataPointsAnalyzed": 15420,
+        "oasfRecordCID": "bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi",
+        "methodology": "AHM-SCORING-v1.0"
+      }
+    }
+  },
+  "credentialSchema": {
+    "id": "https://agenthealthmonitor.xyz/schemas/trust-score-badge/v1",
+    "type": "JsonSchema"
+  },
+  "proof": {
+    "type": "DataIntegrityProof",
+    "cryptosuite": "ecdsa-rdfc-2019",
+    "created": "2026-04-11T12:00:00Z",
+    "verificationMethod": "did:web:agenthealthmonitor.xyz#signing-key-1",
+    "proofPurpose": "assertionMethod",
+    "proofValue": "z58DAdFfa9SkqZMVPxAQp...base58-encoded-signature"
+  }
+}

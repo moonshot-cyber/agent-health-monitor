@@ -1,0 +1,133 @@
+{
+  "name": "Agent Health Monitor (AHM)",
+  "description": "A trust-scoring and health-monitoring service for AI agents. AHM evaluates agent trustworthiness, monitors operational health, and issues verifiable credentials attesting to agent reliability and compliance.",
+  "url": "https://agenthealthmonitor.xyz/a2a",
+  "version": "0.1.0",
+  "provider": {
+    "organization": "Digital Intensity Ltd",
+    "url": "https://agenthealthmonitor.xyz"
+  },
+  "iconUrl": "https://agenthealthmonitor.xyz/static/ahm-logo.png",
+  "documentationUrl": "https://agenthealthmonitor.xyz/endpoints",
+  "capabilities": {
+    "streaming": false,
+    "pushNotifications": true,
+    "stateTransitionHistory": true,
+    "extendedAgentCard": true
+  },
+  "defaultInputModes": ["application/json", "text/plain"],
+  "defaultOutputModes": ["application/json"],
+  "supportedInterfaces": [
+    {
+      "url": "https://agenthealthmonitor.xyz/a2a",
+      "protocolBinding": "JSONRPC",
+      "protocolVersion": "1.0"
+    },
+    {
+      "url": "https://agenthealthmonitor.xyz/a2a/http",
+      "protocolBinding": "HTTP+JSON",
+      "protocolVersion": "1.0"
+    }
+  ],
+  "securitySchemes": {
+    "bearerAuth": {
+      "type": "http",
+      "scheme": "bearer",
+      "bearerFormat": "JWT"
+    },
+    "apiKey": {
+      "type": "apiKey",
+      "in": "header",
+      "name": "X-AHM-API-Key"
+    }
+  },
+  "security": [
+    {
+      "bearerAuth": []
+    },
+    {
+      "apiKey": []
+    }
+  ],
+  "skills": [
+    {
+      "id": "trust_score_evaluation",
+      "name": "Trust Score Evaluation",
+      "description": "Evaluates an AI agent's trustworthiness based on behavioral analysis, historical performance, compliance posture, and peer attestations. Returns a composite trust score (0-100) with dimensional breakdowns.",
+      "tags": ["trust", "scoring", "evaluation", "risk-assessment"],
+      "examples": [
+        "Evaluate the trust score for agent at https://agent.example.com/.well-known/agent.json",
+        "What is the current trust rating for agent id abc-123?",
+        "Run a full trust assessment on this agent"
+      ],
+      "inputModes": ["application/json"],
+      "outputModes": ["application/json"]
+    },
+    {
+      "id": "agent_health_monitoring",
+      "name": "Agent Health Monitoring",
+      "description": "Continuously monitors an AI agent's operational health including uptime, response latency, error rates, and behavioral consistency. Supports push notifications for health status changes.",
+      "tags": ["health", "monitoring", "uptime", "observability"],
+      "examples": [
+        "Monitor the health of agent https://agent.example.com",
+        "Get the current health status for all monitored agents",
+        "Set up health alerts for agent id xyz-789"
+      ],
+      "inputModes": ["application/json"],
+      "outputModes": ["application/json"]
+    },
+    {
+      "id": "verifiable_credential_issuance",
+      "name": "Verifiable Credential Issuance",
+      "description": "Issues W3C-compliant verifiable credentials attesting to an agent's trust score, health status, or compliance with specific standards. Credentials can be cryptographically verified by any relying party.",
+      "tags": ["credentials", "verifiable", "attestation", "compliance", "W3C-VC"],
+      "examples": [
+        "Issue a trust credential for agent abc-123 with current score",
+        "Generate a compliance attestation for agent xyz-789",
+        "Create a verifiable health certificate for this agent"
+      ],
+      "inputModes": ["application/json"],
+      "outputModes": ["application/json", "application/vc+ld+json"]
+    },
+    {
+      "id": "trust_report_generation",
+      "name": "Trust Report Generation",
+      "description": "Generates detailed trust assessment reports for an agent, including historical trends, dimensional analysis (reliability, safety, transparency, compliance), and comparative benchmarks.",
+      "tags": ["report", "analytics", "trust-history", "benchmarking"],
+      "examples": [
+        "Generate a trust report for agent abc-123 covering the last 30 days",
+        "Compare trust scores across all monitored agents",
+        "Show trust score trends for my agent fleet"
+      ],
+      "inputModes": ["application/json"],
+      "outputModes": ["application/json", "text/markdown"]
+    },
+    {
+      "id": "agent_registration",
+      "name": "Agent Registration",
+      "description": "Registers a new AI agent for trust scoring and health monitoring. Accepts an agent's A2A Agent Card URL or manual configuration. Begins baseline trust assessment upon registration.",
+      "tags": ["registration", "onboarding", "discovery"],
+      "examples": [
+        "Register agent at https://new-agent.example.com/.well-known/agent.json for monitoring",
+        "Add this agent to the AHM trust monitoring pool",
+        "Onboard a new agent with manual configuration"
+      ],
+      "inputModes": ["application/json", "text/plain"],
+      "outputModes": ["application/json"]
+    }
+  ],
+  "extensions": [
+    {
+      "id": "urn:ahm:extension:verifiable-credentials:1.0",
+      "name": "Verifiable Credentials",
+      "version": "1.0",
+      "required": false
+    },
+    {
+      "id": "urn:ahm:extension:trust-dimensions:1.0",
+      "name": "Multi-Dimensional Trust Scoring",
+      "version": "1.0",
+      "required": false
+    }
+  ]
+}
