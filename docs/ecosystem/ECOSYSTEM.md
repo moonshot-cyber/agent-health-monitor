@@ -53,10 +53,13 @@ OASF records are rich, structured, and machine-parseable — a strong D2/D3 inpu
 
 ## Next Actions
 
+- [ ] Publish `/.well-known/agent.json` to production (unblocked on this PR merging)
+- [ ] POST to [prassanna-ravishankar/a2a-registry](https://github.com/prassanna-ravishankar/a2a-registry) — submit the live URL, auto-fetches card
+- [ ] Submit to [a2a.ac](https://a2a.ac/)
+- [ ] Submit to [A2ABaseAI/A2ARegistry](https://github.com/A2ABaseAI/A2ARegistry)
 - [ ] Validate skill hierarchy names against the OASF skills catalog at [schema.oasf.agntcy.org](https://schema.oasf.agntcy.org/)
 - [ ] Propose `TrustScoreBadge` VC type to [agntcy/identity-spec](https://github.com/agntcy/identity-spec)
 - [ ] Register AHM in the agntcy Agent Directory via `agntcy dir publish`
-- [ ] Register `/.well-known/agent.json` with A2A community registries ([a2a.ac](https://a2a.ac/), [community registry](https://github.com/prassanna-ravishankar/a2a-registry))
 - [ ] Open OASF Discussion for trust-scoring skill taxonomy proposal
 
 ## References
