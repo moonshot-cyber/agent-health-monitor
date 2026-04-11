@@ -1074,6 +1074,55 @@ def log_security_event(event_type: str, ip_address: str, details: str | None = N
         conn.close()
 
 
+def get_agent_profile(address: str) -> dict | None:
+    """Return the latest AHS profile for an agent address.
+
+    Used by /internal/agent-profile/{address} for ahm-verify integration.
+    Returns dict with ahs_score, grade, d1_score, d2_score, patterns,
+    last_scanned, source — or None if address has never been scanned.
+    """
+    addr = address.lower()
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            """SELECT s.address, s.ahs_score, s.grade, s.d1_score, s.d2_score,
+                      s.scan_timestamp, s.source
+               FROM scans s
+               WHERE s.address = ? AND s.endpoint = 'ahs' AND s.ahs_score IS NOT NULL
+               ORDER BY s.scan_timestamp DESC
+               LIMIT 1""",
+            (addr,),
+        ).fetchone()
+        if row is None:
+            return None
+
+        scan_id = conn.execute(
+            "SELECT id FROM scans WHERE address = ? AND endpoint = 'ahs' ORDER BY scan_timestamp DESC LIMIT 1",
+            (addr,),
+        ).fetchone()
+
+        patterns = []
+        if scan_id:
+            pattern_rows = conn.execute(
+                "SELECT pattern_name FROM scan_patterns WHERE scan_id = ?",
+                (scan_id["id"],),
+            ).fetchall()
+            patterns = [r["pattern_name"] for r in pattern_rows]
+
+        return {
+            "address": row["address"],
+            "ahs_score": row["ahs_score"],
+            "grade": row["grade"],
+            "d1_score": row["d1_score"],
+            "d2_score": row["d2_score"],
+            "patterns": patterns,
+            "last_scanned": row["scan_timestamp"],
+            "source": row["source"],
+        }
+    finally:
+        conn.close()
+
+
 def get_security_events(
     limit: int = 100,
     event_type: str | None = None,
