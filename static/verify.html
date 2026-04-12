@@ -207,6 +207,32 @@
   }
   .hero-links a:hover { color: var(--cyan); }
 
+  /* ── STATS STRIP ── */
+  .stats-strip {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 1.5rem;
+    padding: 1.5rem 2rem;
+    border-top: 1px solid rgba(0,245,255,0.12);
+    border-bottom: 1px solid rgba(0,245,255,0.12);
+    background: var(--bg2);
+    flex-wrap: wrap;
+  }
+
+  .stats-strip span {
+    font-family: var(--mono);
+    font-size: 0.6rem;
+    letter-spacing: 0.15em;
+    color: var(--cyan);
+  }
+
+  .stats-divider {
+    font-family: var(--mono);
+    font-size: 0.6rem;
+    color: var(--cyan-dim);
+  }
+
   /* ── SECTIONS ── */
   .section {
     padding: 5rem 2rem;
@@ -249,7 +275,10 @@
   }
   .price-card:hover { border-color: var(--cyan); transform: translateY(-3px); }
 
-  .price-card--popular { border-color: var(--cyan); }
+  .price-card--popular {
+    border: 1px solid rgba(0,255,204,0.4);
+    box-shadow: 0 0 20px rgba(0,255,204,0.15);
+  }
 
   .price-badge {
     position: absolute;
@@ -396,6 +425,10 @@
   }
   .flow-card:hover { border-color: var(--cyan); transform: translateY(-3px); }
 
+  .flow-icon {
+    margin-bottom: 1rem;
+  }
+
   .flow-step {
     font-family: var(--display);
     font-size: 1.8rem;
@@ -458,6 +491,8 @@
     header { padding: 0 1rem; }
     .nav-link { padding: 0.5rem 0.5rem; font-size: 0.6rem; }
     .pricing-grid, .flow-grid { grid-template-columns: 1fr; }
+    .stats-strip { gap: 0.75rem; }
+    .stats-strip span { font-size: 0.5rem; }
   }
   @media (max-width: 480px) {
     .nav-links { gap: 0; }
@@ -498,22 +533,36 @@
   </div>
 </section>
 
+<!-- STATS STRIP -->
+<div class="stats-strip">
+  <span>6-ROLE ADVERSARIAL PANEL</span>
+  <span class="stats-divider">&middot;</span>
+  <span>CLAUDE OPUS SYNTHESIZER</span>
+  <span class="stats-divider">&middot;</span>
+  <span>DOMAIN-AWARE THRESHOLDS</span>
+  <span class="stats-divider">&middot;</span>
+  <span>PAY-PER-VERDICT</span>
+</div>
+
 <!-- HOW IT WORKS -->
 <section class="section">
   <div class="section-title">HOW VERIFY WORKS</div>
   <div class="section-tag">// ADVERSARIAL PANEL</div>
   <div class="flow-grid">
     <div class="flow-card">
+      <div class="flow-icon"><svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M16 20V4M16 4L10 10M16 4L22 10" stroke="#00f5ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M6 20V26H26V20" stroke="#00f5ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
       <div class="flow-step">01</div>
       <div class="flow-title">SUBMIT OUTPUT</div>
       <div class="flow-desc">POST THE AGENT'S OUTPUT ALONGSIDE THE ORIGINAL JOB SPECIFICATION TO THE VERIFY API</div>
     </div>
     <div class="flow-card">
+      <div class="flow-icon"><svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="16" cy="6" r="3.5" stroke="#00f5ff" stroke-width="2"/><circle cx="6" cy="26" r="3.5" stroke="#00f5ff" stroke-width="2"/><circle cx="26" cy="26" r="3.5" stroke="#00f5ff" stroke-width="2"/><path d="M16 9.5V16M16 16L7.5 22.5M16 16L24.5 22.5" stroke="#00f5ff" stroke-width="2" stroke-linecap="round"/></svg></div>
       <div class="flow-step">02</div>
       <div class="flow-title">ADVERSARIAL PANEL</div>
       <div class="flow-desc">4 GENERATORS EVALUATE INDEPENDENTLY. AN ADVERSARIAL CRITIC CHALLENGES. A SYNTHESIZER CONSOLIDATES</div>
     </div>
     <div class="flow-card">
+      <div class="flow-icon"><svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M16 3L26 9V17C26 23 21.5 27.5 16 29C10.5 27.5 6 23 6 17V9L16 3Z" stroke="#00f5ff" stroke-width="2" stroke-linejoin="round"/><path d="M11 16L14.5 19.5L21 13" stroke="#00f5ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
       <div class="flow-step">03</div>
       <div class="flow-title">RECEIVE VERDICT</div>
       <div class="flow-desc">GET A STRUCTURED VERDICT WITH PASS/FAIL, CONFIDENCE SCORE, AND DETAILED REASONING</div>
