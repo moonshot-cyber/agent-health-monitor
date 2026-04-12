@@ -2787,6 +2787,12 @@ async def shield_page():
     return FileResponse(STATIC_DIR / "shield.html")
 
 
+@app.get("/verify", tags=["Discovery & Info"])
+async def verify_page():
+    """Serve the AHM Verify landing page."""
+    return FileResponse(STATIC_DIR / "verify.html")
+
+
 @app.get("/roadmap", tags=["Discovery & Info"])
 async def roadmap():
     """Serve the roadmap page."""
