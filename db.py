@@ -761,8 +761,14 @@ def create_api_key(
     partner_id: str | None = None,
     is_reseller: bool = False,
     wholesale_rate: float = 0.5,
+    expires_at: str | None = None,
 ) -> str:
-    """Create an API key record. Returns the raw key (only time it's available)."""
+    """Create an API key record. Returns the raw key (only time it's available).
+
+    Args:
+        expires_at: Optional ISO 8601 expiry timestamp (e.g. "2026-07-15T00:00:00Z").
+                    If set, the key becomes invalid after this time.
+    """
     raw_key, key_hash, key_prefix = generate_api_key()
     now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -772,15 +778,15 @@ def create_api_key(
             """INSERT INTO api_keys
                (key_hash, key_prefix, customer_email, stripe_customer_id,
                 type, tier, calls_remaining, calls_total, created_at,
-                partner_id, is_reseller, wholesale_rate)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                expires_at, partner_id, is_reseller, wholesale_rate)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (key_hash, key_prefix, customer_email, stripe_customer_id,
              key_type, tier, calls_total, calls_total, now_iso,
-             partner_id, int(is_reseller), wholesale_rate),
+             expires_at, partner_id, int(is_reseller), wholesale_rate),
         )
         conn.commit()
-        logger.info("API key created: prefix=%s email=%s tier=%s calls=%s partner=%s",
-                     key_prefix, customer_email, tier, calls_total, partner_id)
+        logger.info("API key created: prefix=%s email=%s tier=%s calls=%s partner=%s expires=%s",
+                     key_prefix, customer_email, tier, calls_total, partner_id, expires_at)
         return raw_key
     finally:
         conn.close()
