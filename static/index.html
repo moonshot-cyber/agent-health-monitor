@@ -386,7 +386,7 @@
   }
 
   /* ── MECHANIC ── */
-  .mechanic-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem; margin-bottom: 2rem; }
+  .mechanic-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.5rem; margin-bottom: 2rem; }
 
   .dim-card {
     background: var(--bg3);
@@ -622,7 +622,8 @@
     header { padding: 0 1rem; }
     .nav-link { padding: 0.5rem 0.5rem; font-size: 0.6rem; }
     .stats-strip { gap: 1.5rem; flex-wrap: wrap; }
-    .pillars, .quotes, .mechanic-grid, .pricing-grid { grid-template-columns: 1fr; }
+    .pillars, .quotes, .pricing-grid { grid-template-columns: 1fr; }
+    .mechanic-grid { grid-template-columns: repeat(2, 1fr); }
     .endpoints-grid { grid-template-columns: repeat(2, 1fr); }
     .hero-status { display: none; }
     .heartbeat-svg { width: 300px; }
@@ -758,10 +759,15 @@
     <div class="dim-card">
       <div class="dim-label">D3</div>
       <div class="dim-title">Operational Stability</div>
-      <div class="dim-desc">IS THE INFRASTRUCTURE RESPONSIVE? ENDPOINT AVAILABILITY, RESPONSE TIMES, ERROR RATES</div>
+      <div class="dim-desc">IS THE INFRASTRUCTURE RESPONSIVE? ENDPOINT AVAILABILITY, RESPONSE TIMES, ERROR RATES. ACTIVATED WHEN AN AGENT URL IS PROVIDED</div>
     </div>
+    <a href="https://verify.agenthealthmonitor.xyz" class="dim-card" style="text-decoration:none;color:inherit;">
+      <div class="dim-label">D4</div>
+      <div class="dim-title">Output Quality</div>
+      <div class="dim-desc">IS THE AGENT DELIVERING WHAT IT PROMISES? ADVERSARIAL EVALUATION OF AGENT OUTPUTS VIA AHM VERIFY</div>
+    </a>
   </div>
-  <div class="formula"><span>D1</span> + <span>D2</span> + <span>D3</span> = <span>Agent Health Score</span></div>
+  <div class="formula"><span>D1</span> + <span>D2</span> + <span>D3</span> + <span>D4</span> = <span>Agent Health Score</span></div>
 </section>
 
 <!-- ENDPOINT SHOWCASE -->
