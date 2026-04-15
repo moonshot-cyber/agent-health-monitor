@@ -56,6 +56,66 @@ class TestPartnerFieldsOnApiKeys:
             _db.DB_PATH = old_path
 
 
+class TestPartnerKeyExpiry:
+    """Verify expires_at is persisted and enforced for partner keys."""
+
+    def test_create_key_with_expiry(self, tmp_path):
+        """create_api_key(expires_at=...) should store and validate correctly."""
+        import db as _db
+        old_path = _db.DB_PATH
+        _db.DB_PATH = str(tmp_path / "test_expiry.db")
+        try:
+            _db.init_db()
+            raw_key = _db.create_api_key(
+                customer_email="don@nevermined.io",
+                tier="enterprise",
+                partner_id="nevermined",
+                calls_total=None,  # unlimited
+                expires_at="2026-07-15T00:00:00Z",
+            )
+            record = _db.validate_api_key(raw_key)
+            assert record is not None
+            assert record["expires_at"] == "2026-07-15T00:00:00Z"
+            assert record["calls_remaining"] is None  # unlimited
+            assert record["partner_id"] == "nevermined"
+        finally:
+            _db.DB_PATH = old_path
+
+    def test_expired_key_is_rejected(self, tmp_path):
+        """A key past its expires_at should fail validation."""
+        import db as _db
+        old_path = _db.DB_PATH
+        _db.DB_PATH = str(tmp_path / "test_expiry.db")
+        try:
+            _db.init_db()
+            raw_key = _db.create_api_key(
+                customer_email="expired@example.com",
+                tier="starter",
+                expires_at="2020-01-01T00:00:00Z",  # already expired
+            )
+            record = _db.validate_api_key(raw_key)
+            assert record is None, "Expired key should fail validation"
+        finally:
+            _db.DB_PATH = old_path
+
+    def test_no_expiry_means_no_expiry(self, tmp_path):
+        """Keys without expires_at should never expire."""
+        import db as _db
+        old_path = _db.DB_PATH
+        _db.DB_PATH = str(tmp_path / "test_expiry.db")
+        try:
+            _db.init_db()
+            raw_key = _db.create_api_key(
+                customer_email="forever@example.com",
+                tier="pro",
+            )
+            record = _db.validate_api_key(raw_key)
+            assert record is not None
+            assert record["expires_at"] is None
+        finally:
+            _db.DB_PATH = old_path
+
+
 class TestPartnerUsageAttribution:
     """Verify usage logs capture partner_id."""
 
