@@ -40,7 +40,7 @@ scheduler.add_job(
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `ACP_MAX_AGENTS` | `500` | Max agents to fetch from ACP API |
-| `ACP_MAX_SCANS` | `100` | Max AHS scans per run |
+| `ACP_MAX_SCANS` | `100` | Max AHS scans per run. **Recommended: set to `400` on Railway.** Discovery hard_max ceiling is 5,000 agents; ACP registry grows ~170/day. At 200 (current Railway value) the initial 5K backfill takes ~25 days and leaves only ~30/day headroom over new registrations; at 400 it completes in ~12 days with ~2.3× headroom. 400 scans at ~4s/wallet is ~27 min runtime, well under `ACP_MAX_RUNTIME=3600`. |
 | `ACP_SORT` | `successfulJobCount:desc` | API sort order |
 | `ACP_MAX_RUNTIME` | `3600` | Safety timeout in seconds |
 | `OLAS_MAX_SCANS` | `200` | Max wallets to AHS-score per Olas run |
