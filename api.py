@@ -5644,8 +5644,7 @@ async def run_acp_scan():
                 None,
                 partial(discover_agents,
                         max_agents=max_agents,
-                        sort=sort_order,
-                        max_new=max_scans),
+                        sort=sort_order),
             )
 
             if not agents:
@@ -5671,12 +5670,11 @@ async def run_acp_scan():
                 )
                 return
 
-            # Phase 3: Scanning
+            # Phase 3: Scanning (stale-first rotation)
             scan_results = await loop.run_in_executor(
                 None,
                 partial(scan_wallets, agents,
-                        max_scans=max_scans,
-                        force_rescan=False),
+                        max_scans=max_scans),
             )
 
             # Phase 4: Report
