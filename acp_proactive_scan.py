@@ -81,13 +81,8 @@ class ACPAgent:
 # Phase 1: ACP Agent Discovery
 # ---------------------------------------------------------------------------
 
-def discover_agents(max_agents: int = 50, sort: str = "successfulJobCount:desc",
-                     max_new: int = 0) -> tuple[list[ACPAgent], dict]:
+def discover_agents(max_agents: int = 50, sort: str = "successfulJobCount:desc") -> tuple[list[ACPAgent], dict]:
     """Fetch agents from the ACP API.
-
-    When max_new > 0 the discovery keeps paginating past already-scanned
-    wallets until it finds at least max_new *new* (unscanned) agents,
-    rather than stopping after max_agents total.
 
     Returns (agents_list, api_stats).
     """
@@ -97,25 +92,14 @@ def discover_agents(max_agents: int = 50, sort: str = "successfulJobCount:desc",
     print(f"[*] API: {ACP_API_BASE}")
     print(f"[*] Sort: {sort} | Max agents: {max_agents}")
 
-    # Load already-scanned addresses so we know which are new
-    already_scanned: set[str] = set()
-    if max_new > 0:
-        already_scanned = get_already_scanned_addresses()
-        print(f"[+] Already scanned: {len(already_scanned)} wallets")
-        print(f"[+] Target: {max_new} new (unscanned) wallets")
-
     agents = []
-    new_count = 0
     page = 1
     total_available = None
     # Hard ceiling: don't paginate forever (max 5000 agents or end of registry)
     hard_max = max(max_agents, 5000)
 
     while len(agents) < hard_max:
-        # Stop early if we have enough
-        if max_new > 0 and new_count >= max_new and len(agents) >= max_agents:
-            break
-        if max_new == 0 and len(agents) >= max_agents:
+        if len(agents) >= max_agents:
             break
 
         url = (
@@ -149,11 +133,8 @@ def discover_agents(max_agents: int = 50, sort: str = "successfulJobCount:desc",
         if not items:
             break
 
-        page_new = 0
         for item in items:
-            if max_new > 0 and new_count >= max_new and len(agents) >= max_agents:
-                break
-            if max_new == 0 and len(agents) >= max_agents:
+            if len(agents) >= max_agents:
                 break
 
             wallet = (item.get("walletAddress") or "").strip()
@@ -175,14 +156,8 @@ def discover_agents(max_agents: int = 50, sort: str = "successfulJobCount:desc",
                 is_high_risk=bool(item.get("isHighRisk")),
             )
             agents.append(agent)
-            if addr not in already_scanned:
-                new_count += 1
-                page_new += 1
 
-        if max_new > 0:
-            print(f"  [page {page}] fetched {len(items)} agents ({len(agents)} total, {new_count} new)")
-        else:
-            print(f"  [page {page}] fetched {len(items)} agents ({len(agents)} total)")
+        print(f"  [page {page}] fetched {len(items)} agents ({len(agents)} total)")
         page += 1
 
         # Stop if we've exhausted the registry
@@ -197,12 +172,11 @@ def discover_agents(max_agents: int = 50, sort: str = "successfulJobCount:desc",
     api_stats = {
         "total_available": total_available or 0,
         "fetched": len(agents),
-        "new_wallets": new_count,
         "pages_read": page - 1,
         "sort": sort,
     }
 
-    print(f"[+] Discovered {len(agents)} agents ({new_count} new wallets)")
+    print(f"[+] Discovered {len(agents)} agents")
     return agents, api_stats
 
 
@@ -281,28 +255,92 @@ def save_checkpoint(scanned: list[str], results: dict, scan_count: int):
         }, f)
 
 
-def get_already_scanned_addresses() -> set[str]:
-    """Get wallet addresses already in the database from any previous ACP scan."""
+def _ingest_discovered_wallets_to_db(agents: list[ACPAgent]) -> int:
+    """Persist newly-discovered ACP wallets to known_wallets.
+
+    Each discovered wallet is INSERT OR IGNORE'd so existing rows (with
+    their scan history and last_scanned_at) are left untouched. New rows
+    are inserted with last_scanned_at=NULL and scan_count=0, which makes
+    them bubble to the top of the stale-first candidate query below.
+
+    Returns the number of rows actually inserted (excludes addresses
+    that were already in the table).
+    """
+    if not agents:
+        return 0
+
     import db
+
+    now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    # Deduplicate by wallet address — multiple agents may share a wallet
+    seen: set[str] = set()
+    unique: list[ACPAgent] = []
+    for agent in agents:
+        if agent.wallet_address not in seen:
+            seen.add(agent.wallet_address)
+            unique.append(agent)
+
+    conn = db.get_connection()
+    inserted = 0
     try:
-        conn = db.get_connection()
-        rows = conn.execute(
-            "SELECT address FROM known_wallets WHERE source = 'acp_proactive_scan'"
-        ).fetchall()
+        for agent in unique:
+            label = f"ACP #{agent.acp_id}"
+            if agent.name:
+                label += f" \u2014 {agent.name}"
+            cur = conn.execute(
+                """INSERT OR IGNORE INTO known_wallets
+                       (address, label, source, first_seen_at, scan_count, registries)
+                   VALUES (?, ?, ?, ?, 0, ?)""",
+                (agent.wallet_address, label, "acp_proactive_scan",
+                 now_iso, "acp_proactive_scan"),
+            )
+            if cur.rowcount:
+                inserted += 1
+        conn.commit()
+    finally:
         conn.close()
-        return {row[0] for row in rows}
-    except Exception:
-        return set()
+    return inserted
 
 
-def scan_wallets(agents: list[ACPAgent], max_scans: int = 500, force_rescan: bool = False) -> dict:
-    """Run AHS 2D scans on unique wallet addresses.
+def get_acp_scan_candidates(limit: int) -> list[dict]:
+    """Return ACP wallets to AHS-score this run, ordered stale-first.
 
-    Features:
-    - Skips wallets already scanned (unless --force-rescan)
-    - 2-second delay between scans for rate limiting
-    - Checkpoints every 10 scans so restarts don't rescan
-    - Resumes from checkpoint if available
+    Uses ``ORDER BY last_scanned_at ASC NULLS FIRST LIMIT ?`` so:
+      1. Never-scanned wallets (NULL last_scanned_at) are prioritised
+         — discovered-but-not-yet-scored agents are picked up first.
+      2. Among scanned wallets, the oldest scan comes next — coverage
+         rotates through the full registry instead of re-scoring the
+         same batch every night.
+    """
+    import db
+    conn = db.get_connection()
+    try:
+        rows = conn.execute(
+            """SELECT address, label, source, last_scanned_at
+               FROM known_wallets
+               WHERE source = 'acp_proactive_scan'
+               ORDER BY last_scanned_at ASC NULLS FIRST
+               LIMIT ?""",
+            (limit,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def scan_wallets(agents: list[ACPAgent], max_scans: int = 500) -> dict:
+    """Run AHS 2D scans on ACP wallets, stale-first rotation.
+
+    Coverage strategy (same pattern as celo_scan.scan_celo_agents):
+      1. Persist every discovered wallet to known_wallets via INSERT OR
+         IGNORE so agents aren't dropped when new discoveries arrive.
+      2. Pull the ``max_scans`` stalest wallets from known_wallets
+         (NULL-scanned first, then oldest-scanned) and AHS-score those.
+
+    This replaces the older "scan new discoveries, skip everything
+    already in the DB" flow, which permanently excluded every scored
+    wallet and never rescanned as on-chain activity changed.
 
     Returns dict mapping address -> scan result.
     """
@@ -315,29 +353,42 @@ def scan_wallets(agents: list[ACPAgent], max_scans: int = 500, force_rescan: boo
 
     db.init_db()
 
-    # Build wallet -> agents mapping
+    # Phase 3a: Persist discoveries so they survive across runs.
+    inserted = _ingest_discovered_wallets_to_db(agents)
+
+    # Build address -> agent(s) lookup for metadata / report cross-reference.
     wallet_to_agents: dict[str, list[ACPAgent]] = {}
     for agent in agents:
         wallet_to_agents.setdefault(agent.wallet_address, []).append(agent)
 
-    unique_wallets = list(wallet_to_agents.keys())
-    print(f"[+] Unique wallets to scan: {len(unique_wallets)} (max {max_scans})")
+    total_known = 0
+    try:
+        conn = db.get_connection()
+        total_known = conn.execute(
+            "SELECT COUNT(*) FROM known_wallets WHERE source = 'acp_proactive_scan'"
+        ).fetchone()[0]
+        conn.close()
+    except Exception:
+        pass
 
-    # Skip already-scanned wallets (from DB)
-    skip_set: set[str] = set()
-    if not force_rescan:
-        skip_set = get_already_scanned_addresses()
-        if skip_set:
-            overlap = set(unique_wallets) & skip_set
-            print(f"[+] Skipping {len(overlap)} wallets already in database")
+    print(f"[+] Ingested {inserted} new wallets into known_wallets "
+          f"({total_known} total ACP wallets tracked)")
 
-    # Resume from checkpoint (addresses scanned in THIS run that aren't yet in DB)
+    # Phase 3b: Select stalest candidates.
+    candidates = get_acp_scan_candidates(limit=max_scans)
+    if not candidates:
+        print("[+] No ACP candidates available")
+        return {}
+
+    never_scanned = sum(1 for c in candidates if c.get("last_scanned_at") is None)
+    print(f"[+] Selected {len(candidates)} candidates for scoring "
+          f"({never_scanned} never-scanned, {len(candidates) - never_scanned} rescans)")
+
+    # Resume from checkpoint (addresses scored in THIS run)
     checkpoint = load_checkpoint()
     checkpoint_addrs = set(checkpoint.get("scanned_addresses", []))
-    if checkpoint_addrs - skip_set:
-        resumed = len(checkpoint_addrs - skip_set)
-        print(f"[+] Resuming from checkpoint: {resumed} additional addresses to skip")
-    skip_set |= checkpoint_addrs
+    if checkpoint_addrs:
+        print(f"[+] Resuming from checkpoint: {len(checkpoint_addrs)} addresses to skip")
 
     results: dict = checkpoint.get("results", {})
     scanned_this_run: list[str] = checkpoint.get("scanned_addresses", [])
@@ -350,22 +401,27 @@ def scan_wallets(agents: list[ACPAgent], max_scans: int = 500, force_rescan: boo
     errors = 0
     start_time = time.time()
 
-    for address in unique_wallets:
+    for wallet in candidates:
         if scan_count >= max_scans:
             print(f"  [stop] Reached max_scans={max_scans}")
             break
 
-        if address in skip_set:
+        address = wallet["address"]
+
+        # Skip if already scored in this run (checkpoint resume)
+        if address in checkpoint_addrs:
             continue
 
         scan_count += 1
         source_agents = wallet_to_agents.get(address, [])
         agent_name = source_agents[0].name if source_agents else ""
         acp_id = source_agents[0].acp_id if source_agents else 0
+        display_name = _safe_str(agent_name[:30]) if agent_name else (wallet.get("label") or "?")
+        rescan_tag = "  (rescan)" if wallet.get("last_scanned_at") else ""
 
         elapsed = time.time() - start_time
         rate = scan_count / elapsed * 3600 if elapsed > 0 else 0
-        print(f"  [{scan_count}/{max_scans}] {address[:12]}... ({_safe_str(agent_name[:30])})  [{rate:.0f}/hr]")
+        print(f"  [{scan_count}/{max_scans}] {address[:12]}... ({display_name})  [{rate:.0f}/hr]{rescan_tag}")
 
         try:
             txs = fetch_transactions(address)
@@ -393,9 +449,14 @@ def scan_wallets(agents: list[ACPAgent], max_scans: int = 500, force_rescan: boo
                     for p in ahs.patterns_detected
                 ]
 
-            label = f"ACP #{acp_id}"
-            if agent_name:
-                label += f" \u2014 {agent_name}"
+            # Prefer fresh metadata from this run's discovery; fall back
+            # to the label already stored in known_wallets.
+            if source_agents:
+                label = f"ACP #{acp_id}"
+                if agent_name:
+                    label += f" \u2014 {agent_name}"
+            else:
+                label = wallet.get("label") or "ACP Agent"
 
             now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
             db.log_scan(
@@ -704,7 +765,7 @@ def main():
     parser.add_argument("--skip-scan", action="store_true",
                         help="Discovery + dedup only, no AHS scanning")
     parser.add_argument("--force-rescan", action="store_true",
-                        help="Rescan wallets already in the database")
+                        help="(Deprecated — rotation handles this) Ignored.")
     parser.add_argument("--sort", type=str, default="successfulJobCount:desc",
                         help="Sort order for ACP API (default: successfulJobCount:desc)")
     parser.add_argument("--clean-checkpoint", action="store_true",
@@ -718,13 +779,10 @@ def main():
     print("[*] ACP Proactive Ecosystem Scanner")
     print(f"[*] Source: {ACP_API_BASE}")
     print(f"[*] Max agents: {args.max_agents} | Max scans: {args.max_scans} | Sort: {args.sort}")
-    if args.force_rescan:
-        print("[*] Force rescan: ON (will rescan already-scanned wallets)")
 
-    # Phase 1: Discovery — paginate past already-scanned when not force-rescanning
-    max_new = 0 if args.force_rescan else args.max_scans
+    # Phase 1: Discovery
     agents, api_stats = discover_agents(
-        max_agents=args.max_agents, sort=args.sort, max_new=max_new,
+        max_agents=args.max_agents, sort=args.sort,
     )
 
     if not agents:
@@ -734,10 +792,10 @@ def main():
     # Phase 2: Deduplication
     dedup_stats = deduplicate_wallets(agents)
 
-    # Phase 3: AHS Scanning
+    # Phase 3: AHS Scanning (stale-first rotation)
     scan_results = {}
     if not args.skip_scan:
-        scan_results = scan_wallets(agents, max_scans=args.max_scans, force_rescan=args.force_rescan)
+        scan_results = scan_wallets(agents, max_scans=args.max_scans)
     else:
         print("\n[*] Skipping AHS scanning (--skip-scan)")
 
