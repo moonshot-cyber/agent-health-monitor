@@ -686,6 +686,84 @@ def generate_report(agents: list[AgentRecord], max_id: int, scan_results: dict) 
 
 
 # ---------------------------------------------------------------------------
+# Nightly-pipeline entry point
+# ---------------------------------------------------------------------------
+
+def scan_erc8004_agents(max_scans: int = 100) -> list[dict]:
+    """Discover ERC-8004 agents on Base mainnet and run AHS scans on them.
+
+    This is the entry point called by the APScheduler nightly job in api.py,
+    mirroring the shape of scan_arc_agents / scan_celo_agents / scan_olas_services.
+
+    Phases: registry discovery → enumeration (ownerOf) → URI resolution →
+    AHS scoring via scan_wallets. The CSV/Markdown reporting phase is
+    intentionally skipped in the hosted path — Railway's filesystem is
+    ephemeral outside the /data volume, so those artefacts would be lost.
+    Use ``python erc8004_scan.py`` locally if you want the reports.
+
+    Args:
+        max_scans: Maximum number of wallets to AHS-score in this run.
+                   Discovery is capped at ``max_scans * 3`` agents so the
+                   scan has a pool of candidates after dedup.
+
+    Returns:
+        List of scan-result dicts (one per scored wallet). Empty list on
+        discovery failure — exceptions in AHS scoring are caught per-wallet
+        inside scan_wallets and do not propagate.
+    """
+    import logging
+
+    log = logging.getLogger("ahm.erc8004_scan")
+    log.info(
+        "=== ERC-8004 Base scan — ENTERED (max_scans=%d, rpc=%s) ===",
+        max_scans, BASE_RPC,
+    )
+
+    # Phase 1: registry handle
+    try:
+        _w3, registry, _info = discover_registry()
+    except SystemExit:
+        # discover_registry() calls sys.exit() on failure. Convert to a
+        # soft failure so the scheduler keeps running tomorrow.
+        log.exception("ERC-8004 scan: registry discovery failed")
+        return []
+
+    # Phase 2: enumeration — keep the candidate pool modest to stay within
+    # the nightly misfire_grace_time window (~1h).
+    max_agents = max_scans * 3
+    start_id = int(os.getenv("ERC8004_START_ID", "1"))
+    try:
+        agents = enumerate_agents(registry, max_agents=max_agents, start_id=start_id)
+    except Exception:
+        log.exception("ERC-8004 scan: enumeration failed")
+        return []
+
+    if not agents:
+        log.info("ERC-8004 scan: no agents enumerated")
+        return []
+
+    # Phase 3: URI resolution (best-effort — scan_wallets still works
+    # from ownerOf + agent_wallet alone if most URIs fail).
+    try:
+        resolve_uris(agents)
+    except Exception:
+        log.exception("ERC-8004 scan: URI resolution failed (continuing)")
+
+    # Phase 4: AHS scoring. scan_wallets() returns an address → result dict.
+    try:
+        results = scan_wallets(agents, max_scans=max_scans)
+    except Exception:
+        log.exception("ERC-8004 scan: AHS scoring failed")
+        return []
+
+    log.info(
+        "ERC-8004 scan: enumerated=%d scored=%d",
+        len(agents), len(results),
+    )
+    return list(results.values())
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 

@@ -6,10 +6,11 @@ separate Railway cron service is needed.
 
 | Scan | Schedule (UTC) | Source |
 |------|----------------|--------|
-| ACP  | 02:00 | agdp.io REST API |
-| Olas | 02:30 | Olas ServiceRegistryL2 (Base) |
-| Celo | 02:45 | ERC-8004 IdentityRegistry (Celo mainnet) |
-| Arc  | 03:00 | ERC-8004 IdentityRegistry (Arc testnet) |
+| ACP      | 02:00 | agdp.io REST API |
+| Olas     | 02:30 | Olas ServiceRegistryL2 (Base) |
+| Celo     | 02:45 | ERC-8004 IdentityRegistry (Celo mainnet) |
+| Arc      | 03:00 | ERC-8004 IdentityRegistry (Arc testnet) |
+| ERC-8004 | 03:15 | ERC-8004 IdentityRegistry (Base mainnet) |
 
 ---
 
@@ -47,6 +48,8 @@ scheduler.add_job(
 | `CELO_RPC_URL` | `https://forno.celo.org` | Celo mainnet RPC endpoint |
 | `CELO_CHECKPOINT_PATH` | `celo_scan_checkpoint.json` | Block checkpoint persistence |
 | `ARC_MAX_SCANS` | `200` | Max wallets to AHS-score per Arc run |
+| `ERC8004_MAX_SCANS` | `100` | Max wallets to AHS-score per ERC-8004 Base run |
+| `ERC8004_START_ID` | `1` | Agent ID to start enumeration from (increment to rotate coverage across the 32k+ Base registry) |
 
 ### Manual trigger
 
@@ -224,10 +227,12 @@ Runtime assumes ~4s per wallet (2× Blockscout calls with 2s delay each). Alread
 | `api.py` (`run_olas_scan`) | APScheduler job at 02:30 UTC |
 | `api.py` (`run_celo_scan`) | APScheduler job at 02:45 UTC |
 | `api.py` (`run_arc_scan`)  | APScheduler job at 03:00 UTC |
+| `api.py` (`run_erc8004_scan`) | APScheduler job at 03:15 UTC |
 | `acp_proactive_scan.py` | Core scanner — discovery, dedup, AHS scanning, reporting |
 | `olas_scan.py` | Olas ServiceRegistryL2 (Base) discovery + AHS scoring |
 | `celo_scan.py` | Celo ERC-8004 IdentityRegistry discovery + AHS scoring |
 | `arc_scan.py`  | Arc ERC-8004 IdentityRegistry discovery + AHS scoring |
+| `erc8004_scan.py` | ERC-8004 IdentityRegistry on Base mainnet discovery + AHS scoring |
 | `cron_acp_scan.py` | Standalone CLI wrapper for manual runs |
 | `scripts/run_acp_scan.bat` | Windows batch runner with log rotation |
 | `scripts/acp_scan_task.xml` | Windows Task Scheduler task definition |
