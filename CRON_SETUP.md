@@ -44,7 +44,7 @@ scheduler.add_job(
 | `ACP_SORT` | `successfulJobCount:desc` | API sort order |
 | `ACP_MAX_RUNTIME` | `3600` | Safety timeout in seconds |
 | `OLAS_MAX_SCANS` | `200` | Max wallets to AHS-score per Olas run |
-| `CELO_MAX_SCANS` | `200` | Max wallets to AHS-score per Celo run |
+| `CELO_MAX_SCANS` | `200` | Max wallets to AHS-score per Celo run. Celo registry currently holds ~7,188 agents (verified 2026-04-16 via `ownerOf()` binary search), so at the default 200/night full rotation takes ~36 days. Raise to 400–500 if Alchemy latency permits to halve rotation time. |
 | `CELO_RPC_URL` | `https://forno.celo.org` | Celo mainnet RPC endpoint |
 | `CELO_CHECKPOINT_PATH` | `celo_scan_checkpoint.json` | Block checkpoint persistence |
 | `ARC_MAX_SCANS` | `200` | Max wallets to AHS-score per Arc run |

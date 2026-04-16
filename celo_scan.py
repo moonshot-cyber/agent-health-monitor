@@ -400,18 +400,81 @@ def discover_celo_wallets(max_agents: int = 500) -> list[dict]:
 # Scan: run AHS scoring on discovered wallets
 # ---------------------------------------------------------------------------
 
-def get_already_scanned_celo_addresses() -> set[str]:
-    """Get wallet addresses already in the database from previous Celo scans."""
+def _ingest_discovered_wallets_to_db(wallets: list[dict]) -> int:
+    """Persist newly-discovered Celo wallets to known_wallets.
+
+    Each discovered wallet is INSERT OR IGNORE'd so existing rows (with
+    their scan history and last_scanned_at) are left untouched. New rows
+    are inserted with last_scanned_at=NULL and scan_count=0, which makes
+    them bubble to the top of the stale-first candidate query below.
+
+    Why this exists: Celo discovery advances a block checkpoint after
+    each run, so an agent discovered but not scanned this round is
+    permanently invisible to discovery on the next run. Persisting every
+    discovery to known_wallets (even without scoring) keeps them in the
+    rotation candidate pool indefinitely.
+
+    Returns the number of rows actually inserted (excludes addresses
+    that were already in the table).
+    """
+    if not wallets:
+        return 0
+
     import db
+
+    now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    conn = db.get_connection()
+    inserted = 0
     try:
-        conn = db.get_connection()
-        rows = conn.execute(
-            "SELECT address FROM known_wallets WHERE source IN ('celo_agent_wallet', 'celo_owner')"
-        ).fetchall()
+        for w in wallets:
+            meta = w.get("metadata") or {}
+            source = w["source"]
+            label_type = "Wallet" if source == "celo_agent_wallet" else "Owner"
+            label = f"Celo Agent #{meta.get('agent_id', '?')} ({label_type})"
+            cur = conn.execute(
+                """INSERT OR IGNORE INTO known_wallets
+                       (address, label, source, first_seen_at, scan_count, registries)
+                   VALUES (?, ?, ?, ?, 0, ?)""",
+                (w["address"], label, source, now_iso, source),
+            )
+            if cur.rowcount:
+                inserted += 1
+        conn.commit()
+    finally:
         conn.close()
-        return {row[0] for row in rows}
-    except Exception:
-        return set()
+    return inserted
+
+
+def get_celo_scan_candidates(limit: int) -> list[dict]:
+    """Return Celo wallets to AHS-score this run, ordered stale-first.
+
+    Uses ``ORDER BY last_scanned_at ASC NULLS FIRST LIMIT ?`` so:
+      1. Never-scanned wallets (NULL last_scanned_at) are prioritised
+         — discovered-but-not-yet-scored agents are picked up first.
+      2. Among scanned wallets, the oldest scan comes next — coverage
+         rotates through the full registry instead of re-scoring the
+         same top-agentId batch every night.
+
+    At ~7,188 agents on Celo mainnet and 200 scans/run, full rotation
+    takes ~36 days; raising CELO_MAX_SCANS shortens this proportionally.
+
+    Source filter stays ('celo_agent_wallet', 'celo_owner') to isolate
+    this pool from other registries' known_wallets rows.
+    """
+    import db
+    conn = db.get_connection()
+    try:
+        rows = conn.execute(
+            """SELECT address, label, source, last_scanned_at
+               FROM known_wallets
+               WHERE source IN ('celo_agent_wallet', 'celo_owner')
+               ORDER BY last_scanned_at ASC NULLS FIRST
+               LIMIT ?""",
+            (limit,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
 
 
 def scan_celo_agents(max_scans: int = 200) -> list[dict]:
@@ -419,11 +482,24 @@ def scan_celo_agents(max_scans: int = 200) -> list[dict]:
 
     This is the main entry point called by the nightly pipeline.
 
+    Coverage strategy (see get_celo_scan_candidates for the rationale):
+      1. Run discovery against the registry from the saved block
+         checkpoint and persist every discovered wallet to
+         known_wallets with last_scanned_at=NULL.
+      2. Pull the ``max_scans`` stalest wallets from known_wallets
+         (NULL-scanned first, then oldest-scanned) and AHS-score those.
+
+    This replaces the older "scan new discoveries, skip everything
+    already in the DB" flow, which stopped ever touching agents beyond
+    the first ``max_scans`` because the block checkpoint advanced past
+    their registration events on subsequent runs.
+
     Args:
         max_scans: Maximum number of wallets to AHS-score in this run.
 
     Returns:
-        List of wallet dicts that were discovered (all of them, not just scored).
+        List of wallet dicts that were selected and attempted for
+        scoring this run (not the full discovery list).
     """
     import db
 
@@ -433,26 +509,51 @@ def scan_celo_agents(max_scans: int = 200) -> list[dict]:
     )
     start_time = time.time()
 
-    # Phase 1: Discovery
-    wallets = discover_celo_wallets(max_agents=max_scans * 3)
+    # DB must be initialised before the ingestion step touches it.
+    db.init_db()
 
-    if not wallets:
-        logger.info("Celo scan: no wallets discovered")
+    # Phase 1: Discovery
+    # We intentionally fetch up to max_scans * 3 wallets so a single run
+    # both tops up the DB with recent registrations AND has a healthy
+    # pool of fresh candidates for the stale-first query below.
+    discovered = discover_celo_wallets(max_agents=max_scans * 3)
+
+    logger.info("Discovered %d Celo wallets this run (%d agent_wallet, %d owner)",
+                len(discovered),
+                sum(1 for w in discovered if w["source"] == "celo_agent_wallet"),
+                sum(1 for w in discovered if w["source"] == "celo_owner"))
+
+    # Phase 2: Persist discoveries so they survive checkpoint advancement.
+    # Existing rows are NOT updated — this is INSERT OR IGNORE. The
+    # discovered list may include wallets we've scored before; those
+    # keep their last_scanned_at so the rotation still works correctly.
+    inserted = _ingest_discovered_wallets_to_db(discovered)
+    logger.info(
+        "Ingested %d new Celo wallets into known_wallets (%d already tracked)",
+        inserted, len(discovered) - inserted,
+    )
+
+    # Build a lookup of fresh metadata (e.g. agent_id) from this run's
+    # discovery so the scan log can reference it for wallets we just
+    # saw on-chain. DB candidates that predate this run fall back to
+    # the label already stored in known_wallets.
+    discovery_meta: dict[str, dict] = {
+        w["address"]: w.get("metadata") or {} for w in discovered
+    }
+
+    # Phase 3: Pick the stalest candidates from known_wallets.
+    candidates = get_celo_scan_candidates(limit=max_scans)
+    if not candidates:
+        logger.info("Celo scan: no candidates available (empty known_wallets for Celo sources)")
         return []
 
-    logger.info("Discovered %d Celo wallets (%d agent_wallet, %d owner)",
-                len(wallets),
-                sum(1 for w in wallets if w["source"] == "celo_agent_wallet"),
-                sum(1 for w in wallets if w["source"] == "celo_owner"))
+    never_scanned = sum(1 for c in candidates if c.get("last_scanned_at") is None)
+    logger.info(
+        "Selected %d candidates for scoring (%d never-scanned, %d rescans)",
+        len(candidates), never_scanned, len(candidates) - never_scanned,
+    )
 
-    # Phase 2: Dedup against already-scanned
-    already_scanned = get_already_scanned_celo_addresses()
-    new_wallets = [w for w in wallets if w["address"] not in already_scanned]
-    logger.info("New wallets to scan: %d (skipping %d already scanned)",
-                len(new_wallets), len(wallets) - len(new_wallets))
-
-    # Phase 3: AHS scoring
-    db.init_db()
+    # Phase 4: AHS scoring
 
     from monitor import calculate_ahs, fetch_tokens_v2, fetch_transactions, get_eth_price
 
@@ -461,19 +562,21 @@ def scan_celo_agents(max_scans: int = 200) -> list[dict]:
     error_count = 0
     scan_results: list[dict] = []
 
-    for wallet in new_wallets:
+    for wallet in candidates:
         if scan_count >= max_scans:
             logger.info("Reached max_scans=%d, stopping", max_scans)
             break
 
         address = wallet["address"]
         source = wallet["source"]
-        meta = wallet["metadata"]
+        meta = discovery_meta.get(address) or {}
         scan_count += 1
 
-        logger.info("  [%d/%d] Scanning %s (source=%s, agent_id=%s)",
-                     scan_count, min(max_scans, len(new_wallets)),
-                     address[:12] + "...", source, meta.get("agent_id"))
+        logger.info("  [%d/%d] Scanning %s (source=%s, agent_id=%s, last_scanned=%s)",
+                     scan_count, min(max_scans, len(candidates)),
+                     address[:12] + "...", source,
+                     meta.get("agent_id", "?"),
+                     wallet.get("last_scanned_at") or "never")
 
         try:
             txs = fetch_transactions(address)
@@ -500,8 +603,16 @@ def scan_celo_agents(max_scans: int = 200) -> list[dict]:
                     for p in ahs.patterns_detected
                 ]
 
-            label_type = "Wallet" if source == "celo_agent_wallet" else "Owner"
-            label = f"Celo Agent #{meta.get('agent_id', '?')} ({label_type})"
+            # Prefer fresh agent_id from this run's discovery; fall back to
+            # the label persisted when we first ingested the wallet.
+            if meta.get("agent_id") is not None:
+                label_type = "Wallet" if source == "celo_agent_wallet" else "Owner"
+                label = f"Celo Agent #{meta['agent_id']} ({label_type})"
+            else:
+                label = wallet.get("label") or (
+                    "Celo Agent (Wallet)" if source == "celo_agent_wallet"
+                    else "Celo Agent (Owner)"
+                )
 
             now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
             db.log_scan(
@@ -547,11 +658,11 @@ def scan_celo_agents(max_scans: int = 200) -> list[dict]:
     elapsed = time.time() - start_time
     logger.info(
         "=== Celo ERC-8004 Scan — COMPLETE (%.0fs) ===\n"
-        "  Wallets discovered: %d | Scanned: %d | Errors: %d",
-        elapsed, len(wallets), scan_count, error_count,
+        "  Discovered this run: %d | Candidates selected: %d | Scanned: %d | Errors: %d",
+        elapsed, len(discovered), len(candidates), scan_count, error_count,
     )
 
-    # Phase 4: Batch quality tracking
+    # Phase 5: Batch quality tracking
     try:
         scored = [r for r in scan_results if r.get("ahs_score") is not None]
         if scored:
@@ -578,7 +689,7 @@ def scan_celo_agents(max_scans: int = 200) -> list[dict]:
     except Exception:
         logger.exception("Failed to log batch quality (non-fatal)")
 
-    return wallets
+    return candidates
 
 
 # ---------------------------------------------------------------------------

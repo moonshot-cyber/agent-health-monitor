@@ -753,3 +753,389 @@ class TestCeloScanEndpoints:
             headers={"X-Internal-Key": "wrong-key"},
         )
         assert resp.status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# Wallet ingestion + stale-first rotation tests
+# ---------------------------------------------------------------------------
+
+class TestIngestDiscoveredWallets:
+    """_ingest_discovered_wallets_to_db must persist discoveries to
+    known_wallets so they survive the next discovery run's checkpoint
+    advance, without ever overwriting an existing scan history."""
+
+    def _discovery(self, address: str, source: str, agent_id: int):
+        return {
+            "address": address,
+            "source": source,
+            "metadata": {"agent_id": agent_id},
+        }
+
+    def test_inserts_new_rows_with_null_last_scanned(self, tmp_path, monkeypatch):
+        import celo_scan
+        import db
+
+        monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "test.db"))
+        db.init_db()
+
+        wallets = [
+            self._discovery("0x" + "a" * 40, "celo_agent_wallet", 1),
+            self._discovery("0x" + "b" * 40, "celo_owner", 2),
+        ]
+        inserted = celo_scan._ingest_discovered_wallets_to_db(wallets)
+        assert inserted == 2
+
+        conn = db.get_connection()
+        try:
+            rows = conn.execute(
+                "SELECT address, source, last_scanned_at, scan_count "
+                "FROM known_wallets ORDER BY address"
+            ).fetchall()
+        finally:
+            conn.close()
+        assert len(rows) == 2
+        # Both rows must carry NULL last_scanned_at so the stale-first query
+        # picks them up before any rescan candidates on the next run.
+        for r in rows:
+            assert r["last_scanned_at"] is None
+            assert r["scan_count"] == 0
+
+    def test_existing_rows_are_not_overwritten(self, tmp_path, monkeypatch):
+        """INSERT OR IGNORE must preserve an existing row's scan history."""
+        import celo_scan
+        import db
+
+        monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "test.db"))
+        db.init_db()
+
+        addr = "0x" + "c" * 40
+        # Pre-populate with a wallet that already has a scan history.
+        now_iso = "2026-04-10T12:00:00Z"
+        conn = db.get_connection()
+        try:
+            conn.execute(
+                """INSERT INTO known_wallets
+                   (address, label, source, first_seen_at, last_scanned_at, scan_count,
+                    latest_ahs, latest_grade)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (addr, "Existing label", "celo_agent_wallet",
+                 "2026-01-01T00:00:00Z", now_iso, 5, 72, "B"),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        inserted = celo_scan._ingest_discovered_wallets_to_db(
+            [self._discovery(addr, "celo_agent_wallet", 42)]
+        )
+        assert inserted == 0
+
+        conn = db.get_connection()
+        try:
+            row = conn.execute(
+                "SELECT label, last_scanned_at, scan_count, latest_ahs "
+                "FROM known_wallets WHERE address = ?", (addr,)
+            ).fetchone()
+        finally:
+            conn.close()
+        # Every mutable field must be untouched — no label overwrite,
+        # no last_scanned_at reset, no scan_count reset, no AHS loss.
+        assert row["label"] == "Existing label"
+        assert row["last_scanned_at"] == now_iso
+        assert row["scan_count"] == 5
+        assert row["latest_ahs"] == 72
+
+    def test_returns_zero_for_empty_list(self, tmp_path, monkeypatch):
+        import celo_scan
+        import db
+
+        monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "test.db"))
+        db.init_db()
+        assert celo_scan._ingest_discovered_wallets_to_db([]) == 0
+
+    def test_mixed_new_and_existing_counts_only_new(self, tmp_path, monkeypatch):
+        import celo_scan
+        import db
+
+        monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "test.db"))
+        db.init_db()
+
+        existing = "0x" + "d" * 40
+        conn = db.get_connection()
+        try:
+            conn.execute(
+                "INSERT INTO known_wallets (address, source, first_seen_at) "
+                "VALUES (?, ?, ?)",
+                (existing, "celo_agent_wallet", "2026-01-01T00:00:00Z"),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        inserted = celo_scan._ingest_discovered_wallets_to_db([
+            self._discovery(existing, "celo_agent_wallet", 1),
+            self._discovery("0x" + "e" * 40, "celo_agent_wallet", 2),
+            self._discovery("0x" + "f" * 40, "celo_owner", 3),
+        ])
+        # Only the two genuinely-new addresses count as inserts.
+        assert inserted == 2
+
+
+class TestGetCeloScanCandidates:
+    """get_celo_scan_candidates must return wallets stale-first so the
+    nightly rotation reaches every agent over time instead of re-scoring
+    the same top-agentId batch every night."""
+
+    def _insert_wallet(self, conn, address, source, last_scanned_at):
+        conn.execute(
+            """INSERT INTO known_wallets
+               (address, label, source, first_seen_at, last_scanned_at, scan_count)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (address, None, source, "2026-01-01T00:00:00Z", last_scanned_at, 0),
+        )
+
+    def test_null_last_scanned_at_comes_first(self, tmp_path, monkeypatch):
+        """NULLS FIRST — never-scanned wallets outrank every rescan candidate."""
+        import celo_scan
+        import db
+
+        monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "test.db"))
+        db.init_db()
+
+        conn = db.get_connection()
+        try:
+            # Seed three rows: recent scan, old scan, never-scanned.
+            self._insert_wallet(conn, "0x" + "1" * 40, "celo_agent_wallet",
+                                "2026-04-15T00:00:00Z")
+            self._insert_wallet(conn, "0x" + "2" * 40, "celo_agent_wallet",
+                                "2026-01-01T00:00:00Z")
+            self._insert_wallet(conn, "0x" + "3" * 40, "celo_owner", None)
+            conn.commit()
+        finally:
+            conn.close()
+
+        candidates = celo_scan.get_celo_scan_candidates(limit=10)
+        addrs = [c["address"] for c in candidates]
+        assert addrs[0] == "0x" + "3" * 40  # NULL first
+        assert addrs[1] == "0x" + "2" * 40  # then oldest
+        assert addrs[2] == "0x" + "1" * 40  # then newest
+
+    def test_oldest_scanned_comes_before_newest(self, tmp_path, monkeypatch):
+        """Among rescan candidates the oldest scan goes first so rotation is fair."""
+        import celo_scan
+        import db
+
+        monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "test.db"))
+        db.init_db()
+
+        conn = db.get_connection()
+        try:
+            self._insert_wallet(conn, "0xaaa" + "a" * 37, "celo_agent_wallet",
+                                "2026-04-15T00:00:00Z")  # newest
+            self._insert_wallet(conn, "0xbbb" + "b" * 37, "celo_agent_wallet",
+                                "2026-03-01T00:00:00Z")  # middle
+            self._insert_wallet(conn, "0xccc" + "c" * 37, "celo_agent_wallet",
+                                "2026-02-01T00:00:00Z")  # oldest
+            conn.commit()
+        finally:
+            conn.close()
+
+        candidates = celo_scan.get_celo_scan_candidates(limit=10)
+        addrs = [c["address"] for c in candidates]
+        assert addrs == [
+            "0xccc" + "c" * 37,
+            "0xbbb" + "b" * 37,
+            "0xaaa" + "a" * 37,
+        ]
+
+    def test_respects_limit(self, tmp_path, monkeypatch):
+        import celo_scan
+        import db
+
+        monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "test.db"))
+        db.init_db()
+
+        conn = db.get_connection()
+        try:
+            for i in range(10):
+                self._insert_wallet(conn, f"0x{i:040x}", "celo_agent_wallet", None)
+            conn.commit()
+        finally:
+            conn.close()
+
+        candidates = celo_scan.get_celo_scan_candidates(limit=3)
+        assert len(candidates) == 3
+
+    def test_excludes_non_celo_sources(self, tmp_path, monkeypatch):
+        """Arc, Olas and other registries must not bleed into the Celo rotation."""
+        import celo_scan
+        import db
+
+        monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "test.db"))
+        db.init_db()
+
+        conn = db.get_connection()
+        try:
+            self._insert_wallet(conn, "0x" + "a" * 40, "celo_agent_wallet", None)
+            self._insert_wallet(conn, "0x" + "b" * 40, "celo_owner",        None)
+            self._insert_wallet(conn, "0x" + "c" * 40, "arc_agent_wallet",  None)
+            self._insert_wallet(conn, "0x" + "d" * 40, "olas",              None)
+            self._insert_wallet(conn, "0x" + "e" * 40, "acp_proactive_scan", None)
+            conn.commit()
+        finally:
+            conn.close()
+
+        candidates = celo_scan.get_celo_scan_candidates(limit=10)
+        sources = {c["source"] for c in candidates}
+        assert sources == {"celo_agent_wallet", "celo_owner"}
+        assert len(candidates) == 2
+
+
+class TestScanCeloAgentsRotation:
+    """End-to-end: scan_celo_agents must feed the stale-first candidate
+    list into the AHS scorer so every agent gets its turn over time."""
+
+    def test_scans_in_stale_first_order(self, tmp_path, monkeypatch):
+        """With three pre-existing wallets at different ages plus one new
+        discovery, scan_celo_agents(max_scans=3) should score the never-
+        scanned discovery first, then the two stalest known wallets."""
+        import celo_scan
+        import db
+        import monitor
+
+        monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "test.db"))
+        db.init_db()
+
+        # Pre-populate: three previously-scanned wallets at distinct ages.
+        conn = db.get_connection()
+        try:
+            for addr, ts in [
+                ("0x" + "1" * 40, "2026-04-15T00:00:00Z"),  # fresh
+                ("0x" + "2" * 40, "2026-02-01T00:00:00Z"),  # older
+                ("0x" + "3" * 40, "2026-01-01T00:00:00Z"),  # oldest
+            ]:
+                conn.execute(
+                    """INSERT INTO known_wallets
+                       (address, label, source, first_seen_at, last_scanned_at, scan_count)
+                       VALUES (?, ?, ?, ?, ?, ?)""",
+                    (addr, "existing", "celo_agent_wallet",
+                     "2026-01-01T00:00:00Z", ts, 1),
+                )
+            conn.commit()
+        finally:
+            conn.close()
+
+        # One new discovery (unseen by DB) — must land in the pool first.
+        new_addr = "0x" + "9" * 40
+        monkeypatch.setattr(
+            celo_scan, "discover_celo_wallets",
+            lambda max_agents=0: [{
+                "address": new_addr,
+                "source": "celo_agent_wallet",
+                "metadata": {"agent_id": 999},
+            }],
+        )
+
+        # Stub out the heavy monitor calls so the test doesn't hit the
+        # network. Each call returns the same canned AHS result.
+        ahs_result = monitor.AHSResult(
+            address="0x0",
+            agent_health_score=70,
+            grade="B",
+            grade_label="Good",
+            confidence="MEDIUM",
+            d1_score=65,
+            d2_score=75,
+            tx_count=42,
+            history_days=30,
+        )
+        scanned_addresses: list[str] = []
+
+        def fake_calculate_ahs(*, address, **_kwargs):
+            scanned_addresses.append(address)
+            ahs_result.address = address
+            return ahs_result
+
+        monkeypatch.setattr(monitor, "calculate_ahs", fake_calculate_ahs)
+        monkeypatch.setattr(monitor, "fetch_transactions", lambda a, **k: [])
+        monkeypatch.setattr(monitor, "fetch_tokens_v2", lambda a, **k: [])
+        monkeypatch.setattr(monitor, "get_eth_price", lambda **k: 2500.0)
+        # Don't actually sleep between scans in tests.
+        monkeypatch.setattr(celo_scan.time, "sleep", lambda *_a, **_k: None)
+
+        celo_scan.scan_celo_agents(max_scans=3)
+
+        # Order of calls must be: NULL (new discovery) → oldest → middle.
+        # "Fresh" wallet (0x111...) must NOT have been scored this run.
+        assert scanned_addresses == [
+            new_addr,
+            "0x" + "3" * 40,
+            "0x" + "2" * 40,
+        ]
+
+    def test_rotation_moves_forward_on_next_run(self, tmp_path, monkeypatch):
+        """Two back-to-back runs with max_scans=2 on a 4-wallet pool must
+        cover all four wallets across the two runs (no agent left behind)."""
+        import celo_scan
+        import db
+        import monitor
+
+        monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "test.db"))
+        db.init_db()
+
+        addrs = [f"0x{i:040x}" for i in (1, 2, 3, 4)]
+
+        # Seed all four with NULL last_scanned_at, distinct first_seen_at
+        # so ordering among NULLs is deterministic via the secondary
+        # tiebreak that SQLite uses on insertion order.
+        conn = db.get_connection()
+        try:
+            for a in addrs:
+                conn.execute(
+                    """INSERT INTO known_wallets
+                       (address, label, source, first_seen_at, last_scanned_at, scan_count)
+                       VALUES (?, ?, ?, ?, NULL, 0)""",
+                    (a, None, "celo_agent_wallet", "2026-01-01T00:00:00Z"),
+                )
+            conn.commit()
+        finally:
+            conn.close()
+
+        monkeypatch.setattr(
+            celo_scan, "discover_celo_wallets", lambda max_agents=0: [],
+        )
+
+        ahs_result = monitor.AHSResult(
+            address="0x0", agent_health_score=60, grade="C",
+            grade_label="Needs Attention", confidence="LOW",
+            d1_score=55, d2_score=65, tx_count=5, history_days=3,
+        )
+        scanned: list[str] = []
+
+        def fake_calc(*, address, **_):
+            scanned.append(address)
+            ahs_result.address = address
+            return ahs_result
+
+        monkeypatch.setattr(monitor, "calculate_ahs", fake_calc)
+        monkeypatch.setattr(monitor, "fetch_transactions", lambda a, **k: [])
+        monkeypatch.setattr(monitor, "fetch_tokens_v2", lambda a, **k: [])
+        monkeypatch.setattr(monitor, "get_eth_price", lambda **k: 2500.0)
+        monkeypatch.setattr(celo_scan.time, "sleep", lambda *_a, **_k: None)
+
+        # Run 1: picks the two wallets whose last_scanned_at is still NULL.
+        celo_scan.scan_celo_agents(max_scans=2)
+        first_run = list(scanned)
+        scanned.clear()
+
+        # Run 2: those two now have a last_scanned_at; the remaining two
+        # are still NULL so they must lead the rotation.
+        celo_scan.scan_celo_agents(max_scans=2)
+        second_run = list(scanned)
+
+        # Every wallet must have been covered exactly once across two runs.
+        assert len(first_run) == 2
+        assert len(second_run) == 2
+        assert set(first_run + second_run) == set(addrs)
+        # Second run must NOT pick the same wallets as the first.
+        assert set(first_run).isdisjoint(set(second_run))
