@@ -1397,10 +1397,19 @@ async def lifespan(app: FastAPI):
         misfire_grace_time=3600,
         max_instances=1,
     )
+    scheduler.add_job(
+        run_erc8004_scan,
+        trigger=CronTrigger(hour=3, minute=15, timezone="UTC"),
+        id="erc8004_nightly_scan",
+        name="ERC-8004 Base Nightly Scan",
+        coalesce=True,
+        misfire_grace_time=3600,
+        max_instances=1,
+    )
     scheduler.start()
     app.state.scheduler = scheduler
 
-    bg_names = "alert_monitor, rescan_loop, acp_scheduler, olas_scheduler, celo_scheduler, arc_scheduler"
+    bg_names = "alert_monitor, rescan_loop, acp_scheduler, olas_scheduler, celo_scheduler, arc_scheduler, erc8004_scheduler"
     if erc8183_task:
         bg_names += ", erc8183_worker"
     logger.info("Background tasks started: %s", bg_names)
@@ -5510,6 +5519,48 @@ async def celo_scan_status(request: Request):
     }
 
 
+# -- ERC-8004 Base Scan Trigger & Status ------------------------------------
+
+@app.post("/erc8004-scan/trigger", tags=["Admin"])
+async def trigger_erc8004_scan(request: Request):
+    """Manually trigger the ERC-8004 Base-mainnet nightly scan.
+
+    Protected by X-Internal-Key header. Returns immediately;
+    scan runs in the background.
+    """
+    internal_key = request.headers.get("X-Internal-Key", "")
+    if not INTERNAL_API_KEY or not hmac.compare_digest(internal_key, INTERNAL_API_KEY):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    if _erc8004_scan_lock.locked():
+        raise HTTPException(status_code=409, detail="ERC-8004 scan already running")
+
+    asyncio.create_task(run_erc8004_scan())
+    return {"status": "ok", "message": "ERC-8004 scan triggered"}
+
+
+@app.get("/erc8004-scan/status", tags=["Admin"])
+async def erc8004_scan_status(request: Request):
+    """Check if an ERC-8004 Base-mainnet scan is currently running.
+
+    Protected by X-Internal-Key header.
+    """
+    internal_key = request.headers.get("X-Internal-Key", "")
+    if not INTERNAL_API_KEY or not hmac.compare_digest(internal_key, INTERNAL_API_KEY):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    next_run = None
+    scheduler = getattr(request.app.state, "scheduler", None)
+    if scheduler:
+        job = scheduler.get_job("erc8004_nightly_scan")
+        next_run = job.next_run_time.isoformat() if job and job.next_run_time else None
+
+    return {
+        "running": _erc8004_scan_lock.locked(),
+        "next_scheduled_run": next_run,
+    }
+
+
 # -- ERC-8183 Worker Status --------------------------------------------------
 
 @app.get("/erc8183/status", tags=["Admin"])
@@ -5741,6 +5792,51 @@ async def run_celo_scan():
         except Exception:
             elapsed = time.time() - start
             logger.exception("Celo nightly scan — FAILED after %.0fs", elapsed)
+
+
+# -- ERC-8004 Base Nightly Scan ---------------------------------------------
+
+_erc8004_scan_lock = asyncio.Lock()
+
+
+async def run_erc8004_scan():
+    """Run the nightly ERC-8004 Base-mainnet scan in a background thread.
+
+    Enumerates agents on the canonical ERC-8004 IdentityRegistry at
+    0x8004A169FB4a3325136EB29fA0ceB6D2e539a432 (Base mainnet), resolves
+    their tokenURI registration docs, and runs AHS scoring on every
+    distinct wallet surfaced (owner, agent_wallet, and URI-embedded
+    addresses). All sync I/O is offloaded to the default executor via
+    run_in_executor.
+    """
+    if _erc8004_scan_lock.locked():
+        logger.warning("ERC-8004 scan skipped: previous scan still running")
+        return
+
+    async with _erc8004_scan_lock:
+        logger.info("ERC-8004 nightly scan — START")
+        start = time.time()
+
+        max_scans = int(os.getenv("ERC8004_MAX_SCANS", "100"))
+        loop = asyncio.get_running_loop()
+
+        try:
+            from erc8004_scan import scan_erc8004_agents
+
+            wallets = await loop.run_in_executor(
+                None,
+                partial(scan_erc8004_agents, max_scans=max_scans),
+            )
+
+            elapsed = time.time() - start
+            logger.info(
+                "ERC-8004 nightly scan — COMPLETE (%.0fs, %d wallets scored)",
+                elapsed, len(wallets),
+            )
+
+        except Exception:
+            elapsed = time.time() - start
+            logger.exception("ERC-8004 nightly scan — FAILED after %.0fs", elapsed)
 
 
 # -- Rescan Background Loop --------------------------------------------------
