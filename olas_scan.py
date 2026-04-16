@@ -146,6 +146,32 @@ def _rpc_call_with_retry(fn, *args, label: str = "RPC call"):
     raise last_exc  # unreachable, but keeps type checkers happy
 
 
+def fetch_registry_total_supply() -> int:
+    """Return the live service count from the Olas ServiceRegistryL2.
+
+    Thin read-only wrapper around ``totalSupply()`` on the registry
+    contract — isolated from ``discover_olas_wallets`` so callers that
+    only need the count (e.g. the /olas-scan/status endpoint for
+    dashboard saturation metrics) don't pay the cost of a full scan.
+
+    Returns:
+        Current total number of services registered (includes every
+        lifecycle state, not just DEPLOYED).
+
+    Raises:
+        ConnectionError: if the Base RPC is unreachable.
+        Exception: propagates any non-retryable RPC error from the
+        underlying ``_rpc_call_with_retry`` (callers should catch and
+        treat as unavailability rather than crashing the status
+        endpoint).
+    """
+    _, contract = _get_contract()
+    return int(_rpc_call_with_retry(
+        contract.functions.totalSupply(),
+        label="totalSupply",
+    ))
+
+
 def discover_olas_wallets(max_services: int | None = None) -> list[dict]:
     """Discover wallet addresses from Olas ServiceRegistryL2 on Base.
 

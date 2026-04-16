@@ -5420,18 +5420,43 @@ async def olas_scan_status(request: Request):
     """Check if an Olas scan is currently running.
 
     Protected by X-Internal-Key header.
+
+    Also queries ``totalSupply()`` on the Olas ServiceRegistryL2 contract
+    on Base so the dashboard can render a live saturation figure
+    (e.g. "887 / 900") instead of looking stalled when the nightly
+    scanner has already caught up to the registry. Any RPC failure is
+    caught and surfaced as ``registry_total_supply: null`` rather than
+    failing the whole status endpoint.
     """
     internal_key = request.headers.get("X-Internal-Key", "")
     if not INTERNAL_API_KEY or not hmac.compare_digest(internal_key, INTERNAL_API_KEY):
         raise HTTPException(status_code=401, detail="Unauthorized")
 
-    scheduler = request.app.state.scheduler
-    job = scheduler.get_job("olas_nightly_scan")
-    next_run = job.next_run_time.isoformat() if job and job.next_run_time else None
+    # Match the defensive pattern used by arc_scan_status / celo_scan_status
+    # so the endpoint still serves a useful response if the scheduler
+    # hasn't attached yet (e.g. during tests, or briefly on cold start).
+    next_run = None
+    scheduler = getattr(request.app.state, "scheduler", None)
+    if scheduler:
+        job = scheduler.get_job("olas_nightly_scan")
+        next_run = job.next_run_time.isoformat() if job and job.next_run_time else None
+
+    # Live on-chain supply — offloaded to an executor so the Web3 HTTP
+    # call doesn't block the event loop.
+    registry_total_supply: int | None = None
+    try:
+        from olas_scan import fetch_registry_total_supply
+        loop = asyncio.get_event_loop()
+        registry_total_supply = await loop.run_in_executor(
+            None, fetch_registry_total_supply,
+        )
+    except Exception as e:
+        logger.warning("olas_scan_status: totalSupply() unavailable: %s", e)
 
     return {
         "running": _olas_scan_lock.locked(),
         "next_scheduled_run": next_run,
+        "registry_total_supply": registry_total_supply,
     }
 
 
