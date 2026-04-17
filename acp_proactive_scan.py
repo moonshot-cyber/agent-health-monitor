@@ -44,7 +44,7 @@ def _safe_str(s: str) -> str:
 # Output
 CSV_PATH = "acp_scan_results.csv"
 MD_PATH = "acp_batch_scan_results.md"
-CHECKPOINT_PATH = "acp_scan_checkpoint.json"
+CHECKPOINT_PATH = os.getenv("ACP_CHECKPOINT_PATH", "acp_scan_checkpoint.json")
 
 
 # ---------------------------------------------------------------------------

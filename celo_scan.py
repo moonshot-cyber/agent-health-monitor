@@ -37,6 +37,7 @@ logger = logging.getLogger("ahm.celo_scan")
 # ---------------------------------------------------------------------------
 
 CELO_RPC_URL = os.getenv("CELO_RPC_URL", "https://forno.celo.org")
+CELO_RPC_FALLBACK_URL = os.getenv("CELO_RPC_FALLBACK_URL", "https://forno.celo.org")
 
 # ERC-8004 IdentityRegistry on Celo mainnet (chain 42220).
 # Verified on Celoscan as "8004: Identity Registry" — ERC1967Proxy delegating to
@@ -142,16 +143,17 @@ def save_checkpoint(last_scanned_block: int, events_found: int) -> None:
 # Discovery: scan the on-chain registry via Registered events
 # ---------------------------------------------------------------------------
 
-def _get_contract():
+def _get_contract(rpc_url: str | None = None):
     """Lazy-initialise Web3 and return the IdentityRegistry contract."""
     from web3 import Web3
 
+    url = rpc_url or CELO_RPC_URL
     w3 = Web3(Web3.HTTPProvider(
-        CELO_RPC_URL,
+        url,
         request_kwargs={"timeout": 30},
     ))
     if not w3.is_connected():
-        raise ConnectionError(f"Cannot connect to Celo RPC at {CELO_RPC_URL}")
+        raise ConnectionError(f"Cannot connect to Celo RPC at {url}")
     contract = w3.eth.contract(
         address=Web3.to_checksum_address(IDENTITY_REGISTRY_ADDRESS),
         abi=IDENTITY_REGISTRY_ABI,
@@ -308,9 +310,24 @@ def discover_celo_wallets(max_agents: int = 500) -> list[dict]:
         from_block += 1
         logger.info("Resuming from checkpoint block %d", from_block)
 
-    # Discover agents via Registered events
+    # Discover agents via Registered events.
+    # If the primary RPC fails (e.g. Alchemy returning 400 on eth_getLogs),
+    # fall back to the secondary RPC before giving up.
     latest_block = w3.eth.block_number
-    events = _fetch_registered_events(w3, contract, from_block=from_block)
+    try:
+        events = _fetch_registered_events(w3, contract, from_block=from_block)
+    except Exception as primary_err:
+        if CELO_RPC_FALLBACK_URL and CELO_RPC_URL != CELO_RPC_FALLBACK_URL:
+            logger.warning(
+                "Celo primary RPC failed (%s: %s), retrying with fallback %s",
+                type(primary_err).__name__, str(primary_err)[:120],
+                CELO_RPC_FALLBACK_URL,
+            )
+            w3, contract = _get_contract(rpc_url=CELO_RPC_FALLBACK_URL)
+            latest_block = w3.eth.block_number
+            events = _fetch_registered_events(w3, contract, from_block=from_block)
+        else:
+            raise
 
     # Persist the block we scanned through, even if 0 events found
     save_checkpoint(latest_block, len(events))
