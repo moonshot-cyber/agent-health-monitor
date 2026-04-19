@@ -5609,6 +5609,18 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 # -- ACP Nightly Scan (replaces Railway cron service) -----------------------
 
+
+def _cleanup_acp_checkpoint():
+    """Remove ACP checkpoint file after a successful scan completion."""
+    try:
+        from acp_proactive_scan import CHECKPOINT_PATH
+        if os.path.exists(CHECKPOINT_PATH):
+            os.remove(CHECKPOINT_PATH)
+            logger.info("ACP checkpoint cleaned up (scan complete)")
+    except Exception as e:
+        logger.warning("Failed to clean up ACP checkpoint: %s", e)
+
+
 _acp_scan_lock = asyncio.Lock()
 
 
@@ -5682,6 +5694,9 @@ async def run_acp_scan():
                 None,
                 partial(generate_report, agents, api_stats, dedup_stats, scan_results),
             )
+
+            # Clean up checkpoint on successful completion (mirrors cron_acp_scan.py)
+            await loop.run_in_executor(None, _cleanup_acp_checkpoint)
 
             elapsed = time.time() - start
             logger.info("ACP nightly scan — COMPLETE (%.0fs)", elapsed)
