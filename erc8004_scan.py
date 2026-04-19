@@ -16,12 +16,14 @@ import argparse
 import base64
 import csv
 import json
+import logging
 import os
 import re
 import sys
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from pathlib import Path
 
 import requests
 from web3 import Web3
@@ -49,6 +51,12 @@ CSV_PATH = "erc8004_scan_results.csv"
 MD_PATH = "erc8004_scan_results.md"
 
 ZERO_ADDRESS = "0x0000000000000000000000000000000000000000"
+
+# Agent enumeration checkpoint — avoids re-scanning from ID 1 on every run.
+# Stored as a JSON file on the persistent volume (Railway /data mount).
+CHECKPOINT_PATH = Path(os.getenv("ERC8004_CHECKPOINT_PATH", "erc8004_scan_checkpoint.json"))
+
+logger = logging.getLogger("ahm.erc8004_scan")
 
 ETH_ADDR_RE = re.compile(r"^0x[0-9a-fA-F]{40}$")
 
@@ -86,6 +94,36 @@ class AgentRecord:
     tx_count: int = 0
     history_days: int = 0
     scan_error: str = ""
+
+
+# ---------------------------------------------------------------------------
+# Enumeration checkpoint
+# ---------------------------------------------------------------------------
+
+def load_checkpoint() -> dict:
+    """Load the last-enumerated agent ID checkpoint from disk."""
+    try:
+        if CHECKPOINT_PATH.exists():
+            data = json.loads(CHECKPOINT_PATH.read_text())
+            logger.info("Loaded ERC-8004 checkpoint: last_agent_id=%s", data.get("last_agent_id"))
+            return data
+    except Exception:
+        logger.warning("Failed to read ERC-8004 checkpoint, starting from ID 1")
+    return {}
+
+
+def save_checkpoint(last_agent_id: int, agents_enumerated: int) -> None:
+    """Persist the highest agent ID we enumerated through."""
+    data = {
+        "last_agent_id": last_agent_id,
+        "agents_enumerated": agents_enumerated,
+        "saved_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    }
+    try:
+        CHECKPOINT_PATH.write_text(json.dumps(data))
+        logger.info("Saved ERC-8004 checkpoint: agent ID %d", last_agent_id)
+    except Exception:
+        logger.warning("Failed to save ERC-8004 checkpoint (non-fatal)")
 
 
 # ---------------------------------------------------------------------------
@@ -728,10 +766,12 @@ def scan_erc8004_agents(max_scans: int = 100) -> list[dict]:
         log.exception("ERC-8004 scan: registry discovery failed")
         return []
 
-    # Phase 2: enumeration — keep the candidate pool modest to stay within
-    # the nightly misfire_grace_time window (~1h).
+    # Phase 2: enumeration — resume from checkpoint so the scan advances
+    # through the full registry across nightly runs.
     max_agents = max_scans * 3
-    start_id = int(os.getenv("ERC8004_START_ID", "1"))
+    checkpoint = load_checkpoint()
+    start_id = checkpoint.get("last_agent_id", 0) + 1
+    log.info("ERC-8004 scan: enumerating from agent ID %d (max_agents=%d)", start_id, max_agents)
     try:
         agents = enumerate_agents(registry, max_agents=max_agents, start_id=start_id)
     except Exception:
@@ -739,8 +779,17 @@ def scan_erc8004_agents(max_scans: int = 100) -> list[dict]:
         return []
 
     if not agents:
-        log.info("ERC-8004 scan: no agents enumerated")
+        # Hit end of registry (or gap) — wrap around to ID 1 next run
+        log.info("ERC-8004 scan: no agents enumerated, wrapping to start")
+        save_checkpoint(last_agent_id=0, agents_enumerated=0)
         return []
+
+    # Save checkpoint: if we got a full batch there are more to scan;
+    # if fewer than max_agents we hit the end — wrap to start next run.
+    if len(agents) < max_agents:
+        save_checkpoint(last_agent_id=0, agents_enumerated=len(agents))
+    else:
+        save_checkpoint(last_agent_id=agents[-1].agent_id, agents_enumerated=len(agents))
 
     # Phase 3: URI resolution (best-effort — scan_wallets still works
     # from ownerOf + agent_wallet alone if most URIs fail).
