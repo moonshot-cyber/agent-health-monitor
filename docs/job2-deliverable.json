@@ -29,5 +29,15 @@
     "d2_score": 50,
     "tx_count": 0,
     "history_days": 0
+  },
+  "on_chain_submission": {
+    "tx_hash": "0xe57c07ee6e3245e93a664febae4d2db3345f1ac72c3e697eba13335946deea2c",
+    "chain": "Base Sepolia (eip155:84532)",
+    "chain_id": 84532,
+    "block": 40515168,
+    "contract": "0x892e7e77BC8DBc7E97E16E8e7DcF3783aFbB3A19",
+    "function": "submit(uint256,bytes32)",
+    "signer": "0x35eeDdcbE5E1AE01396Cb93Fc8606cE4C713d7BC",
+    "deliverable_hash": "0x697f9f52293c14446f710d14eda3b17dfc965fd5b169370ae89e718f55d342d7"
   }
 }
