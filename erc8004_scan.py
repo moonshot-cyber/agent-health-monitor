@@ -533,6 +533,17 @@ def scan_wallets(agents: list[AgentRecord], max_scans=100) -> dict:
                     "d1": ahs.d1_score,
                     "d2": ahs.d2_score,
                 },
+                shadow_signals={
+                    k: ahs._signals.get(k, d)
+                    for k, d in [
+                        ("session_continuity_score", None),
+                        ("abrupt_sessions", 0),
+                        ("budget_exhaustion_count", 0),
+                        ("total_sessions", 0),
+                        ("avg_session_length", 0.0),
+                        ("shadow_patterns", []),
+                    ]
+                },
             )
 
             result = {

@@ -431,6 +431,17 @@ def scan_olas_services(max_scans: int = 200) -> list[dict]:
                     "d2": ahs.d2_score,
                     "d2_data_source": ahs.d2_data_source,
                 },
+                shadow_signals={
+                    k: ahs._signals.get(k, d)
+                    for k, d in [
+                        ("session_continuity_score", None),
+                        ("abrupt_sessions", 0),
+                        ("budget_exhaustion_count", 0),
+                        ("total_sessions", 0),
+                        ("avg_session_length", 0.0),
+                        ("shadow_patterns", []),
+                    ]
+                },
             )
 
             scan_results.append({
