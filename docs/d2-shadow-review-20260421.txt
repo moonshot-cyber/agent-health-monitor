@@ -1,0 +1,108 @@
+========================================================================
+D2 SHADOW SCORE REVIEW -- GATE ANALYSIS FOR LIVE PROMOTION
+========================================================================
+
+  Generated:  2026-04-21T09:44:52Z
+  Database:   C:\Users\Pablo\agent-health-monitor\ahm_history.db
+  Agents:     836
+
+  Current production weights:
+    2D mode:  D1=30%  D2=70%
+    3D mode:  D1=25%  D2=45%  D3=30%
+
+  Note: D2 is already live at these weights in the composite score.
+  The 'session_continuity' sub-signal within D2 is in SHADOW MODE
+  (computed and stored but NOT included in D2's composite).
+
+========================================================================
+1. COVERAGE
+========================================================================
+
+  Total unique agents scanned (AHS):  836
+  Agents with D2 score:               836  (100.0%)
+  Agents without D2 score:            0  (0.0%)
+
+  Agents with shadow_signals data:    0  (0.0%)
+  Agents with session_continuity:     0  (0.0%)
+
+========================================================================
+2. D2 SCORE DISTRIBUTION
+========================================================================
+
+  Total agents with D2 score:  836
+  Mean:    51.0
+  Median:  50.0
+  Std Dev: 4.6
+  Min:     46
+  Max:     96
+
+  Bucket      Count      Pct   Distribution
+  ---------- ------ --------   ----------------------------------------
+  0-20            0     0.0%   ........................................
+  21-40           0     0.0%   ........................................
+  41-60         796    95.2%   ######################################..
+  61-80          35     4.2%   ##......................................
+  81-100          5     0.6%   ........................................
+
+========================================================================
+3. D2 vs CURRENT AHS GRADE CORRELATION
+========================================================================
+
+  Grade    Count   Avg D2   Med D2   Min   Max   StdDev
+  ------- ------ -------- -------- ----- ----- --------
+  A            1     96.0     96.0    96    96      0.0
+  B           10     77.2     76.0    69    87      6.4
+  C           39     62.9     65.0    50    75      6.9
+  D          785     50.0     50.0    48    54      0.2
+  E            1     46.0     46.0    46    46      0.0
+  F            0       --       --    --    --       --
+
+  VERDICT: D2 scores are monotonically decreasing across grades
+           (higher grade => higher D2). This is CONSISTENT.
+
+========================================================================
+4. SIMULATED AHS -- D2 AT LIVE WEIGHT (raw composite, no CDP modifier)
+========================================================================
+
+  Eligible agents (have D1 + D2):  836
+
+  Grade unchanged:     834  (99.8%)
+  Grade upgraded:        2  (0.2%)
+  Grade downgraded:      0  (0.0%)
+
+  Grade Migration Matrix (rows = current, cols = simulated):
+
+               A     B     C     D     E     F
+  --------------------------------------------
+       A |     1     0     0     0     0     0
+       B |     0    10     0     0     0     0
+       C |     0     1    38     0     0     0
+       D |     0     0     0   785     0     0
+       E |     0     0     0     1     0     0
+       F |     0     0     0     0     0     0
+
+  Largest grade changes (top 15):
+  Address                                       Current  Simulated   AHS    D1    D2
+  -------------------------------------------- -------- ---------- ----- ----- -----
+  0x43f888841c20e3b59d6148d8c978df114833a03b          C ^ B           62    90    71
+  0xef9cd31e430b014f4a6d29fc2220e2234d46378d          E ^ D           38    69    46
+
+========================================================================
+5. OUTLIERS -- D2 DIVERGES >20 POINTS FROM CURRENT AHS
+========================================================================
+
+  Total outliers:  0 / 836  (0.0%)
+
+  D2 > AHS by >20pts (D2 is more generous):  0
+  D2 < AHS by >20pts (D2 is harsher):       0
+
+========================================================================
+6. SESSION CONTINUITY SHADOW SIGNAL (D2 sub-signal, not in composite)
+========================================================================
+
+  Agents with session_continuity_score:  0
+  No session continuity data found.
+
+========================================================================
+END OF REPORT
+========================================================================
