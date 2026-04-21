@@ -1,0 +1,33 @@
+{
+  "job_id": 2,
+  "provider": "pablocactus",
+  "assessment": {
+    "verdict": "APPROVE",
+    "confidence": 0.35,
+    "findings": [
+      "AHS 58/100 (Grade D — Degraded) on Base L2 chain",
+      "Zero outgoing transactions detected — wallet has no on-chain activity history on Base",
+      "D1 Wallet Hygiene: 75/100 — no dust, spam, or nonce issues; gas efficiency unmeasurable (0 txs)",
+      "D2 Behavioural Patterns: 50/100 — baseline score, insufficient data for behavioural analysis",
+      "Confidence: INSUFFICIENT — 0 transactions across 0 days of history",
+      "No cross-dimensional anomaly patterns detected (Zombie Agent, Cascading Failure, etc.)"
+    ],
+    "methodology": "AHM daemon monitoring — full AHS pipeline (D1 Wallet Hygiene + D2 Behavioural Patterns, 2D mode) run against provider wallet 0x118B1E5A47658D20046bC874cB34E469d472c0C2 on Base L2 via Blockscout API. Scoring model AHS-v1 with 6 D1 sub-signals and 8 D2 sub-signals. Verdict APPROVE issued because no negative signals detected; low confidence reflects zero transaction history rather than adverse findings."
+  },
+  "metadata": {
+    "timestamp": "2026-04-21T13:00:07Z",
+    "agent_evaluated": "ThoughtProof",
+    "evaluation_duration_ms": 1580,
+    "wallet_address": "0x118B1E5A47658D20046bC874cB34E469d472c0C2",
+    "chain": "Base L2 (eip155:8453)",
+    "scoring_model": "AHS-v1",
+    "scoring_mode": "2D",
+    "ahs_score": 58,
+    "grade": "D",
+    "grade_label": "Degraded",
+    "d1_score": 75,
+    "d2_score": 50,
+    "tx_count": 0,
+    "history_days": 0
+  }
+}
