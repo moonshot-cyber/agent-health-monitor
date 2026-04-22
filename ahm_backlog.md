@@ -90,6 +90,7 @@ ERC-8210 verification schema names AHM as a reference implementation. AHS D1/D2/
 - [ ] **ERC-8183 assessIndependence interface** — agentltsoh (AAP) proposed a standardised signal interface `assessIndependence(addr, bytes)` returning `{independent: bool, signals, confidence: bytes}` that ERC-8183 hooks could call optionally. AHM's scoring output already maps to this shape. Monitor whether this gets formalised into the ERC-8183 spec. If it does, implement the interface so AHM becomes a drop-in pluggable assessor. No action until spec movement confirmed. Source: ETH Magicians ERC-8183 thread, Apr 7 2026
 - [ ] **ERC-8183 evaluator monetisation (Phase 2)** — Currently the AHM evaluator daemon calls `/ahs/route/` at $0.01 per job (self-funded x402 revenue). Direct protocol payment for evaluation services is not part of ERC-8183 today. Phase 2 monetisation options to explore: (1) negotiate a per-evaluation fee with protocol deployers once volume is proven on mainnet; (2) offer a pre-scoring / agent whitelisting service where providers pay AHM to get a health certificate before submitting to high-value job marketplaces. No action until mainnet evaluator role is established and job volume is measurable. Source: ERC-8183 evaluator daemon build, Apr 7 2026
 - [ ] **ERC-8210 assessor schema alignment** — Review ERC-8210 draft spec when available. Ensure AHM's D1/D2/D3 output format matches the assessor schema (`type: rule`, `id: ahs-d1-d2-d3`, `verdict: APPROVE/REJECT`, `confidence: 0-1`). Consider publishing AHS verdicts as IPFS-pinned outputs to serve as verifiable assessor outputs (links to EAS integration backlog item). No action until ERC-8210 draft is shared
+- [ ] **Agent Alerts System** — Build an alerting layer allowing integrators and agents to set custom alerts on wallet/agent activity. Use cases to think through before building: (1) **Integrator alerts** — notify when an agent they are routing drops below a configured AHS threshold; (2) **Abuse detection alerts** — flag agents attempting to manipulate routing policies or allowlists. Requirements and scope TBD — needs design spike before building
 - [ ] **Evidence object in API responses** — Add a structured `evidence` object to `/ahs` and `/ahs/route/{address}` endpoint responses. Should include: per-dimension signal breakdown, weighted scores, data sources, and reasoning — not just the final grade. Rationale: strengthens "no black boxes" positioning, makes AHM more composable for `IRiskHook` implementations per ERC-8210. Inspired by RNWY's public disclosure of their evidence object pattern (Apr 8 2026). **Do not build yet.** Review after D3 Operational Stability is live
 - [x] **/ahs/batch endpoint** (completed Mar 31) — POST `/ahs/batch` scores multiple agent wallets in a single API call. Up to 10 wallets per x402 call ($10.00 flat), up to 25 via API key (1 credit/wallet, partial results supported). Concurrent scoring with semaphore-limited RPC. PRs #42, #43, #44. Design partner validated (Alfred Zhang, httppay.xyz)
 
@@ -134,6 +135,13 @@ ERC-8210 verification schema names AHM as a reference implementation. AHS D1/D2/
 ---
 
 ## P3 — Tech Debt / Frontend Fixes
+
+### Frontend / UI
+
+- [ ] **AHM Logo — Homepage Link** — The AHM logo on the app page (agenthealthmonitor.xyz/app) has no link. It should link back to the homepage (agenthealthmonitor.xyz). Quick fix, low priority
+- [ ] **Global Navigation on App Page** — No navigation bar present on the app page. Add a minimal nav bar with links to Homepage, Docs (docs.agenthealthmonitor.xyz), and App for consistency across the site. Low priority but worth tidying before design partner demos
+
+### Other
 
 - [ ] **Proper OG banner (1200x630)** — `generate_og_banner.py` created, interim logo fix live. Complete this week
 - [ ] Wash scan composite scoring refinement (see wash_spike_results.md for formula)
