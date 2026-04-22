@@ -237,6 +237,108 @@ A live public dashboard showing aggregate health stats across all agent wallets 
 
 ---
 
+## AHM Intelligence — Public KPI Dashboard & Agent Taxonomy
+
+### Vision
+Build on AHM's data moat (10,000+ agents scanned) to create a public-facing intelligence platform at intelligence.agenthealthmonitor.xyz. This serves multiple strategic purposes: establishes AHM as the authoritative source of agent economy insights, drives SEO and inbound traffic, creates shareable/viral visual content for social media, and builds ecosystem credibility ahead of commercial opportunities.
+
+Long-term this could become a commercial product in its own right. Free for the foreseeable future.
+
+---
+
+### Layer 1 — v1 KPI Dashboard (build now)
+**Subdomain:** intelligence.agenthealthmonitor.xyz
+**Deployment:** Separate Railway service, nightly snapshot updates
+**Stack:** Lightweight static site, same dark theme as main AHM site
+
+**Three sections for v1:**
+
+1. Ecosystem Health — headline numbers
+   - Total agents scanned, avg AHS, zombie rate, grade distribution
+   - Single "Ecosystem Health Score" — weighted composite of all agents (like a stock market index for agent health) — primary shareable number
+   - Last updated timestamp
+
+2. Registry Leaderboard
+   - Side-by-side comparison: ACP, Olas, Celo, ERC-8004, Arc
+   - Avg AHS per registry, grade distribution, zombie rate per registry
+   - Inherently shareable with each protocol's community
+
+3. Trend Line
+   - Weekly ecosystem health snapshots going back as far as data allows
+   - Shows whether the agent economy is getting healthier or sicker over time
+   - Most shareable single visual
+
+**Deferred to v2:** Individual agent leaderboards, registry drill-down, downloadable reports, API access to intelligence data.
+
+---
+
+### Layer 2 — Agent Taxonomy (define soon, publish alongside dashboard)
+**Output:** A structured classification of the agentic economy — the first authoritative taxonomy of its kind. Starts simple, grows as the ecosystem matures. Published as a document on intelligence.agenthealthmonitor.xyz.
+
+**Why this matters:**
+- No authoritative agent taxonomy exists yet — genuine first-mover opportunity
+- Industries will need this reference framework in coming years
+- Drives significant SEO and inbound citations
+- Positions AHM as thought leader, not just a tool
+- Creates natural content calendar as new agent categories emerge
+- Provides logical backbone for Layer 3 enriched reports
+
+**Proposed v1 structure (to be refined):**
+Top-level categories:
+- Utility Agents — task execution, automation, workflow
+- Financial Agents — trading, payments, portfolio management, DeFi
+- Physical World Agents — robotics, drones, IoT, embedded systems
+
+Industry sectors (cross-cutting):
+- Finance & Banking
+- Healthcare
+- Defence & Security
+- Space & Aerospace
+- Supply Chain & Logistics
+- Legal & Compliance
+- Research & Science
+
+**Action:** Draft v1 taxonomy as a document. Publish on intelligence subdomain. Invite community input and iteration. Keep it simple to start.
+
+---
+
+### Layer 3 — Enriched Intelligence Reports (future / v3+)
+Fine-grained KPI reports organised by taxonomy category. Requires both the taxonomy (Layer 2) and data enrichment work to be completed first.
+
+Examples of future reports:
+- What are trading agents actually doing vs utility agents?
+- How does agent health differ between finance and defence sectors?
+- What tasks are agents performing, and how do those differ by sector?
+- Which registries host which categories of agent?
+
+---
+
+### Data Enrichment Spike (required before Layer 3)
+Current AHM data captures wallet behaviour, financial health, and operational stability — but not what an agent does or what sector it operates in. A research spike is needed to identify enrichment sources and plan how to fill gaps.
+
+**Spike scope:**
+- On-chain metadata and contract interactions — can agent purpose be inferred?
+- Registry metadata — do ACP, Olas, ERC-8004 tag agents by category?
+- Off-chain sources — agent project websites, GitHub repos, social media, blog posts, news articles
+- Emerging standards — does any ERC or protocol define agent categories?
+- Gap analysis — what data exists vs what we need for Layer 3 reports
+
+**Output:** A spike document identifying available enrichment sources, recommended data collection approach, and a prioritised gap list.
+
+---
+
+### Suggested Sequencing
+1. Build v1 KPI dashboard with existing data (this week)
+2. Draft and publish v1 Agent Taxonomy alongside dashboard (this week)
+3. Run data enrichment spike (next month)
+4. Build enriched taxonomy-organised views as data improves (v2/v3)
+5. Explore commercial model for intelligence product (longer term)
+
+**Priority:** High — 10k agent milestone is the right moment to launch this.
+**Status:** Backlog — ready to begin Layer 1 build and Layer 2 taxonomy draft.
+
+---
+
 ## Market Research — 402index.io Analysis (March 2026)
 
 Full ecosystem scan of 402index.io service directory. 15,658 indexed services, but ~3,000 real unique services after removing spam (single provider "lowpaymentfee" accounts for ~10,000+ duplicate "Premium API Access" entries at $0.02/call).
