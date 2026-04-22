@@ -2661,6 +2661,34 @@ x402_routes = {
             "routing recommendation (instant_settle / escrow / reject) based "
             "on the most recent AHS grade."
         ),
+        extensions={
+            "bazaar": {
+                "info": {
+                    "input": {
+                        "type": "http",
+                        "method": "GET",
+                        "discoverable": True,
+                        "queryParams": {
+                            "address": "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
+                        },
+                    },
+                    "output": {
+                        "type": "json",
+                        "example": {
+                            "address": "0xd8da6bf26964af9d7eed9e03e53415d37aa96045",
+                            "agent_health_score": 67,
+                            "grade": "C",
+                            "routing_recommendation": "escrow",
+                            "confidence": "high",
+                            "scored_at": "2026-04-22T10:00:00Z",
+                            "stale": False,
+                            "policy_applied": False,
+                            "allowlisted": False,
+                        },
+                    },
+                },
+            },
+        },
     ),
     "PUT /ahs/route/policy": RouteConfig(
         accepts=[
@@ -2691,6 +2719,56 @@ x402_routes = {
             "AHS Batch: Score multiple agent wallets in a single call. "
             "Up to 10 wallets per x402 payment ($10.00), or up to 25 via API key."
         ),
+        extensions={
+            "bazaar": {
+                "info": {
+                    "input": {
+                        "type": "http",
+                        "method": "POST",
+                        "discoverable": True,
+                        "body": {
+                            "addresses": [
+                                "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
+                                "0xde0B295669a9FD93d5F28D9Ec85E40f4cb697BAe",
+                            ],
+                        },
+                    },
+                    "output": {
+                        "type": "json",
+                        "example": {
+                            "results": [
+                                {
+                                    "address": "0xd8da6bf26964af9d7eed9e03e53415d37aa96045",
+                                    "ahs_score": 72,
+                                    "grade": "C",
+                                    "d1_score": 85,
+                                    "d2_score": 63,
+                                    "pattern": "Stale Strategy",
+                                    "verdict": "Needs Attention",
+                                    "routing_recommendation": "escrow",
+                                },
+                                {
+                                    "address": "0xde0b295669a9fd93d5f28d9ec85e40f4cb697bae",
+                                    "ahs_score": 88,
+                                    "grade": "B",
+                                    "d1_score": 91,
+                                    "d2_score": 86,
+                                    "pattern": "Healthy",
+                                    "verdict": "Good",
+                                    "routing_recommendation": "instant_settle",
+                                },
+                            ],
+                            "page": 1,
+                            "page_size": 25,
+                            "total_addresses": 2,
+                            "total_scored": 2,
+                            "credits_used": 2,
+                            "errors": [],
+                        },
+                    },
+                },
+            },
+        },
     ),
     "GET /report-card/*": RouteConfig(
         accepts=[
