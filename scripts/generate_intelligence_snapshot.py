@@ -1,18 +1,40 @@
 """Generate a JSON snapshot for the AHM Intelligence dashboard.
 
-Connects directly to the AHM SQLite database and produces a JSON file
-containing ecosystem KPIs, per-registry breakdowns, and daily trend data.
+Two modes:
+  --db <path>    Direct SQLite access (for use on Railway or with a local copy)
+  --api <url>    Fetch from public AHM API endpoints (no auth required)
 
 Usage:
-    python scripts/generate_intelligence_snapshot.py --db data/ahm.db --output snapshot.json
-    python scripts/generate_intelligence_snapshot.py --db data/ahm.db  # stdout
+    python scripts/generate_intelligence_snapshot.py --db /data/ahm.db --output snapshot.json
+    python scripts/generate_intelligence_snapshot.py --api https://agenthealthmonitor.xyz --output snapshot.json
 """
 
 import argparse
 import json
 import sqlite3
 import sys
+import urllib.request
 from datetime import datetime, timezone
+
+
+def _display_name(key: str) -> str:
+    """Map raw registry/source keys to clean display names."""
+    k = key.lower()
+    if "acp" in k:
+        return "ACP"
+    if "erc8004" in k or "erc-8004" in k:
+        return "ERC-8004"
+    if "erc8183" in k or "erc-8183" in k:
+        return "ERC-8183"
+    if "virtual" in k:
+        return "Virtuals"
+    if "olas" in k:
+        return "Olas"
+    if "celo" in k:
+        return "Celo"
+    if "arc" in k:
+        return "Arc"
+    return key
 
 
 def _connect(db_path: str) -> sqlite3.Connection:
@@ -78,25 +100,6 @@ def generate_snapshot(db_path: str) -> dict:
                 if w["latest_grade"]:
                     registry_data[reg]["grades"].append(w["latest_grade"])
 
-        # Pretty display names — match against substring in the raw registry key
-        def _display_name(key: str) -> str:
-            k = key.lower()
-            if "acp" in k:
-                return "ACP"
-            if "erc8004" in k or "erc-8004" in k:
-                return "ERC-8004"
-            if "erc8183" in k or "erc-8183" in k:
-                return "ERC-8183"
-            if "virtual" in k:
-                return "Virtuals"
-            if "olas" in k:
-                return "Olas"
-            if "celo" in k:
-                return "Celo"
-            if "arc" in k:
-                return "Arc"
-            return key
-
         # Consolidate raw keys into display names
         consolidated = {}  # display_name -> {scores: [], grades: []}
         for reg_key, data in registry_data.items():
@@ -151,13 +154,102 @@ def generate_snapshot(db_path: str) -> dict:
         conn.close()
 
 
+def _fetch_json(url: str) -> dict:
+    req = urllib.request.Request(url, headers={
+        "Accept": "application/json",
+        "User-Agent": "AHM-Intelligence-Snapshot/1.0",
+    })
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        return json.loads(resp.read())
+
+
+def generate_snapshot_from_api(base_url: str) -> dict:
+    """Build snapshot from public AHM API endpoints (no auth required)."""
+    base = base_url.rstrip("/")
+    now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    # /api/ecosystem-stats — public
+    eco = _fetch_json(f"{base}/api/ecosystem-stats")
+    ecosystem = {
+        "total_addresses": eco["total_scanned"],
+        "total_scans": eco["total_scanned"],  # best available from public API
+        "avg_score": eco["avg_ahs"],
+        "grade_distribution": eco["grade_distribution"],
+    }
+
+    # Per-registry: build from data_sources counts + batch quality for scores
+    batches = _fetch_json(f"{base}/scan/quality").get("batches", [])
+
+    # Aggregate batch data per registry
+    reg_agg = {}  # name -> {total_score_sum, total_count, grade_dist}
+    for b in batches:
+        src = b.get("source", "").lower()
+        if not src:
+            continue
+        name = _display_name(src)
+        if name not in reg_agg:
+            reg_agg[name] = {"score_sum": 0, "count": 0, "grade_dist": {}}
+        reg_agg[name]["score_sum"] += b["average_ahs"] * b["wallets_scanned"]
+        reg_agg[name]["count"] += b["wallets_scanned"]
+        for g, cnt in b.get("grade_distribution", {}).items():
+            reg_agg[name]["grade_dist"][g] = reg_agg[name]["grade_dist"].get(g, 0) + cnt
+
+    # Merge with data_sources for address counts
+    registries = []
+    for name, addr_count in sorted(eco.get("data_sources", {}).items(), key=lambda x: -x[1]):
+        agg = reg_agg.get(name, {})
+        grade_dist = agg.get("grade_dist", {})
+        avg = round(agg["score_sum"] / agg["count"], 1) if agg.get("count") else 0
+        top_count = grade_dist.get("A", 0) + grade_dist.get("B", 0)
+        total_graded = sum(grade_dist.values())
+        registries.append({
+            "name": name,
+            "address_count": addr_count,
+            "avg_score": avg,
+            "grade_distribution": grade_dist,
+            "top_grade_pct": round(top_count / total_graded * 100, 1) if total_graded > 0 else 0,
+        })
+
+    # Daily stats from batch quality (aggregate per day)
+    daily_agg = {}  # date -> {scan_count, score_sum}
+    for b in batches:
+        day = b["batch_date"][:10]
+        if day not in daily_agg:
+            daily_agg[day] = {"scan_count": 0, "score_sum": 0, "count": 0}
+        daily_agg[day]["scan_count"] += b["wallets_scanned"]
+        daily_agg[day]["score_sum"] += b["average_ahs"] * b["wallets_scanned"]
+        daily_agg[day]["count"] += b["wallets_scanned"]
+
+    daily_stats = [
+        {
+            "date": day,
+            "scan_count": d["scan_count"],
+            "avg_score": round(d["score_sum"] / d["count"], 1) if d["count"] else 0,
+        }
+        for day, d in sorted(daily_agg.items())
+    ]
+
+    return {
+        "generated_at": now_iso,
+        "ecosystem": ecosystem,
+        "registries": registries,
+        "daily_stats": daily_stats,
+    }
+
+
 def main():
     parser = argparse.ArgumentParser(description="Generate AHM Intelligence snapshot")
-    parser.add_argument("--db", default="data/ahm.db", help="Path to AHM SQLite database")
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument("--db", help="Path to AHM SQLite database")
+    group.add_argument("--api", help="AHM API base URL (e.g. https://agenthealthmonitor.xyz)")
     parser.add_argument("--output", default=None, help="Output file path (default: stdout)")
     args = parser.parse_args()
 
-    snapshot = generate_snapshot(args.db)
+    if args.db:
+        snapshot = generate_snapshot(args.db)
+    else:
+        snapshot = generate_snapshot_from_api(args.api)
+
     output = json.dumps(snapshot, indent=2)
 
     if args.output:
