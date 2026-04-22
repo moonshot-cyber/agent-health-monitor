@@ -155,7 +155,10 @@ def generate_snapshot(db_path: str) -> dict:
 
 
 def _fetch_json(url: str) -> dict:
-    req = urllib.request.Request(url, headers={
+    # Append cache-buster to avoid stale CDN responses
+    sep = "&" if "?" in url else "?"
+    bust_url = f"{url}{sep}_cb={int(datetime.now(timezone.utc).timestamp())}"
+    req = urllib.request.Request(bust_url, headers={
         "Accept": "application/json",
         "User-Agent": "AHM-Intelligence-Snapshot/1.0",
     })
