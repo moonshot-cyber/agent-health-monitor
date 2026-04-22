@@ -614,6 +614,51 @@ def get_ecosystem_dashboard_stats() -> dict:
             else:
                 data_sources["API"] = data_sources.get("API", 0) + r["cnt"]
 
+        # Per-source grade and score breakdowns
+        src_detail_rows = conn.execute(
+            """SELECT source, latest_grade, COUNT(*) as cnt, AVG(latest_ahs) as avg_score
+            FROM known_wallets
+            WHERE latest_ahs IS NOT NULL AND source IS NOT NULL
+            GROUP BY source, latest_grade
+            ORDER BY source, latest_grade"""
+        ).fetchall()
+        _src_map = {}
+        for r in src_detail_rows:
+            key = r["source"]
+            if key and "acp" in key.lower():
+                name = "ACP"
+            elif key and "olas" in key.lower():
+                name = "Olas"
+            elif key and "celo" in key.lower():
+                name = "Celo"
+            elif key and "erc8004" in key.lower():
+                name = "ERC-8004"
+            elif key and "arc" in key.lower():
+                name = "Arc"
+            else:
+                name = "API"
+            if name not in _src_map:
+                _src_map[name] = {"grade_distribution": {}, "score_sum": 0, "count": 0}
+            g = r["latest_grade"]
+            if g:
+                _src_map[name]["grade_distribution"][g] = (
+                    _src_map[name]["grade_distribution"].get(g, 0) + r["cnt"]
+                )
+            _src_map[name]["score_sum"] += (r["avg_score"] or 0) * r["cnt"]
+            _src_map[name]["count"] += r["cnt"]
+
+        registry_stats = {}
+        for name, d in _src_map.items():
+            avg = round(d["score_sum"] / d["count"], 1) if d["count"] else 0
+            gd = d["grade_distribution"]
+            top = gd.get("A", 0) + gd.get("B", 0)
+            total = sum(gd.values())
+            registry_stats[name] = {
+                "avg_score": avg,
+                "grade_distribution": gd,
+                "top_grade_pct": round(top / total * 100, 1) if total else 0,
+            }
+
         return {
             "total_scanned": total_scanned,
             "avg_ahs": avg_ahs,
@@ -623,6 +668,7 @@ def get_ecosystem_dashboard_stats() -> dict:
             "grade_distribution": grade_distribution,
             "pattern_distribution": pattern_distribution,
             "data_sources": data_sources,
+            "registry_stats": registry_stats,
         }
     finally:
         conn.close()
