@@ -177,40 +177,22 @@ def generate_snapshot_from_api(base_url: str) -> dict:
         "grade_distribution": eco["grade_distribution"],
     }
 
-    # Per-registry: build from data_sources counts + batch quality for scores
-    batches = _fetch_json(f"{base}/scan/quality").get("batches", [])
-
-    # Aggregate batch data per registry
-    reg_agg = {}  # name -> {total_score_sum, total_count, grade_dist}
-    for b in batches:
-        src = b.get("source", "").lower()
-        if not src:
-            continue
-        name = _display_name(src)
-        if name not in reg_agg:
-            reg_agg[name] = {"score_sum": 0, "count": 0, "grade_dist": {}}
-        reg_agg[name]["score_sum"] += b["average_ahs"] * b["wallets_scanned"]
-        reg_agg[name]["count"] += b["wallets_scanned"]
-        for g, cnt in b.get("grade_distribution", {}).items():
-            reg_agg[name]["grade_dist"][g] = reg_agg[name]["grade_dist"].get(g, 0) + cnt
-
-    # Merge with data_sources for address counts
+    # Per-registry: use registry_stats from ecosystem endpoint (has grade/score
+    # data for ALL sources including ERC-8004 and API), with data_sources for counts
+    reg_stats = eco.get("registry_stats", {})
     registries = []
     for name, addr_count in sorted(eco.get("data_sources", {}).items(), key=lambda x: -x[1]):
-        agg = reg_agg.get(name, {})
-        grade_dist = agg.get("grade_dist", {})
-        avg = round(agg["score_sum"] / agg["count"], 1) if agg.get("count") else 0
-        top_count = grade_dist.get("A", 0) + grade_dist.get("B", 0)
-        total_graded = sum(grade_dist.values())
+        rs = reg_stats.get(name, {})
         registries.append({
             "name": name,
             "address_count": addr_count,
-            "avg_score": avg,
-            "grade_distribution": grade_dist,
-            "top_grade_pct": round(top_count / total_graded * 100, 1) if total_graded > 0 else 0,
+            "avg_score": rs.get("avg_score", 0),
+            "grade_distribution": rs.get("grade_distribution", {}),
+            "top_grade_pct": rs.get("top_grade_pct", 0),
         })
 
     # Daily stats from batch quality (aggregate per day)
+    batches = _fetch_json(f"{base}/scan/quality").get("batches", [])
     daily_agg = {}  # date -> {scan_count, score_sum}
     for b in batches:
         day = b["batch_date"][:10]
