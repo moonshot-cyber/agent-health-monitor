@@ -2336,6 +2336,89 @@
       return;
     }
 
+    // Trust Route endpoint returns {routing_recommendation, agent_health_score, grade, ...} — handle specially
+    if (r.routing_recommendation !== undefined && r.agent_health_score !== undefined) {
+      const ahs = r.agent_health_score;
+      const ahsColor = ahs >= 90 ? 'var(--green, #00ff88)' : ahs >= 75 ? 'var(--cyan, #00f5ff)' : ahs >= 60 ? 'var(--amber, #ffaa00)' : ahs >= 40 ? '#ff8800' : 'var(--red, #ff3355)';
+      const ahsClass = ahs >= 70 ? 'high' : ahs >= 40 ? 'medium' : 'low';
+      const gradeClass = ahs >= 90 ? 'tier-elite' : ahs >= 75 ? 'tier-healthy' : ahs >= 60 ? 'tier-atrisk' : 'tier-critical';
+      const gradeParts = (r.grade ?? '').split(' \u2014 ');
+      const gradeLetter = gradeParts[0] ?? '';
+      const gradeLabel = gradeParts[1] ?? '';
+
+      const rec = r.routing_recommendation;
+      const recColor = rec === 'instant_settle' ? 'var(--green, #00ff88)' : rec === 'escrow' ? 'var(--amber, #ffaa00)' : 'var(--red, #ff3355)';
+      const recGlow = rec === 'instant_settle' ? 'var(--green)' : rec === 'escrow' ? 'var(--amber)' : 'var(--red)';
+      const recLabel = rec === 'instant_settle' ? 'INSTANT SETTLE' : rec === 'escrow' ? 'ESCROW' : 'REJECT';
+      const recIcon = rec === 'instant_settle' ? '\u2713' : rec === 'escrow' ? '\u29D7' : '\u2717';
+      const recBg = rec === 'instant_settle' ? 'rgba(0,255,136,0.06)' : rec === 'escrow' ? 'rgba(255,170,0,0.06)' : 'rgba(255,51,85,0.06)';
+
+      const confColor = (r.confidence ?? '').toUpperCase() === 'HIGH' ? 'var(--green)' : (r.confidence ?? '').toUpperCase() === 'MEDIUM' ? 'var(--amber)' : 'var(--text-dim)';
+
+      // Status badges
+      let badges = '';
+      if (r.policy_applied) {
+        badges += '<span style="border:1px solid var(--cyan-dim); color:var(--cyan); padding:0.15rem 0.4rem; font-size:0.6rem; font-family:var(--mono); letter-spacing:0.1em; background:rgba(0,245,255,0.05)">CUSTOM POLICY</span>';
+      }
+      if (r.allowlisted) {
+        badges += '<span style="border:1px solid var(--green-dim, #004d2a); color:var(--green); padding:0.15rem 0.4rem; font-size:0.6rem; font-family:var(--mono); letter-spacing:0.1em; background:rgba(0,255,136,0.05)">ALLOWLISTED</span>';
+      }
+      if (r.stale) {
+        badges += '<span style="border:1px solid rgba(255,170,0,0.3); color:var(--amber); padding:0.15rem 0.4rem; font-size:0.6rem; font-family:var(--mono); letter-spacing:0.1em; background:rgba(255,170,0,0.05)">STALE SCORE</span>';
+      }
+
+      body.innerHTML = `
+        <div class="health-score" style="border-bottom:none; padding-bottom:0.5rem; margin-bottom:0.5rem">
+          <div class="score-label">// TRUST ROUTING</div>
+          <div style="font-family:var(--display); font-size:2.2rem; font-weight:900; color:${recColor}; text-shadow:0 0 30px ${recGlow}; letter-spacing:0.15em; margin-bottom:0.25rem">${recIcon} ${recLabel}</div>
+        </div>
+
+        <div style="border:1px solid ${recColor}; background:${recBg}; padding:0.75rem 1rem; margin-bottom:1.25rem; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem">
+          <div style="display:flex; align-items:baseline; gap:0.75rem">
+            <div style="font-family:var(--display); font-size:2.5rem; font-weight:900; color:${ahsColor}; text-shadow:0 0 20px ${ahsColor}; line-height:1">${ahs}</div>
+            <div>
+              <div class="score-tier ${gradeClass}" style="margin:0; font-size:1rem">${gradeLetter} <span style="font-size:0.7em; opacity:0.7">${gradeLabel}</span></div>
+              <div style="font-family:var(--mono); font-size:0.6rem; color:var(--text-dim); margin-top:0.15rem">AHS Score</div>
+            </div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-family:var(--mono); font-size:0.7rem; color:${confColor}; letter-spacing:0.05em">CONFIDENCE: ${(r.confidence ?? 'unknown').toUpperCase()}</div>
+            ${r.scored_at ? '<div style="font-family:var(--mono); font-size:0.55rem; color:var(--text-dim); margin-top:0.2rem">Scored: ' + r.scored_at.replace('T', ' ').replace('Z', ' UTC') + '</div>' : ''}
+          </div>
+        </div>
+
+        ${badges ? '<div style="display:flex; gap:0.5rem; flex-wrap:wrap; margin-bottom:1rem; align-items:center">' + badges + '</div>' : ''}
+
+        <div style="font-family:var(--mono); font-size:0.6rem; letter-spacing:0.2em; color:var(--text-dim); margin-bottom:0.5rem">// ROUTING DETAIL</div>
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:0.5rem; margin-bottom:1rem">
+          <div style="border:1px solid var(--border); padding:0.5rem 0.6rem; background:rgba(0,0,0,0.2)">
+            <div style="font-family:var(--mono); font-size:0.55rem; color:var(--text-dim); letter-spacing:0.15em; margin-bottom:0.2rem">RECOMMENDATION</div>
+            <div style="font-family:var(--mono); font-size:0.85rem; color:${recColor}; font-weight:bold">${recLabel}</div>
+          </div>
+          <div style="border:1px solid var(--border); padding:0.5rem 0.6rem; background:rgba(0,0,0,0.2)">
+            <div style="font-family:var(--mono); font-size:0.55rem; color:var(--text-dim); letter-spacing:0.15em; margin-bottom:0.2rem">GRADE</div>
+            <div class="score-tier ${gradeClass}" style="margin:0; font-size:0.85rem">${gradeLetter} <span style="font-size:0.7em; opacity:0.7">${gradeLabel}</span></div>
+          </div>
+          <div style="border:1px solid var(--border); padding:0.5rem 0.6rem; background:rgba(0,0,0,0.2)">
+            <div style="font-family:var(--mono); font-size:0.55rem; color:var(--text-dim); letter-spacing:0.15em; margin-bottom:0.2rem">AHS SCORE</div>
+            <div style="font-family:var(--display); font-size:0.85rem; color:${ahsColor}">${ahs}<span style="font-size:0.6em; opacity:0.4"> / 100</span></div>
+          </div>
+          <div style="border:1px solid var(--border); padding:0.5rem 0.6rem; background:rgba(0,0,0,0.2)">
+            <div style="font-family:var(--mono); font-size:0.55rem; color:var(--text-dim); letter-spacing:0.15em; margin-bottom:0.2rem">CONFIDENCE</div>
+            <div style="font-family:var(--mono); font-size:0.85rem; color:${confColor}">${(r.confidence ?? 'unknown').toUpperCase()}</div>
+          </div>
+        </div>
+
+        ${r.stale ? '<div style="font-family:var(--mono); font-size:0.7rem; color:var(--amber); border:1px solid rgba(255,170,0,0.3); padding:0.5rem 0.75rem; margin-bottom:1rem; background:rgba(255,170,0,0.05)">Score is older than 24 hours. Re-scan with <span style="color:var(--cyan)">/ahs/{address}</span> for fresh data.</div>' : ''}
+
+        <button class="toggle-raw" onclick="toggleRaw()">&#x25B6; VIEW RAW JSON</button>
+        <pre class="raw-json" id="raw-json">${JSON.stringify(data, null, 2)}</pre>
+      `;
+      panel.classList.add('active');
+      panel.classList.remove('elite-glow');
+      return;
+    }
+
     // AHS endpoint returns {agent_health_score, grade, dimensions, patterns_detected} — handle specially
     if (r.agent_health_score !== undefined && r.dimensions !== undefined) {
       const ahs = r.agent_health_score;

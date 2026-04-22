@@ -504,6 +504,121 @@ def _trust_routing(grade_letter: str) -> str:
     return "reject"
 
 
+_VALID_GRADES = frozenset({"A", "B", "C", "D", "E", "F"})
+
+
+def _trust_routing_with_policy(
+    grade_letter: str,
+    policy: dict | None = None,
+    is_allowlisted: bool = False,
+) -> str:
+    """Map AHS grade to routing recommendation using an integrator's custom policy.
+
+    If is_allowlisted is True, always returns 'instant_settle' (bypass).
+    If policy is None, falls back to the default hardcoded behavior.
+    """
+    if is_allowlisted:
+        return "instant_settle"
+    if policy is None:
+        return _trust_routing(grade_letter)
+
+    instant = set(g.strip() for g in policy.get("instant_grades", "A,B").split(",") if g.strip())
+    escrow = set(g.strip() for g in policy.get("escrow_grades", "C").split(",") if g.strip())
+
+    if grade_letter in instant:
+        return "instant_settle"
+    if not policy.get("escrow_disabled") and grade_letter in escrow:
+        return "escrow"
+    return "reject"
+
+
+def _get_x402_payer(request: Request) -> str | None:
+    """Extract the payer wallet address from an x402 payment payload (if any)."""
+    payload = getattr(getattr(request, "state", None), "payment_payload", None)
+    if payload is None:
+        return None
+    raw = payload.payload  # dict
+    auth = raw.get("authorization") or raw.get("permit2Authorization") or {}
+    return auth.get("from")
+
+
+import re as _re
+_ETH_ADDR_RE = _re.compile(r"^0x[0-9a-fA-F]{40}$")
+
+
+def _resolve_policy_owner(request: Request) -> tuple[str, str | None]:
+    """Resolve the policy owner ID and caller address from the request.
+
+    API key callers: owner_id = key_hash, caller_address = None
+    x402 callers: owner_id = lowercased payer wallet, caller_address = same
+
+    Returns (owner_id, caller_address).
+    Raises HTTPException 401 if neither auth path is present.
+    """
+    fiat_key = validate_fiat_request(request)
+    if fiat_key:
+        return fiat_key["key_hash"], None
+    payer = _get_x402_payer(request)
+    if payer:
+        return payer.lower(), payer.lower()
+    raise HTTPException(status_code=401, detail="X-API-Key or x402 payment required")
+
+
+def _validate_routing_policy(
+    body: "RoutingPolicyRequest",
+    caller_address: str | None,
+) -> None:
+    """Validate a routing policy request. Raises HTTPException 400 on invalid input."""
+    all_grades = body.instant_grades + body.escrow_grades + body.reject_grades
+
+    # All grades must be valid letters
+    for g in all_grades:
+        if g not in _VALID_GRADES:
+            raise HTTPException(400, f"Invalid grade '{g}'. Must be one of A, B, C, D, E, F")
+
+    # No duplicate grades across categories
+    if len(all_grades) != len(set(all_grades)):
+        raise HTTPException(400, "Grade appears in multiple categories")
+
+    # All 6 grades must be covered
+    if set(all_grades) != _VALID_GRADES:
+        missing = _VALID_GRADES - set(all_grades)
+        raise HTTPException(400, f"All 6 grades must be assigned. Missing: {', '.join(sorted(missing))}")
+
+    # escrow_disabled consistency
+    if body.escrow_disabled and body.escrow_grades:
+        raise HTTPException(400, "escrow_disabled=true but escrow_grades is non-empty. Move escrow grades to reject_grades.")
+    if not body.escrow_disabled and not body.escrow_grades:
+        raise HTTPException(400, "escrow_grades is empty but escrow_disabled=false. Set escrow_disabled=true for binary mode.")
+
+    # Allowlist validation
+    if body.allowlist is not None:
+        if len(body.allowlist) > 1000:
+            raise HTTPException(400, "Allowlist exceeds maximum of 1000 addresses")
+
+        for addr in body.allowlist:
+            if not _ETH_ADDR_RE.match(addr):
+                raise HTTPException(400, f"Invalid Ethereum address in allowlist: {addr}")
+
+            # Self-allowlist restriction
+            if caller_address and addr.lower() == caller_address.lower():
+                raise HTTPException(400, "Cannot add your own wallet address to the allowlist")
+
+            # Grade floor check: only C or above
+            record = scan_db.get_latest_ahs_for_address(addr)
+            if record is None:
+                raise HTTPException(
+                    400,
+                    f"Address {addr} has no AHS score. Only addresses with Grade C or above can be allowlisted.",
+                )
+            grade_letter = (record["latest_grade"] or "F").split()[0]
+            if grade_letter not in ("A", "B", "C"):
+                raise HTTPException(
+                    400,
+                    f"Address {addr} has Grade {grade_letter}. Only Grade C or above can be allowlisted.",
+                )
+
+
 # -- AHS Models --------------------------------------------------------------
 
 class AHSDimensionScore(BaseModel):
@@ -586,6 +701,27 @@ class TrustRouteResponse(BaseModel):
     confidence: str = Field(description="Score confidence level", examples=["high"])
     scored_at: str = Field(description="ISO 8601 timestamp of the cached score", examples=["2025-04-06T10:00:00Z"])
     stale: bool = Field(description="True if the cached score is older than 24 hours", examples=[False])
+    policy_applied: bool = Field(default=False, description="True if a custom routing policy was used for this recommendation")
+    allowlisted: bool = Field(default=False, description="True if this address is in the caller's allowlist (instant_settle bypass)")
+
+
+# -- Routing Policy models ---------------------------------------------------
+
+class RoutingPolicyRequest(BaseModel):
+    instant_grades: list[str] = Field(description="Grades that map to instant_settle", examples=[["A", "B"]])
+    escrow_grades: list[str] = Field(description="Grades that map to escrow", examples=[["C"]])
+    reject_grades: list[str] = Field(description="Grades that map to reject", examples=[["D", "E", "F"]])
+    escrow_disabled: bool = Field(default=False, description="If true, escrow grades fall through to reject (binary mode)")
+    allowlist: Optional[list[str]] = Field(default=None, description="Wallet addresses to bypass routing (always instant_settle). Max 1000.")
+
+
+class RoutingPolicyResponse(BaseModel):
+    instant_grades: list[str] = Field(description="Grades that map to instant_settle")
+    escrow_grades: list[str] = Field(description="Grades that map to escrow")
+    reject_grades: list[str] = Field(description="Grades that map to reject")
+    escrow_disabled: bool = Field(description="Binary mode — no escrow tier")
+    allowlist_count: int = Field(description="Number of addresses in the allowlist")
+    updated_at: str = Field(description="ISO 8601 timestamp of last policy update")
 
 
 # -- Report Card models ------------------------------------------------------
@@ -1552,7 +1688,7 @@ class AddressValidationMiddleware:
         "/alerts/status/", "/alerts/unsubscribe/", "/report-card/",
     ], key=len, reverse=True))
     # Exact paths under address prefixes that are NOT address endpoints
-    _SKIP_PATHS = frozenset({"/ahs/batch"})
+    _SKIP_PATHS = frozenset({"/ahs/batch", "/ahs/route/policy"})
 
     def __init__(self, app):
         self.app = app
@@ -2524,6 +2660,21 @@ x402_routes = {
             "Trust routing signal for agent wallets. Returns a lightweight "
             "routing recommendation (instant_settle / escrow / reject) based "
             "on the most recent AHS grade."
+        ),
+    ),
+    "PUT /ahs/route/policy": RouteConfig(
+        accepts=[
+            PaymentOption(
+                scheme="exact",
+                pay_to=PAYMENT_ADDRESS,
+                price="$0.01",
+                network=NETWORK,
+            ),
+        ],
+        mime_type="application/json",
+        description=(
+            "Configure custom trust routing policy. Set grade-to-action mappings "
+            "and manage an address allowlist for instant_settle bypass."
         ),
     ),
     "POST /ahs/batch": RouteConfig(
@@ -4078,6 +4229,99 @@ async def get_ahs_report(address: WalletAddress, request: Request):
     return AHSResponse(status="ok", report=report)
 
 
+# ── AHS Routing Policy endpoints ──────────────────────────────────────────
+# IMPORTANT: These must be registered BEFORE /ahs/route/{address} so FastAPI
+# does not capture "policy" as an address parameter.
+
+
+@app.get("/ahs/route/policy", response_model=RoutingPolicyResponse, tags=["Health & Hygiene"])
+@limiter.limit("60/minute")
+async def get_routing_policy(request: Request):
+    """Return the caller's current routing policy configuration.
+
+    Requires X-API-Key or x402 payment for authentication. Returns default
+    thresholds if no custom policy has been configured.
+    """
+    owner_id, _ = _resolve_policy_owner(request)
+
+    policy = await asyncio.get_running_loop().run_in_executor(
+        None, scan_db.get_routing_policy, owner_id,
+    )
+    allowlist = await asyncio.get_running_loop().run_in_executor(
+        None, scan_db.get_routing_allowlist, owner_id,
+    )
+
+    if policy is None:
+        # Return defaults
+        return RoutingPolicyResponse(
+            instant_grades=["A", "B"],
+            escrow_grades=["C"],
+            reject_grades=["D", "E", "F"],
+            escrow_disabled=False,
+            allowlist_count=len(allowlist),
+            updated_at="",
+        )
+
+    return RoutingPolicyResponse(
+        instant_grades=[g.strip() for g in policy["instant_grades"].split(",") if g.strip()],
+        escrow_grades=[g.strip() for g in policy["escrow_grades"].split(",") if g.strip()],
+        reject_grades=[g.strip() for g in policy["reject_grades"].split(",") if g.strip()],
+        escrow_disabled=bool(policy["escrow_disabled"]),
+        allowlist_count=len(allowlist),
+        updated_at=policy["updated_at"],
+    )
+
+
+@app.put("/ahs/route/policy", response_model=RoutingPolicyResponse, tags=["Health & Hygiene"])
+@limiter.limit("20/minute")
+async def put_routing_policy(body: RoutingPolicyRequest, request: Request):
+    """Create or update the caller's routing policy.
+
+    Requires X-API-Key or x402 payment ($0.01). Validates that:
+    - All 6 grades (A-F) are assigned to exactly one category
+    - escrow_disabled consistency (no escrow grades when disabled)
+    - Allowlist addresses are valid, max 1000
+    - No self-allowlisting (caller's own address)
+    - Allowlisted addresses must have AHS Grade C or above
+    """
+    owner_id, caller_address = _resolve_policy_owner(request)
+    fiat_key = validate_fiat_request(request)
+    if fiat_key:
+        consume_api_key(fiat_key, "ahs/route/policy", request=request)
+
+    _validate_routing_policy(body, caller_address)
+
+    instant_str = ",".join(body.instant_grades)
+    escrow_str = ",".join(body.escrow_grades)
+    reject_str = ",".join(body.reject_grades)
+
+    policy = await asyncio.get_running_loop().run_in_executor(
+        None,
+        scan_db.upsert_routing_policy,
+        owner_id, instant_str, escrow_str, reject_str, body.escrow_disabled,
+    )
+
+    allowlist_count = 0
+    if body.allowlist is not None:
+        allowlist_count = await asyncio.get_running_loop().run_in_executor(
+            None, scan_db.set_routing_allowlist, owner_id, body.allowlist,
+        )
+    else:
+        existing = await asyncio.get_running_loop().run_in_executor(
+            None, scan_db.get_routing_allowlist, owner_id,
+        )
+        allowlist_count = len(existing)
+
+    return RoutingPolicyResponse(
+        instant_grades=body.instant_grades,
+        escrow_grades=body.escrow_grades,
+        reject_grades=body.reject_grades,
+        escrow_disabled=body.escrow_disabled,
+        allowlist_count=allowlist_count,
+        updated_at=policy["updated_at"],
+    )
+
+
 # ── AHS Trust Route endpoint ──────────────────────────────────────────────
 
 
@@ -4110,6 +4354,26 @@ async def get_trust_route(address: WalletAddress, request: Request):
                 None, scan_db.increment_shield_usage, key_hash,
             )
 
+    # Resolve caller's routing policy (if any)
+    routing_policy = None
+    is_allowlisted = False
+    owner_id = None
+    if fiat_key:
+        owner_id = fiat_key["key_hash"]
+    else:
+        payer = _get_x402_payer(request)
+        if payer:
+            owner_id = payer.lower()
+
+    if owner_id:
+        routing_policy = await asyncio.get_running_loop().run_in_executor(
+            None, scan_db.get_routing_policy, owner_id,
+        )
+        if routing_policy:
+            is_allowlisted = await asyncio.get_running_loop().run_in_executor(
+                None, scan_db.is_address_allowlisted, owner_id, address,
+            )
+
     record = await asyncio.get_running_loop().run_in_executor(
         None, scan_db.get_latest_ahs_for_address, address,
     )
@@ -4133,10 +4397,14 @@ async def get_trust_route(address: WalletAddress, request: Request):
         address=record["address"],
         agent_health_score=record["latest_ahs"],
         grade=record["latest_grade"],
-        routing_recommendation=_trust_routing(grade_letter),
+        routing_recommendation=_trust_routing_with_policy(
+            grade_letter, routing_policy, is_allowlisted,
+        ),
         confidence=record.get("confidence") or "unknown",
         scored_at=scored_at,
         stale=stale,
+        policy_applied=routing_policy is not None,
+        allowlisted=is_allowlisted,
     )
 
 

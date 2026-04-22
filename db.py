@@ -17,7 +17,7 @@ logger = logging.getLogger("ahm.db")
 
 DB_PATH = os.getenv("DB_PATH", "./ahm_history.db")
 
-_SCHEMA_VERSION = 8
+_SCHEMA_VERSION = 9
 
 _SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS scans (
@@ -154,6 +154,30 @@ CREATE TABLE IF NOT EXISTS shield_subscriptions (
 CREATE INDEX IF NOT EXISTS idx_shield_subs_key ON shield_subscriptions(api_key_hash);
 CREATE INDEX IF NOT EXISTS idx_shield_subs_stripe ON shield_subscriptions(stripe_subscription_id);
 CREATE INDEX IF NOT EXISTS idx_shield_subs_status ON shield_subscriptions(status);
+
+CREATE TABLE IF NOT EXISTS routing_policies (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    owner_id        TEXT UNIQUE NOT NULL,
+    instant_grades  TEXT NOT NULL DEFAULT 'A,B',
+    escrow_grades   TEXT NOT NULL DEFAULT 'C',
+    reject_grades   TEXT NOT NULL DEFAULT 'D,E,F',
+    escrow_disabled INTEGER NOT NULL DEFAULT 0,
+    created_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+    updated_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_routing_policies_owner ON routing_policies(owner_id);
+
+CREATE TABLE IF NOT EXISTS routing_allowlist (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    owner_id        TEXT NOT NULL,
+    address         TEXT NOT NULL,
+    created_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+    UNIQUE(owner_id, address)
+);
+
+CREATE INDEX IF NOT EXISTS idx_routing_allowlist_owner ON routing_allowlist(owner_id);
+CREATE INDEX IF NOT EXISTS idx_routing_allowlist_addr ON routing_allowlist(address);
 """
 
 
@@ -232,6 +256,10 @@ def init_db():
                 conn.execute("ALTER TABLE scans ADD COLUMN shadow_signals_json TEXT")
             except sqlite3.OperationalError:
                 pass  # Column already exists
+
+        # v9: Add routing_policies and routing_allowlist tables for
+        # per-integrator configurable trust routing thresholds.
+        # No ALTER needed — tables are created by CREATE TABLE IF NOT EXISTS.
 
         if current < _SCHEMA_VERSION:
             conn.execute("INSERT INTO schema_version (version) VALUES (?)", (_SCHEMA_VERSION,))
@@ -1056,6 +1084,103 @@ def update_shield_subscription_status(stripe_subscription_id: str, status: str) 
         if updated:
             logger.info("Shield subscription %s -> %s", stripe_subscription_id, status)
         return updated
+    finally:
+        conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Routing policy CRUD
+# ---------------------------------------------------------------------------
+
+
+def get_routing_policy(owner_id: str) -> dict | None:
+    """Return the routing policy for an owner (API key hash or wallet address), or None."""
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT * FROM routing_policies WHERE owner_id = ?",
+            (owner_id,),
+        ).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def upsert_routing_policy(
+    owner_id: str,
+    instant_grades: str = "A,B",
+    escrow_grades: str = "C",
+    reject_grades: str = "D,E,F",
+    escrow_disabled: bool = False,
+) -> dict:
+    """Create or update the routing policy for an owner. Returns the policy dict."""
+    now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    conn = get_connection()
+    try:
+        conn.execute(
+            """INSERT INTO routing_policies
+               (owner_id, instant_grades, escrow_grades, reject_grades,
+                escrow_disabled, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(owner_id) DO UPDATE SET
+                   instant_grades = excluded.instant_grades,
+                   escrow_grades = excluded.escrow_grades,
+                   reject_grades = excluded.reject_grades,
+                   escrow_disabled = excluded.escrow_disabled,
+                   updated_at = excluded.updated_at""",
+            (owner_id, instant_grades, escrow_grades, reject_grades,
+             int(escrow_disabled), now_iso, now_iso),
+        )
+        conn.commit()
+        row = conn.execute(
+            "SELECT * FROM routing_policies WHERE owner_id = ?",
+            (owner_id,),
+        ).fetchone()
+        return dict(row)
+    finally:
+        conn.close()
+
+
+def get_routing_allowlist(owner_id: str) -> list[str]:
+    """Return all allowlisted addresses for an owner."""
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            "SELECT address FROM routing_allowlist WHERE owner_id = ? ORDER BY created_at",
+            (owner_id,),
+        ).fetchall()
+        return [r["address"] for r in rows]
+    finally:
+        conn.close()
+
+
+def set_routing_allowlist(owner_id: str, addresses: list[str]) -> int:
+    """Replace the entire allowlist for an owner. Returns count of addresses set."""
+    conn = get_connection()
+    try:
+        conn.execute("DELETE FROM routing_allowlist WHERE owner_id = ?", (owner_id,))
+        now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        for addr in addresses:
+            conn.execute(
+                """INSERT OR IGNORE INTO routing_allowlist (owner_id, address, created_at)
+                   VALUES (?, ?, ?)""",
+                (owner_id, addr.lower(), now_iso),
+            )
+        conn.commit()
+        return len(addresses)
+    finally:
+        conn.close()
+
+
+def is_address_allowlisted(owner_id: str, address: str) -> bool:
+    """Check if a specific address is in the allowlist for an owner."""
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT 1 FROM routing_allowlist WHERE owner_id = ? AND address = ?",
+            (owner_id, address.lower()),
+        ).fetchone()
+        return row is not None
     finally:
         conn.close()
 
