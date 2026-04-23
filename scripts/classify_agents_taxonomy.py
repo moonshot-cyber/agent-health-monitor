@@ -15,13 +15,13 @@ import os
 import sqlite3
 import sys
 import time
-import urllib.request
-import urllib.error
 from collections import Counter, defaultdict
-from datetime import datetime
+
+import requests
+from datetime import datetime, timezone
 from pathlib import Path
 
-BASESCAN_API = "https://api.basescan.org/api"
+BASESCAN_API = "https://base.blockscout.com/api"
 RATE_LIMIT_SLEEP = 0.22  # ~4.5 req/s to stay under 5/s limit
 TAXONOMY_JSON = Path(__file__).parent / "taxonomy_contracts.json"
 
@@ -58,21 +58,37 @@ def query_agents(db_path: str, sample: int) -> list[dict]:
     return rows
 
 
+_fetch_errors_logged = 0
+
 def fetch_transactions(address: str, api_key: str) -> list[dict]:
-    """Fetch transaction list from Basescan for a given address."""
-    params = (
-        f"?module=account&action=txlist&address={address}"
-        f"&sort=desc&offset=200&page=1&apikey={api_key}"
-    )
-    url = BASESCAN_API + params
+    """Fetch transaction list from Blockscout for a given address."""
+    global _fetch_errors_logged
+    params = {
+        "module": "account",
+        "action": "txlist",
+        "address": address,
+        "sort": "desc",
+        "offset": 200,
+        "page": 1,
+    }
+    if api_key:
+        params["apikey"] = api_key
     try:
-        req = urllib.request.Request(url, headers={"User-Agent": "AHM-Taxonomy-POC/1.0"})
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            data = json.loads(resp.read().decode())
+        resp = requests.get(BASESCAN_API, params=params, timeout=30)
+        resp.raise_for_status()
+        data = resp.json()
         if data.get("status") == "1" and isinstance(data.get("result"), list):
             return data["result"]
+        if _fetch_errors_logged < 3:
+            print(f"  [debug] API non-success for {address[:10]}…: status={data.get('status')} msg={data.get('message', '')[:80]}")
+            _fetch_errors_logged += 1
         return []
-    except (urllib.error.URLError, json.JSONDecodeError, TimeoutError):
+    except requests.RequestException as e:
+        if _fetch_errors_logged < 3:
+            print(f"  [debug] Request error for {address[:10]}…: {type(e).__name__}: {str(e)[:120]}")
+            _fetch_errors_logged += 1
+        return []
+    except json.JSONDecodeError:
         return []
 
 
@@ -196,7 +212,7 @@ def classify_agent(
 
 def generate_report(results: list[dict], sample_size: int, elapsed: float) -> str:
     """Generate the gap analysis report text."""
-    now = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     lines = []
     lines.append("=" * 70)
     lines.append("AHM AGENT TAXONOMY CLASSIFICATION — POC REPORT")
@@ -315,9 +331,6 @@ def main():
     args = parser.parse_args()
 
     api_key = args.api_key or os.environ.get("BASESCAN_API_KEY", "")
-    if not api_key:
-        print("ERROR: No Basescan API key. Use --api-key or set BASESCAN_API_KEY", file=sys.stderr)
-        sys.exit(1)
 
     if not os.path.exists(args.db):
         print(f"ERROR: Database not found: {args.db}", file=sys.stderr)
@@ -361,7 +374,7 @@ def main():
     # Write report
     docs_dir = Path(__file__).parent.parent / "docs"
     docs_dir.mkdir(exist_ok=True)
-    date_str = datetime.utcnow().strftime("%Y%m%d")
+    date_str = datetime.now(timezone.utc).strftime("%Y%m%d")
     report_path = docs_dir / f"taxonomy-poc-report-{date_str}.txt"
     with open(report_path, "w") as f:
         f.write(report)
