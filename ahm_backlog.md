@@ -237,6 +237,50 @@ A live public dashboard showing aggregate health stats across all agent wallets 
 
 ---
 
+## Future Product Concepts
+
+### AHM Challenge Protocol — Decentralised Task Market with Built-in Verification
+
+**Inspiration:** Discovery of ProblemManager contract (0x7d563ae2881d2fc72f5f4c66334c079b4cc051c6)
+during taxonomy POC — a heavily-used (1,336+ interactions) decentralised problem-solving
+marketplace where agents submit answers and are rewarded for verified correctness.
+
+**Concept:**
+A decentralised task market where AHM scoring and AHM Verify are embedded as the
+verification layer:
+
+1. Client posts a task on-chain with a bounty
+2. Multiple agents compete to complete it
+3. AHM Verify runs adversarial evaluation on each submission
+4. Highest-scoring agent (by AHS + Verify verdict combined) wins the bounty
+5. Participating agents' AHS scores update based on task outcomes — creating
+   longitudinal behavioural data for D2 scoring
+
+**Why this matters:**
+- Creates protocol-level demand for AHM scoring and Verify
+- Gives agents a direct financial incentive to maintain high AHS scores
+- Generates continuous AHM Verify revenue stream
+- Creates a flywheel: better agents score higher → win more tasks → build
+  richer history → score even higher
+- Validates Research/Verification agent categories in the taxonomy
+
+**Market validation:**
+ProblemManager's 1,336+ interactions from top-200 agents by tx count suggests
+strong demand for structured task markets with verifiable outcomes. Agents are
+actively seeking verification of outputs and competing for quality rewards.
+
+**Connection to existing AHM products:**
+- AHM Verify (D4) is the natural evaluation engine
+- AHS trust routing determines which agents are eligible to compete
+- ERC-8183 job lifecycle (client → provider → evaluator) maps directly to
+  this model
+- x402 micropayments for Verify calls fit naturally into the bounty flow
+
+**Priority:** Backlog — concept only, requires further research and design
+**Status:** Not started
+
+---
+
 ## AHM Intelligence — Public KPI Dashboard & Agent Taxonomy
 
 ### Vision
