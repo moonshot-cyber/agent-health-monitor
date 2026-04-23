@@ -2166,7 +2166,7 @@ def _calc_session_continuity_score(
     """
     _SESSION_GAP = 300       # 5 minutes — max gap between txs in one session
     _MIN_SESSION_SIZE = 3    # sessions shorter than this are ignored
-    _MIN_TX_COUNT = 20       # wallet must have 20+ txs to be scored
+    _MIN_TX_COUNT = 10       # wallet must have 10+ txs to be scored
     _MIN_SESSIONS = 3        # need 3+ detected sessions to score
     _SILENCE_AFTER = 1800    # 30 minutes of silence = abrupt end
 
