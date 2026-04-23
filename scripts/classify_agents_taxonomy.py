@@ -21,7 +21,7 @@ import requests
 from datetime import datetime, timezone
 from pathlib import Path
 
-BASESCAN_API = "https://api.basescan.org/api"
+BASESCAN_API = "https://base.blockscout.com/api"
 RATE_LIMIT_SLEEP = 0.22  # ~4.5 req/s to stay under 5/s limit
 TAXONOMY_JSON = Path(__file__).parent / "taxonomy_contracts.json"
 
@@ -58,24 +58,37 @@ def query_agents(db_path: str, sample: int) -> list[dict]:
     return rows
 
 
+_fetch_errors_logged = 0
+
 def fetch_transactions(address: str, api_key: str) -> list[dict]:
-    """Fetch transaction list from Basescan for a given address."""
+    """Fetch transaction list from Blockscout for a given address."""
+    global _fetch_errors_logged
+    params = {
+        "module": "account",
+        "action": "txlist",
+        "address": address,
+        "sort": "desc",
+        "offset": 200,
+        "page": 1,
+    }
+    if api_key:
+        params["apikey"] = api_key
     try:
-        resp = requests.get(BASESCAN_API, params={
-            "module": "account",
-            "action": "txlist",
-            "address": address,
-            "sort": "desc",
-            "offset": 200,
-            "page": 1,
-            "apikey": api_key,
-        }, timeout=15)
+        resp = requests.get(BASESCAN_API, params=params, timeout=30)
         resp.raise_for_status()
         data = resp.json()
         if data.get("status") == "1" and isinstance(data.get("result"), list):
             return data["result"]
+        if _fetch_errors_logged < 3:
+            print(f"  [debug] API non-success for {address[:10]}…: status={data.get('status')} msg={data.get('message', '')[:80]}")
+            _fetch_errors_logged += 1
         return []
-    except (requests.RequestException, json.JSONDecodeError):
+    except requests.RequestException as e:
+        if _fetch_errors_logged < 3:
+            print(f"  [debug] Request error for {address[:10]}…: {type(e).__name__}: {str(e)[:120]}")
+            _fetch_errors_logged += 1
+        return []
+    except json.JSONDecodeError:
         return []
 
 
@@ -318,9 +331,6 @@ def main():
     args = parser.parse_args()
 
     api_key = args.api_key or os.environ.get("BASESCAN_API_KEY", "")
-    if not api_key:
-        print("ERROR: No Basescan API key. Use --api-key or set BASESCAN_API_KEY", file=sys.stderr)
-        sys.exit(1)
 
     if not os.path.exists(args.db):
         print(f"ERROR: Database not found: {args.db}", file=sys.stderr)
