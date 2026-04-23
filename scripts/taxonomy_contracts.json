@@ -31,7 +31,10 @@
 
     "0x00000000000000adc04c56bf30ac9d3c0aaf14dc": {"category": "Commerce Agents", "label": "Seaport (OpenSea)"},
 
-    "0x0b3e328455c4059eeb9e3f84b5543f74e24e7e1b": {"category": "Orchestration Agents", "label": "$VIRTUAL token"}
+    "0x0b3e328455c4059eeb9e3f84b5543f74e24e7e1b": {"category": "Orchestration Agents", "label": "$VIRTUAL token"},
+
+    "0x8004a169fb4a3325136eb29fa0ceb6d2e539a432": {"category": "Identity & Trust Agents", "label": "Identity Registry"},
+    "0x8004baa17c55a88189ae136b182e5fda19de9b63": {"category": "Identity & Trust Agents", "label": "Identity Registry 2"}
   },
   "subcategory_signals": {
     "dex": ["0x3fc91a3afd70395cd496c647d5a6cc9d4b2b7fad", "0x198ef79f1f515f02dfe9e3115ed9fc07183f02fc", "0xcf77a3ba9a5ca399b7c97c74d54e5b1beb874e43", "0xdef1c0ded9bec7f1a1670819833240f027b25eff"],
