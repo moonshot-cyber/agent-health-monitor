@@ -1,0 +1,41 @@
+{
+  "_meta": {
+    "description": "Base mainnet contract → taxonomy category lookup table",
+    "version": "1.0",
+    "last_updated": "2026-04-23",
+    "notes": "ACP v2 deploys per-job contracts — $VIRTUAL token is proxy signal for Orchestration"
+  },
+  "contracts": {
+    "0x3fc91a3afd70395cd496c647d5a6cc9d4b2b7fad": {"category": "Financial Agents", "label": "Uniswap Universal Router"},
+    "0x198ef79f1f515f02dfe9e3115ed9fc07183f02fc": {"category": "Financial Agents", "label": "Uniswap Universal Router 2"},
+    "0xcf77a3ba9a5ca399b7c97c74d54e5b1beb874e43": {"category": "Financial Agents", "label": "Aerodrome Router"},
+    "0xdef1c0ded9bec7f1a1670819833240f027b25eff": {"category": "Financial Agents", "label": "0x Exchange Proxy"},
+    "0xa238dd80c259a72e81d7e4664a9801593f98d1c5": {"category": "Financial Agents", "label": "Aave v3 Pool"},
+    "0xb125e6687d4313864e53df431d5425969c15eb2f": {"category": "Financial Agents", "label": "Compound v3 cUSDCv3"},
+    "0x46e6b214b524310239732d51387075e0e70970bf": {"category": "Financial Agents", "label": "Compound v3 cWETHv3"},
+    "0xbbbbbbbbbb9cc5e90e3b3af64bdaf62c37eeffcb": {"category": "Financial Agents", "label": "Morpho Blue"},
+    "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913": {"category": "Financial Agents", "label": "USDC"},
+    "0x4200000000000000000000000000000000000006": {"category": "Financial Agents", "label": "WETH"},
+    "0x4ed4e862860bed51a9570b96d89af5e1b0efefed": {"category": "Financial Agents", "label": "DEGEN token"},
+    "0x2ae3f1ec7f1f5012cfeab0185bfc7aa3cf0dec22": {"category": "Financial Agents", "label": "Coinbase Wrapped Staked ETH"},
+    "0x50c5725949a6f0c72e6c4a641f24049a917db0cb": {"category": "Financial Agents", "label": "DAI on Base"},
+
+    "0x71041dddad3595f9ced3dccfbe3d1f4b0a16bb70": {"category": "Intelligence & Analytics", "label": "Chainlink ETH/USD Feed"},
+    "0x8250f4af4b972684f7b336503e2d6dfefdeb1487a": {"category": "Intelligence & Analytics", "label": "Pyth Network"},
+    "0x3dec619dc529363767dee9e71d8dd1a5bc270d76": {"category": "Intelligence & Analytics", "label": "API3 ServerV1"},
+
+    "0x777777c338d93e2c7adf08d102d45ca7cc4ed021": {"category": "Creative Agents", "label": "Zora 1155 Factory"},
+
+    "0x4200000000000000000000000000000000000021": {"category": "Verification Agents", "label": "EAS Attestation Service"},
+    "0x4200000000000000000000000000000000000020": {"category": "Verification Agents", "label": "EAS Schema Registry"},
+
+    "0x00000000000000adc04c56bf30ac9d3c0aaf14dc": {"category": "Commerce Agents", "label": "Seaport (OpenSea)"},
+
+    "0x0b3e328455c4059eeb9e3f84b5543f74e24e7e1b": {"category": "Orchestration Agents", "label": "$VIRTUAL token"}
+  },
+  "subcategory_signals": {
+    "dex": ["0x3fc91a3afd70395cd496c647d5a6cc9d4b2b7fad", "0x198ef79f1f515f02dfe9e3115ed9fc07183f02fc", "0xcf77a3ba9a5ca399b7c97c74d54e5b1beb874e43", "0xdef1c0ded9bec7f1a1670819833240f027b25eff"],
+    "oracle": ["0x71041dddad3595f9ced3dccfbe3d1f4b0a16bb70", "0x8250f4af4b972684f7b336503e2d6dfefdeb1487a", "0x3dec619dc529363767dee9e71d8dd1a5bc270d76"],
+    "nft_media": ["0x777777c338d93e2c7adf08d102d45ca7cc4ed021"]
+  }
+}
