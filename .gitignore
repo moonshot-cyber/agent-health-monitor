@@ -15,3 +15,5 @@ secrets/
 *.db-shm
 ahs_scoring_design.md
 _ahs_raw.json
+docs/
+*_checkpoint.json
