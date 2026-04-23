@@ -15,10 +15,10 @@ import os
 import sqlite3
 import sys
 import time
-import urllib.request
-import urllib.error
 from collections import Counter, defaultdict
-from datetime import datetime
+
+import requests
+from datetime import datetime, timezone
 from pathlib import Path
 
 BASESCAN_API = "https://api.basescan.org/api"
@@ -60,19 +60,22 @@ def query_agents(db_path: str, sample: int) -> list[dict]:
 
 def fetch_transactions(address: str, api_key: str) -> list[dict]:
     """Fetch transaction list from Basescan for a given address."""
-    params = (
-        f"?module=account&action=txlist&address={address}"
-        f"&sort=desc&offset=200&page=1&apikey={api_key}"
-    )
-    url = BASESCAN_API + params
     try:
-        req = urllib.request.Request(url, headers={"User-Agent": "AHM-Taxonomy-POC/1.0"})
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            data = json.loads(resp.read().decode())
+        resp = requests.get(BASESCAN_API, params={
+            "module": "account",
+            "action": "txlist",
+            "address": address,
+            "sort": "desc",
+            "offset": 200,
+            "page": 1,
+            "apikey": api_key,
+        }, timeout=15)
+        resp.raise_for_status()
+        data = resp.json()
         if data.get("status") == "1" and isinstance(data.get("result"), list):
             return data["result"]
         return []
-    except (urllib.error.URLError, json.JSONDecodeError, TimeoutError):
+    except (requests.RequestException, json.JSONDecodeError):
         return []
 
 
@@ -196,7 +199,7 @@ def classify_agent(
 
 def generate_report(results: list[dict], sample_size: int, elapsed: float) -> str:
     """Generate the gap analysis report text."""
-    now = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     lines = []
     lines.append("=" * 70)
     lines.append("AHM AGENT TAXONOMY CLASSIFICATION — POC REPORT")
@@ -361,7 +364,7 @@ def main():
     # Write report
     docs_dir = Path(__file__).parent.parent / "docs"
     docs_dir.mkdir(exist_ok=True)
-    date_str = datetime.utcnow().strftime("%Y%m%d")
+    date_str = datetime.now(timezone.utc).strftime("%Y%m%d")
     report_path = docs_dir / f"taxonomy-poc-report-{date_str}.txt"
     with open(report_path, "w") as f:
         f.write(report)
