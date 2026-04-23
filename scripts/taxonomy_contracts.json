@@ -28,6 +28,7 @@
 
     "0x4200000000000000000000000000000000000021": {"category": "Verification Agents", "label": "EAS Attestation Service"},
     "0x4200000000000000000000000000000000000020": {"category": "Verification Agents", "label": "EAS Schema Registry"},
+    "0x7d563ae2881d2fc72f5f4c66334c079b4cc051c6": {"category": "Verification Agents", "label": "ProblemManager (decentralised problem-solving marketplace)"},
 
     "0x00000000000000adc04c56bf30ac9d3c0aaf14dc": {"category": "Commerce Agents", "label": "Seaport (OpenSea)"},
 
