@@ -92,6 +92,8 @@ Four of ten taxonomy categories have on-chain representation in the top-200 samp
 
 **Single-chain limitation:** Classification uses Base mainnet `txlist` only. Agents active on other chains or interacting primarily via token transfers (`tokentx`) or internal transactions (`txlistinternal`) are not captured.
 
+**Registry API enrichment (Phase 2) — Finding:** The Virtuals/ACP API enrichment approach was attempted (April 2026) but produced only 2 matches out of 958 AHM-scanned agents. Root cause: AHM's current agent population was sourced from Arc and Celo on-chain registries, not the Virtuals public API, so wallet addresses do not overlap between the two datasets. The Olas marketplace API (`marketplace.olas.network/api/services`) returned no usable metadata — the `metadata` field is consistently empty across all services. Registry metadata enrichment via external APIs is not a viable enrichment path for AHM's current agent population.
+
 ---
 
 ## 6. Recommended Next Steps
@@ -100,15 +102,15 @@ Four of ten taxonomy categories have on-chain representation in the top-200 samp
 - Random sample across all AHS grades (not just top-by-tx-count) to surface non-Financial categories
 - Separate run for agents with tx_count 5-50 to find Research, Creative, and Infrastructure agents
 
-**Phase 3 — Virtuals API enrichment:**
-- Query `app.virtuals.io/acp` for ACP agent self-described categories
-- Map ACP categories to taxonomy categories for the 274 Orchestration-defaulted agents
-- Would significantly improve Orchestration sub-classification
-
-**Phase 4 — LLM classifier:**
+**Phase 3 — LLM classifier** (promoted from Phase 4 — replaces Virtuals API enrichment):
 - Train an LLM classifier on the labelled seed set (25 contracts, 123 classified agents) to classify at scale
 - Use contract interaction patterns + registry metadata as features
 - Target agents where the lookup table has no match
+- Recommended alternative to registry API enrichment, which was attempted and found non-viable
+
+**Phase 4 — Contract interaction expansion:**
+- Continue expanding `taxonomy_contracts.json` through iterative gap analysis
+- Remains the most reliable enrichment method — 61.5% coverage from just 25 contracts
 
 **Phase 5 — DB schema integration:**
 - Store taxonomy classifications in the `scans` table for intelligence dashboard integration
