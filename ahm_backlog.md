@@ -549,36 +549,18 @@ onward every AHS scan persists the full shadow-signals payload (including
 `session_continuity_score`, `abrupt_sessions`, `budget_exhaustion_count`,
 `total_sessions`, `avg_session_length`, and `shadow_patterns`).
 
-### Session Continuity Shadow Mode Review — 21 April 2026 (next gate)
+### Session Continuity Shadow Mode — DEPRIORITISED (April 2026)
 
-Re-run the review after a 2-week burn-in window with the persistence patch live.
+**Status:** DEPRIORITISED — April 2026
 
-**Prerequisites before running this gate:**
-- [x] Persistence patch (`feat/d2-shadow-persistence`) merged and deployed
-- [ ] At least 2 weeks of `shadow_signals_json` data populated in production
-- [ ] **Smart-contract wallet coverage decision** — `calculate_d2_score_from_transfers()`
-      hardcodes `session_continuity_score: None` because token-transfer rows lack
-      `isError`/`txreceipt_status`. Before promoting the signal into live D2
-      weighting we need to either (a) extend the signal to the token-transfers
-      path, or (b) explicitly document that session-continuity only applies to
-      EOA-with-history wallets and gate the new D2 weight on
-      `d2_data_source == "txlist"`. The current "silently None" behaviour will
-      become a bug the moment the signal is load-bearing.
-
-**Checklist (re-run when prerequisites met):**
-- [ ] Query `scans.shadow_signals_json` for distribution of `session_continuity_score`
-      across all wallets, broken out by `d2_data_source` (txlist vs tokentx)
-- [ ] Confirm coverage rate — what % of AHS scans produced a non-None score?
-      What % were excluded by the ≥20-tx / ≥3-session gating in
-      `_calc_session_continuity_score`?
-- [ ] Confirm score distribution is stable (not causing unexpected AHS shifts)
-- [ ] Check how many wallets are triggering Budget Exhaustion shadow pattern
-- [ ] Compute correlation between `session_continuity_score` and live `d2_score`
-      on the same wallet — is it adding signal or duplicating existing D2 components?
-- [ ] If distribution looks stable AND correlation is low enough to add signal,
-      implement live D2 weighting (weight ~0.10, redistribute from
-      `timing_regularity` and `retry_storm`)
-- [ ] Update AHS model version to AHS-v2 when promoted to live
+**Reason:** Coverage remained minimal despite two fix attempts (shadow wiring
+PR #109, threshold change PR #121). PR #121 (lowering `_MIN_TX_COUNT` from 20
+to 10) was reverted after a production regression — session continuity coverage
+dropped from 46 agents (0.4%) to 2 agents (0.2%) following the threshold change.
+The original design partner use case driving this investigation is no longer
+active. D2 is live and functioning with its existing signals. Session continuity
+remains architecturally sound but is not worth further investment at this time.
+Revisit if a specific commercial use case emerges.
 
 ---
 
