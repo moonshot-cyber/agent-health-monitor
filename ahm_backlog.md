@@ -383,6 +383,32 @@ Current AHM data captures wallet behaviour, financial health, and operational st
 
 ---
 
+### Taxonomy Category in AHS API Response
+
+Once taxonomy classification is productionised (Phase 5), add `taxonomy_category`
+as an optional field to the AHS API response:
+
+- Add `taxonomy_category: str | None` to `AHSReport` Pydantic model in `api.py`
+- Defaults to `None` until taxonomy classification is available for that address
+- Populated from the taxonomy classification DB table once Phase 5 is complete
+- Surface in the frontend AHS result card as a category badge
+- Include in batch endpoint response
+
+**Example response addition:**
+```json
+{
+  "ahs_score": 74,
+  "grade": "C",
+  "taxonomy_category": "Financial Agents",
+  ...
+}
+```
+
+**Priority:** Low — depends on Phase 5 taxonomy DB integration
+**Status:** Backlog
+
+---
+
 ## Market Research — 402index.io Analysis (March 2026)
 
 Full ecosystem scan of 402index.io service directory. 15,658 indexed services, but ~3,000 real unique services after removing spam (single provider "lowpaymentfee" accounts for ~10,000+ duplicate "Premium API Access" entries at $0.02/call).
