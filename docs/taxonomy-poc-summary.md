@@ -94,6 +94,10 @@ Four of ten taxonomy categories have on-chain representation in the top-200 samp
 
 **Registry API enrichment (Phase 2) — Finding:** The Virtuals/ACP API enrichment approach was attempted (April 2026) but produced only 2 matches out of 958 AHM-scanned agents. Root cause: AHM's current agent population was sourced from Arc and Celo on-chain registries, not the Virtuals public API, so wallet addresses do not overlap between the two datasets. The Olas marketplace API (`marketplace.olas.network/api/services`) returned no usable metadata — the `metadata` field is consistently empty across all services. Registry metadata enrichment via external APIs is not a viable enrichment path for AHM's current agent population.
 
+**Virtuals/ACP Agent Population — Fundamental Architecture Gap:** A spike into Virtuals factory contract event scanning confirmed that ACP agent wallets are ERC-4337 smart wallets routing through a single ACP protocol contract (`0xa6C9BA866992cfD7fd6460ba912bfa405adA9df0`) rather than having individual on-chain addresses. Factory events yield token contract addresses, not agent wallet addresses. The Virtuals/ACP ecosystem (41,946 agents) and AHM's current Arc/Celo agent population (958 agents) are completely disjoint — zero overlap confirmed. On-chain factory event scraping is not a viable enrichment path for the current agent population.
+
+The ACP API (`acpx.virtuals.io/api/agents`) has rich text fields (`description`, `jobs[]`, `offerings[]`) that could support NLP-based taxonomy classification, but only if AHM adds ACP as a new registry type with a fundamentally different data model (service-based rather than wallet-based).
+
 ---
 
 ## 6. Recommended Next Steps

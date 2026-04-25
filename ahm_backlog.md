@@ -279,6 +279,25 @@ actively seeking verification of outputs and competing for quality rewards.
 **Priority:** Backlog — concept only, requires further research and design
 **Status:** Not started
 
+### ACP/Virtuals Integration — New Registry Type (Architectural)
+
+ACP agents operate via ERC-4337 smart wallets routing through a single protocol
+contract rather than individual wallet addresses. Adding Virtuals/ACP as a registry
+source would require a fundamentally different data model — service-based scoring
+rather than wallet-based scoring.
+
+**What this would require:**
+- New scanner: `acp_service_scanner.py` — monitors ACP protocol contract
+  (`0xa6C9BA866992cfD7fd6460ba912bfa405adA9df0`) for job/service events
+- New scoring model: score agent services/jobs rather than wallet addresses
+- New DB schema: `service_scans` table alongside existing wallet-based scans
+- Taxonomy enrichment: ACP API text fields (`description`, `jobs[]`, `offerings[]`)
+  are the best classification signal — NLP classifier on free-text descriptions
+- Scale: 41,946 ACP agents available via `acpx.virtuals.io/api/agents`
+
+**Priority:** Low — significant architectural change, no immediate commercial driver
+**Status:** Backlog — awaiting commercial justification
+
 ---
 
 ## AHM Intelligence — Public KPI Dashboard & Agent Taxonomy
