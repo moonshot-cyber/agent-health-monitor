@@ -45,7 +45,7 @@
     "0x9dfad1b7102d46b1b197b90095b5c4e9f5845bba": {"category": "Creative Agents", "label": "Botto (decentralized autonomous artist)"},
     "0xc08cd26474722ce93f4d0c34d16201461c10aa8c": {"category": "Intelligence & Analytics Agents", "label": "CARV (AI data sovereignty ecosystem)"},
 
-    "0x00005ea00ac477b1030ce78506496e8c2de24bf5": {"category": "Creative Agents", "label": "SeaDrop (OpenSea NFT Drops)"},
+    "0x00005ea00ac477b1030ce78506496e8c2de24bf5": {"category": "Commerce Agents", "label": "SeaDrop (OpenSea NFT Drops)"},
 
     "0xd85ee50da419cc5af83a1e70a91d5c630b8c650a": {"category": "Intelligence & Analytics Agents", "label": "Ritual Infernet (decentralized AI compute)"},
     "0x8d871ef2826ac9001fb2e33fdd6379b6aabf449c": {"category": "Intelligence & Analytics Agents", "label": "Ritual EIP712Coordinator"}
@@ -53,6 +53,6 @@
   "subcategory_signals": {
     "dex": ["0x3fc91a3afd70395cd496c647d5a6cc9d4b2b7fad", "0x198ef79f1f515f02dfe9e3115ed9fc07183f02fc", "0xcf77a3ba9a5ca399b7c97c74d54e5b1beb874e43", "0xdef1c0ded9bec7f1a1670819833240f027b25eff"],
     "oracle": ["0x71041dddad3595f9ced3dccfbe3d1f4b0a16bb70", "0x8250f4af4b972684f7b336503e2d6dfefdeb1487a", "0x3dec619dc529363767dee9e71d8dd1a5bc270d76"],
-    "nft_media": ["0x777777c338d93e2c7adf08d102d45ca7cc4ed021", "0x00005ea00ac477b1030ce78506496e8c2de24bf5"]
+    "nft_media": ["0x777777c338d93e2c7adf08d102d45ca7cc4ed021"]
   }
 }
