@@ -36,7 +36,7 @@ def load_lookup_table(path: Path) -> tuple[dict, dict]:
 
 
 def query_agents(db_path: str, sample: int) -> list[dict]:
-    """Get top agents by tx_count from the DB."""
+    """Get a random sample of agents from the DB."""
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     cur = conn.cursor()
@@ -47,10 +47,10 @@ def query_agents(db_path: str, sample: int) -> list[dict]:
         FROM scans s
         JOIN known_wallets w ON w.address = s.address
         WHERE s.endpoint = 'ahs' AND s.ahs_score IS NOT NULL
-          AND s.tx_count >= 5
+          AND s.tx_count >= 1
         GROUP BY s.address
         HAVING MAX(s.scan_timestamp)
-        ORDER BY s.tx_count DESC
+        ORDER BY RANDOM()
         LIMIT ?
     """, (sample,))
     rows = [dict(r) for r in cur.fetchall()]
@@ -340,9 +340,9 @@ def main():
     contracts, signals = load_lookup_table(TAXONOMY_JSON)
     print(f"  {len(contracts)} contracts across categories")
 
-    print(f"Querying database for top {args.sample} agents...")
+    print(f"Querying database for random sample of {args.sample} agents...")
     agents = query_agents(args.db, args.sample)
-    print(f"  Found {len(agents)} agents with tx_count >= 5")
+    print(f"  Found {len(agents)} agents with tx_count >= 1")
 
     if not agents:
         print("No agents found. Exiting.")
