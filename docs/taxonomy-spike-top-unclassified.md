@@ -28,6 +28,17 @@ address across 17+ EVM chains (Ethereum, Base, Arbitrum, Polygon, etc.).
 Key functions observed: `mintPublic`, `mintAllowList`, `mintSigned`,
 `mintAllowedTokenHolder`, `updatePublicDrop`, `updateAllowList`.
 
+### Method Breakdown (1,000 sampled transactions via Blockscout)
+
+| Method | Selector | Count | % |
+|--------|----------|-------|---|
+| `mintPublic` | `0x161ac21f` | 987 | 98.7% |
+| `mintSigned` | `0x4b61cd6f` | 13 | 1.3% |
+
+All 1,000 transactions are **inbound** (agents calling SeaDrop), zero outbound.
+Zero seller-side methods (`updatePublicDrop`, `updateAllowList`,
+`withdrawProceeds`, etc.) were observed.
+
 ### DefiLlama
 
 No direct match for this address. OpenSea appears under "NFT Marketplace"
@@ -35,9 +46,11 @@ category but without contract-level address mapping.
 
 ### Proposed Action
 
-**Add to taxonomy** as `Creative Agents` with label "SeaDrop (OpenSea NFT Drops)".
-Agents interacting with SeaDrop are minting or managing NFT drops, which aligns
-with the Creative Agents category. Also add to `nft_media` subcategory signal.
+**Add to taxonomy** as `Commerce Agents` with label "SeaDrop (OpenSea NFT Drops)".
+The 100% buyer-side activity (mintPublic/mintSigned, all inbound) indicates
+automated NFT purchasing rather than autonomous artistry. This is the first
+contract anchor in the previously-empty Commerce category, alongside the existing
+Seaport (OpenSea) entry.
 
 ---
 
@@ -156,7 +169,7 @@ truncated.
 
 | Contract | Identity | Action | Category |
 |----------|----------|--------|----------|
-| `0x00005ea0...` | SeaDrop (OpenSea) | Added to taxonomy | Creative Agents |
+| `0x00005ea0...` | SeaDrop (OpenSea) | Added to taxonomy | Commerce Agents |
 | `0xd85ee50d...` | Ritual Infernet (AI compute) | Added to taxonomy | Intelligence & Analytics Agents |
 | `0x8d871ef2...` | Ritual EIP712Coordinator | Added to taxonomy | Intelligence & Analytics Agents |
 | Cluster (Safe) | Gnosis Safe multisig wallets | NOT added -- generic infra | N/A |
