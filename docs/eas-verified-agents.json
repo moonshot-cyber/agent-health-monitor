@@ -1,0 +1,18 @@
+{
+  "source": "EAS Base mainnet trust score attestations",
+  "schema": "0x86402407ac6d3c823ea3bb44300b82011aa840ac19ef64c6f228b12fc4d60b87",
+  "retrieved": "2026-04-25",
+  "agents": [
+    {"address": "0x34e0cB55F9E181701c48448bBff323432BC6BD14", "trust_score": 56, "identity_verified": true},
+    {"address": "0x75775181080b3684Cc3be770ba070D1ECc1ec50D", "trust_score": 76, "identity_verified": true},
+    {"address": "0x3c6dB36Db432909B5e5d76F3fDF16f6426a329dd", "trust_score": 67, "identity_verified": true},
+    {"address": "0x67722c823010CEb4BED5325fE109196C0f67D053", "trust_score": 70, "identity_verified": true},
+    {"address": "0x3F5F40D8c6b7Ec6f9bf89c664cf434bc4404E726", "trust_score": 69, "identity_verified": true},
+    {"address": "0x07a54080A1120ea10cBAb226AeFACf98057aa53e", "trust_score": 77, "identity_verified": true},
+    {"address": "0xC32a21ec6d714D5Dd95a1Bc0b60ba8FA9dCABfDd", "trust_score": 76, "identity_verified": true},
+    {"address": "0xA8E23950073B9ee31433F327Ee63798939EAB0c3", "trust_score": 68, "identity_verified": true},
+    {"address": "0x999A8DBc672A0DA86471e67b9A22eA2B1c91e101", "trust_score": 74, "identity_verified": true},
+    {"address": "0x89E9E1ab11dD1B138b1dcE6d6A4a0926aaFD5029", "trust_score": 77, "identity_verified": true},
+    {"address": "0x4330Ceaf1b7E95688f8d65815F72FF50FA3f0cb8", "trust_score": 75, "identity_verified": true}
+  ]
+}

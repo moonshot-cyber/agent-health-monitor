@@ -2,8 +2,8 @@
   "_meta": {
     "description": "Base mainnet contract → taxonomy category lookup table",
     "version": "1.0",
-    "last_updated": "2026-04-23",
-    "notes": "ACP v2 deploys per-job contracts — $VIRTUAL token is proxy signal for Orchestration"
+    "last_updated": "2026-04-25",
+    "notes": "ACP v2 deploys per-job contracts — $VIRTUAL token is proxy signal for Orchestration. DefiLlama AI Agents category added 2026-04-25."
   },
   "contracts": {
     "0x3fc91a3afd70395cd496c647d5a6cc9d4b2b7fad": {"category": "Financial Agents", "label": "Uniswap Universal Router"},
@@ -36,7 +36,14 @@
     "0x0b3e328455c4059eeb9e3f84b5543f74e24e7e1b": {"category": "Orchestration Agents", "label": "$VIRTUAL token"},
 
     "0x8004a169fb4a3325136eb29fa0ceb6d2e539a432": {"category": "Identity & Trust Agents", "label": "Identity Registry"},
-    "0x8004baa17c55a88189ae136b182e5fda19de9b63": {"category": "Identity & Trust Agents", "label": "Identity Registry 2"}
+    "0x8004baa17c55a88189ae136b182e5fda19de9b63": {"category": "Identity & Trust Agents", "label": "Identity Registry 2"},
+
+    "0x590830dfdf9a3f68afcdde2694773debdf267774": {"category": "Financial Agents", "label": "Giza (autonomous DeFi strategy agents)"},
+    "0x61fac5f038515572d6f42d4bcb6b581642753d50": {"category": "Financial Agents", "label": "INFINIT (AI DeFi discovery and execution)"},
+    "0x731814e491571a2e9ee3c5b1f7f3b962ee8f4870": {"category": "Financial Agents", "label": "Vader AI (AI farming and staking agent)"},
+    "0xa26303226baa2299ada8d573a6fcd792ab1cfb07": {"category": "Orchestration Agents", "label": "Glorb (autonomous AI agent with on-chain games)"},
+    "0x9dfad1b7102d46b1b197b90095b5c4e9f5845bba": {"category": "Creative Agents", "label": "Botto (decentralized autonomous artist)"},
+    "0xc08cd26474722ce93f4d0c34d16201461c10aa8c": {"category": "Intelligence & Analytics Agents", "label": "CARV (AI data sovereignty ecosystem)"}
   },
   "subcategory_signals": {
     "dex": ["0x3fc91a3afd70395cd496c647d5a6cc9d4b2b7fad", "0x198ef79f1f515f02dfe9e3115ed9fc07183f02fc", "0xcf77a3ba9a5ca399b7c97c74d54e5b1beb874e43", "0xdef1c0ded9bec7f1a1670819833240f027b25eff"],
