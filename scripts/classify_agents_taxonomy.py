@@ -68,7 +68,7 @@ def fetch_transactions(address: str, api_key: str) -> list[dict]:
         "action": "txlist",
         "address": address,
         "sort": "desc",
-        "offset": 200,
+        "offset": 1000,
         "page": 1,
     }
     if api_key:
