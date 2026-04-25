@@ -15,5 +15,10 @@ secrets/
 *.db-shm
 ahs_scoring_design.md
 _ahs_raw.json
-docs/
+docs/*
+!docs/*-spike*.md
+!docs/*_spike*.md
+!docs/taxonomy-poc-summary.md
+!docs/d1-chainalysis-phase1-plan.md
+!docs/taxonomy-poc-report-*.txt
 *_checkpoint.json
