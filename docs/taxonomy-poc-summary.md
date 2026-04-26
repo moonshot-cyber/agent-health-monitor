@@ -1,135 +1,141 @@
-# AHM Agent Taxonomy Classification POC — Summary
+# Agent Taxonomy Classification — POC Summary
 
-> Completed 23 April 2026
+## TL;DR
 
----
-
-## 1. Objective
-
-Prove whether on-chain contract interaction patterns can reliably classify AHM-scanned agents into taxonomy categories. The POC aimed to:
-
-- Build a reusable lookup table of known Base mainnet contracts mapped to taxonomy categories
-- Classify a sample of agents by matching their transaction targets against the lookup table
-- Identify coverage gaps and enrichment opportunities through iterative gap analysis
-- Validate the taxonomy framework with real production data
+A random sample of 1,000 Base mainnet agent wallets achieved **75.7%
+classification coverage** across 6 of 10 v1 functional categories, using a
+36-contract lookup table and two registry-derived classification paths. ~54% of
+classified agents are registry-derived (ACP → Orchestration), meaning the
+contract-lookup table alone covers roughly half as many agents as the headline
+number implies. See [Findings](#findings) for the full breakdown.
 
 ---
 
-## 2. Methodology
+## Run History
 
-**Approach:** Standalone read-only script (`scripts/classify_agents_taxonomy.py`) that queries the AHM production database for agent addresses, fetches their transaction history from the Blockscout API (`base.blockscout.com/api`), and matches outgoing transaction targets against a curated lookup table (`scripts/taxonomy_contracts.json`).
+| Phase | Date | Sample Size | Selection Method | Lookup Contracts | Coverage | Categories Hit |
+|-------|------|-------------|-----------------|-----------------|----------|---------------|
+| 1 | April 2026 | 200 | Top by tx_count | 25 | 61.5% | 4 |
+| 2.0 | April 25, 2026 | 500 | Random | 31 | 75.8% | 4 |
+| 2.1 | April 25, 2026 | 1,000 | Random | 34 | 76.6% | 6 |
+| 2.2 (post offset-cap fix) | April 25, 2026 | 1,000 | Random | 34 | 75.7% | 6 |
 
-**Sample:** Top 200 agents by transaction count (tx_count >= 5), prioritising agents with the most on-chain data to classify.
-
-**Classification logic:**
-- Count interactions per known contract, aggregate by category
-- Primary category = highest interaction count
-- Confidence: HIGH (>50% of matched interactions in one category), MEDIUM (25-50%), LOW (<25%)
-- Agents with zero matches marked UNCLASSIFIABLE
-
-**Two-stage ACP classification:** Agents tagged as `acp` in `known_wallets.registries` default to Orchestration Agents, then sub-classify by DEX/oracle/NFT contract interactions if a stronger signal exists.
-
-**Iterative enrichment:** Started with 21 contracts, grew to 25 through four rounds of gap analysis — identifying the highest-interaction unmatched contracts, looking up their purpose via Blockscout API, and adding them to the lookup table.
-
----
-
-## 3. Results Summary
-
-### Coverage Progression
-
-| Run | Contracts | Classified | Unclassifiable | Coverage | Change |
-|-----|-----------|-----------|----------------|----------|--------|
-| Run 1 (baseline) | 21 | 95 | 105 | 47.5% | — |
-| Run 2 (+Identity Registry) | 23 | 106 | 94 | 53.0% | +5.5pp |
-| Run 3 (+ProblemManager) | 24 | 123 | 77 | 61.5% | +8.5pp |
-| Run 4 (+AgentCoin) | 25 | 123 | 77 | 61.5% | +0.0pp |
-
-Run 4 confirmed that AgentCoin interactions come from the same agent cohort already classified via ProblemManager — no new agents were reclassified, validating that these contracts form a single ecosystem cluster.
-
-### Final Category Distribution
-
-| Category | Agents | Share |
-|----------|--------|-------|
-| Financial Agents | 79 | 64.2% |
-| Identity & Trust Agents | 24 | 19.5% |
-| Verification Agents | 18 | 14.6% |
-| Orchestration Agents | 2 | 1.6% |
-
-Four of ten taxonomy categories have on-chain representation in the top-200 sample. All classifications are HIGH confidence (122 of 123), with 1 MEDIUM.
+**Why Phase 2.2 is the headline number.** Phase 2.1 reported 76.6% but was
+running with a hardcoded `offset=200` cap in the Blockscout API call, which
+silently truncated transaction histories for agents with more than 200
+transactions. PR #138 bumped the offset to 1,000, producing more complete
+transaction data. Phase 2.2 re-ran with the fix and dropped to 75.7% — not
+because the taxonomy regressed, but because the fuller transaction data
+resolved some spurious matches where an agent's truncated 200-transaction
+window happened to over-index on a single classified contract. The lower number
+is more honest.
 
 ---
 
-## 4. Key Discoveries
+## Methodology
 
-**ERC-8004 Identity Registry** (`0x8004a169fb4a3325136eb29fa0ceb6d2e539a432`)
-- 1,641 interactions in the sample — second largest category driver after Financial contracts
-- 24 agents classified as Identity & Trust Agents, a new taxonomy category added during the POC
-- Confirms on-chain identity registration is a significant agent activity on Base
+1. **Sample selection.** Random sample from agents with `tx_count >= 1` in the
+   AHM database (11,000+ Base mainnet agent wallets sourced from on-chain
+   registries).
 
-**ProblemManager** (`0x7d563ae2881d2fc72f5f4c66334c079b4cc051c6`)
-- Undocumented decentralised problem-solving marketplace discovered through gap analysis
-- Verified implementation contract: lottery-first verification system (create problem, submit answers, lottery selection, verify correctness, settle rewards)
-- 1,336 interactions, 18 agents classified as Verification Agents
-- Same creator (`0x74f1F654...`) as AgentCoin — forms a coherent ecosystem
-- Inspired the AHM Challenge Protocol product concept (documented in `ahm_backlog.md`)
+2. **Lookup table.** `scripts/taxonomy_contracts.json` — 36 contract entries
+   post-PR #139, covering individual contract anchors plus subcategory signals
+   for dex, oracle, and nft_media.
 
-**AgentCoin (AGC)** (`0x48778537634fa47ff9cdbfdced92f3b9db50bd97`)
-- ERC-20 reward token for ProblemManager ecosystem, 1,052 interactions
-- Added zero new classifications — confirmed same agent cohort as ProblemManager
-- Validates that ecosystem clustering works: agents in the same protocol interact with multiple contracts from that protocol
+3. **Two classification paths:**
+   - **Registry-derived:** ACP registry membership → Orchestration; ERC-8004
+     Identity Registry calls → Identity & Trust.
+   - **Contract-lookup:** Matched on the top contracts called from the agent's
+     transaction history (fetched via Blockscout `txlist` API).
 
-**Financial dominance expected:** The top-200-by-tx-count sample naturally skews toward high-frequency Financial agents (trading bots, DeFi executors). USDC alone is the primary classification signal for many agents — a single USDC interaction classifies an agent as Financial even when 190+ of its other transactions go to unmatched contracts.
+4. **Confidence bucketing:** HIGH if direct lookup match, MEDIUM if partial
+   signal, UNCLASSIFIABLE if no signal.
 
----
-
-## 5. Limitations
-
-**Sample bias:** Top-200 by transaction count skews heavily toward Financial agents (high-frequency traders transact the most). Research, Creative, Commerce, Physical World, and Infrastructure categories have zero representation — these are likely present in lower-tx-count agents or agents using different interaction patterns (e.g., token transfers, internal transactions).
-
-**ACP coverage gap:** 274 ACP-registry agents in the broader 500-agent sample were classifiable only via registry metadata (defaulting to Orchestration). Without Virtuals API enrichment, their actual functional category is unknown. ACP v2 deploys per-job contracts dynamically, making contract-based classification ineffective for this cohort.
-
-**Lookup table breadth:** 25 known contracts cover only a fraction of Base mainnet. Many agents interact exclusively with agent-specific proxy contracts or undocumented protocols. The remaining 77 unclassifiable agents each interact heavily with 1-3 unmatched contracts (typically 200 interactions with a single unknown contract).
-
-**Single-chain limitation:** Classification uses Base mainnet `txlist` only. Agents active on other chains or interacting primarily via token transfers (`tokentx`) or internal transactions (`txlistinternal`) are not captured.
-
-**Registry API enrichment (Phase 2) — Finding:** The Virtuals/ACP API enrichment approach was attempted (April 2026) but produced only 2 matches out of 958 AHM-scanned agents. Root cause: AHM's current agent population was sourced from Arc and Celo on-chain registries, not the Virtuals public API, so wallet addresses do not overlap between the two datasets. The Olas marketplace API (`marketplace.olas.network/api/services`) returned no usable metadata — the `metadata` field is consistently empty across all services. Registry metadata enrichment via external APIs is not a viable enrichment path for AHM's current agent population.
-
-**Virtuals/ACP Agent Population — Fundamental Architecture Gap:** A spike into Virtuals factory contract event scanning confirmed that ACP agent wallets are ERC-4337 smart wallets routing through a single ACP protocol contract (`0xa6C9BA866992cfD7fd6460ba912bfa405adA9df0`) rather than having individual on-chain addresses. Factory events yield token contract addresses, not agent wallet addresses. The Virtuals/ACP ecosystem (41,946 agents) and AHM's current Arc/Celo agent population (958 agents) are completely disjoint — zero overlap confirmed. On-chain factory event scraping is not a viable enrichment path for the current agent population.
-
-The ACP API (`acpx.virtuals.io/api/agents`) has rich text fields (`description`, `jobs[]`, `offerings[]`) that could support NLP-based taxonomy classification, but only if AHM adds ACP as a new registry type with a fundamentally different data model (service-based rather than wallet-based).
+5. **Classification script:** `scripts/classify_agents_taxonomy.py` with
+   `offset=1000` (per PR #138).
 
 ---
 
-## 6. Recommended Next Steps
+## Findings
 
-**Phase 2 — Broader sampling:**
-- Random sample across all AHS grades (not just top-by-tx-count) to surface non-Financial categories
-- Separate run for agents with tx_count 5-50 to find Research, Creative, and Infrastructure agents
+### Coverage Composition
 
-**Phase 3 — LLM classifier** (promoted from Phase 4 — replaces Virtuals API enrichment):
-- Train an LLM classifier on the labelled seed set (25 contracts, 123 classified agents) to classify at scale
-- Use contract interaction patterns + registry metadata as features
-- Target agents where the lookup table has no match
-- Recommended alternative to registry API enrichment, which was attempted and found non-viable
+~54% of classifications are registry-derived (ACP agents → Orchestration), with
+the remainder driven by the contract lookup table. The registry-derived share is
+high because ACP itself is large and well-indexed; this overstates how much
+"lookup table coverage" we have for non-ACP agents. Distinguishing the two is
+important for interpretation.
 
-**Phase 4 — Contract interaction expansion:**
-- Continue expanding `taxonomy_contracts.json` through iterative gap analysis
-- Remains the most reliable enrichment method — 61.5% coverage from just 25 contracts
+### Category Anchors Achieved
 
-**Phase 5 — DB schema integration:**
-- Store taxonomy classifications in the `scans` table for intelligence dashboard integration
-- Add taxonomy category to AHS API response as an optional field
-- Feed taxonomy data into AHM Intelligence dashboard for category-level analytics
+Six of ten v1 functional categories now have first-anchor contracts:
 
-**Long-term — Production pipeline:**
-- Productionise as a nightly enrichment pipeline alongside existing scans
-- Continuous lookup table expansion through automated gap analysis
+| Category | Status | Example Anchors |
+|----------|--------|----------------|
+| Orchestration | Anchored | ACP registry-derived, $VIRTUAL token, Glorb |
+| Identity & Trust | Anchored | ERC-8004 registry-derived, Identity Registry |
+| Financial | Anchored | Aerodrome, Giza, INFINIT, Vader AI, Gains Network gTrade |
+| Verification | Anchored | ProblemManager, AgentCoin, EAS |
+| Intelligence & Analytics | Anchored | Ritual Infernet + EIP712Coordinator, Olas Mech Marketplace, CARV |
+| Commerce | Anchored | Seaport, SeaDrop |
+| Research | Unanchored | — |
+| Creative | Latent | Zora 1155 Factory, Botto |
+| Infrastructure | Unanchored | — |
+| Physical World | Unanchored | — |
+
+*Latent = anchor contracts exist in the lookup table (Zora 1155 Factory, Botto)
+but no agents in the Phase 2.2 sample called them.*
+
+The three unanchored categories will likely require either different signal
+sources (off-chain identity, EAS attestations, ERC-8239 skill registry once
+deployed) or LLM-assisted classification in Phase 3.
+
+### Methodology Limitations
+
+Three known limitations, in priority order:
+
+1. **Offset cap (resolved in PR #138).** The original script used `offset=200`
+   in the Blockscout `txlist` call, which silently truncated agents with more
+   than 200 transactions. The fix bumped to `offset=1000`. Multi-page
+   pagination remains a backlog item.
+
+2. **Wallet-primitive conflation (open issue #140).** The script currently
+   outputs UNCLASSIFIABLE for both genuinely unknown agents and agents whose
+   only on-chain activity is calling a Gnosis Safe (a wallet primitive, not a
+   functional contract). Two of the three top unclassified contracts in the
+   post-fix Phase 2 run were Safes. A wallet-only output bucket is planned to
+   surface this distinction honestly.
+
+3. **Inner-call tracing not yet implemented.** Safe-mediated agent activity
+   hides the actual functional contract behind `execTransaction` calldata. The
+   Olas Mech Marketplace discovery in PR #139 demonstrated that tracing through
+   inner calldata can recover real classifications. Implementing this
+   systematically would convert wallet-only agents back into properly classified
+   ones.
 
 ---
 
-## 7. POC Verdict
+## Recommendations
 
-The approach is validated. Contract interaction patterns reliably classify agents with high confidence when the lookup table is populated. Coverage scales predictably with each new contract added. The 61.5% coverage achieved with just 25 contracts suggests 80%+ coverage is achievable with a systematic enrichment effort.
+1. **Implement wallet-only bucket (issue #140)** — small change, large honesty
+   improvement.
+2. **Inner-call tracing for Safe-mediated agents** — bigger change, recovers
+   classifications rather than just labelling them differently.
+3. **Add ERC-20 token transfer analysis** (`tokentx`) for agents with sparse
+   `txlist` matches.
+4. **Consider Phase 3 LLM classifier** with EAS-verified agents (already
+   tracked in `docs/eas-verified-agents.json`) as labelled seed set.
+
+---
+
+## Next Steps for the Public Taxonomy Page
+
+The page at `intelligence.agenthealthmonitor.xyz/taxonomy` will be updated to:
+
+- Mark each of the 10 categories as either **anchored** (with example
+  protocols) or **pending an anchor**.
+- Include a methodology note linking back to this document.
+- Reference issue #140 as the tracked next iteration.
 
 ---
 
@@ -137,7 +143,9 @@ The approach is validated. Contract interaction patterns reliably classify agent
 
 | File | Purpose |
 |------|---------|
-| `scripts/taxonomy_contracts.json` | 25-contract lookup table (Base mainnet) |
+| `scripts/taxonomy_contracts.json` | 36-contract lookup table (Base mainnet) |
 | `scripts/classify_agents_taxonomy.py` | Classification script (DB + Blockscout API) |
-| `docs/taxonomy-poc-report-20260423.txt` | Latest gap analysis report (on production server) |
 | `docs/taxonomy-poc-summary.md` | This summary document |
+| `docs/taxonomy-spike-top-unclassified.md` | Spike: top unclassified contracts (PR #137) |
+| `docs/taxonomy-spike-postfix-investigation.md` | Spike: post-offset-fix investigation (PR #139) |
+| `docs/eas-verified-agents.json` | EAS trust-score-attested agent owners (PR #135) |
