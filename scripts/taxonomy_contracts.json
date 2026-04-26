@@ -48,7 +48,10 @@
     "0x00005ea00ac477b1030ce78506496e8c2de24bf5": {"category": "Commerce Agents", "label": "SeaDrop (OpenSea NFT Drops)"},
 
     "0xd85ee50da419cc5af83a1e70a91d5c630b8c650a": {"category": "Intelligence & Analytics Agents", "label": "Ritual Infernet (decentralized AI compute)"},
-    "0x8d871ef2826ac9001fb2e33fdd6379b6aabf449c": {"category": "Intelligence & Analytics Agents", "label": "Ritual EIP712Coordinator"}
+    "0x8d871ef2826ac9001fb2e33fdd6379b6aabf449c": {"category": "Intelligence & Analytics Agents", "label": "Ritual EIP712Coordinator"},
+    "0xb55fadf1f0bb1de99c13301397c7b67fde44f6b1": {"category": "Intelligence & Analytics Agents", "label": "Olas Mech Marketplace (decentralised AI inference marketplace)"},
+
+    "0x6cd5ac19a07518a8092eeffda4f1174c72704eeb": {"category": "Financial Agents", "label": "Gains Network gTrade (leveraged trading diamond)"}
   },
   "subcategory_signals": {
     "dex": ["0x3fc91a3afd70395cd496c647d5a6cc9d4b2b7fad", "0x198ef79f1f515f02dfe9e3115ed9fc07183f02fc", "0xcf77a3ba9a5ca399b7c97c74d54e5b1beb874e43", "0xdef1c0ded9bec7f1a1670819833240f027b25eff"],
