@@ -214,6 +214,7 @@ A live public dashboard showing aggregate health stats across all agent wallets 
   3. Remove ON_CHAIN_START_BLOCK env var from Railway after Job #7 resolved (DONE Apr 9 2026)
   4. Update ARC_CONTRACT_ADDRESS in Railway env vars when new contracts are live
   5. Monitor Arc mainnet timeline — when mainnet launches, evaluator daemon needs pointing at mainnet RPC and contract addresses
+  6. Generate a fresh evaluator wallet address before mainnet migration. The current Base Sepolia evaluator key was exposed in conversational context during testnet operations on April 26 2026. Acceptable risk on testnet (negligible funds, no economic value, no real reputation stake), but mainnet must start with a clean, never-exposed key. Steps: generate new wallet, fund with ETH and VRT from a fresh source, stake on mainnet EvaluatorRegistry, update Railway env vars in the ahm-staking project, notify Bakugo32 of the new evaluator address so future job assignments route correctly. Time this with the mainnet contract addresses being published — bundle the rotation into the natural mainnet transition rather than disrupting testnet operations.
 - Arc testnet code now open source — review for wallet behaviour patterns that could feed AHM D1/D2 scoring signals
 - First noted: Apr 9 2026
 
