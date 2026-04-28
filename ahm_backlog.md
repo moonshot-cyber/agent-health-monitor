@@ -4,16 +4,15 @@
 
 ---
 
-## Current State (as of Mar 17 2026)
+## Current State (as of Apr 27 2026)
 
-- **14 endpoints** live on Base mainnet at agenthealthmonitor.xyz
-- **ERC-8004 registered** — agentId #32328 on Base mainnet
-- **Nansen integration** — 4 direct API connections (labels, counterparties, PnL, related wallets)
-- **Listed on:** Virtuals ACP (11 offerings), x402scan, Bankr Skills, agdp.io, 8004scan.io
-- **Stack:** FastAPI, x402 SDK v2, Nansen API, Blockscout API, Base Mainnet, Railway
-- **Repo:** github.com/moonshot-cyber/agent-health-monitor
-- **Calibration dataset:** 245 wallets scanned (24 seed + 26 ERC-8004 IDs 1-352 + 183 ERC-8004 IDs 30000+ + 12 Virtuals TBA shards)
-- **Cross-registry tracking:** `registries` column in `known_wallets` (schema v2), tracks erc8004/virtuals/etc per wallet
+- **14 endpoints** live on Base mainnet at agenthealthmonitor.xyz, including /ahs/batch and configurable routing via PUT /ahs/route/policy (PR #112)
+- **ERC-8004 registered** — agentId #32328; live ERC-8183 evaluator on Base Sepolia (Jobs #1, #2, #3 completed Apr 7-27 2026)
+- **Taxonomy POC complete:** 754 agents classified, 6 anchored categories, live at intelligence.agenthealthmonitor.xyz/taxonomy with methodology disclosure
+- **Nansen integration** — 4 direct API connections (labels, counterparties, PnL, related wallets), Blockscout + token transfer fallback for smart contract wallets
+- **Listed on:** Virtuals ACP, x402scan, Bankr Skills, agdp.io, 8004scan.io, 402index.io, Coinbase x402 ecosystem
+- **Stack unchanged:** FastAPI, x402 SDK v2, Nansen, Blockscout, Base mainnet, Railway
+- **Cross-registry tracking** across ACP / Olas / ERC-8004 / Arc / Celo
 
 ---
 
@@ -89,6 +88,8 @@ ERC-8210 verification schema names AHM as a reference implementation. AHS D1/D2/
 - [ ] **ERC-8183 provider integration** — 3-4 day build, additive via new `acp_worker.py` module. Event listener watches ACP contract for jobs where provider=AHM, routes to existing `calculate_ahs()`, submits result hash on-chain. Reuses ERC-8004 identity (#32328). Build when ERC-8183 deploys to Base mainnet and first real jobs appear. Technical assessment complete — see session notes
 - [ ] **ERC-8183 assessIndependence interface** — agentltsoh (AAP) proposed a standardised signal interface `assessIndependence(addr, bytes)` returning `{independent: bool, signals, confidence: bytes}` that ERC-8183 hooks could call optionally. AHM's scoring output already maps to this shape. Monitor whether this gets formalised into the ERC-8183 spec. If it does, implement the interface so AHM becomes a drop-in pluggable assessor. No action until spec movement confirmed. Source: ETH Magicians ERC-8183 thread, Apr 7 2026
 - [ ] **ERC-8183 evaluator monetisation (Phase 2)** — Currently the AHM evaluator daemon calls `/ahs/route/` at $0.01 per job (self-funded x402 revenue). Direct protocol payment for evaluation services is not part of ERC-8183 today. Phase 2 monetisation options to explore: (1) negotiate a per-evaluation fee with protocol deployers once volume is proven on mainnet; (2) offer a pre-scoring / agent whitelisting service where providers pay AHM to get a health certificate before submitting to high-value job marketplaces. No action until mainnet evaluator role is established and job volume is measurable. Source: ERC-8183 evaluator daemon build, Apr 7 2026
+- [ ] **Confidence-based routing policy — next refinement of PR #112** — Configurable routing currently supports grade mappings, escrow_disabled flag, and address allowlists with Grade C+ floor; does not support confidence-based rules. Schema change: add optional confidence_overrides: dict[str, str] to routing policy mapping confidence levels (INSUFFICIENT, LOW, MEDIUM, HIGH) to routing decisions (instant_settle, escrow, reject). Driver: Job #3 (Apr 27) surfaced this as a real methodology gap — INSUFFICIENT verdicts should not auto-route to reject regardless of grade. Cross-references: Bootstrapping Problem (zero-history wallet treatment); abstain() architectural argument made publicly on ERC-8183 thread, where confidence-based middleware was positioned as the right layer for this fix vs protocol-level abstain(). Public commitment made — this is the next build pencilled into the next session's prioritisation. First noted: Apr 27 2026
+- [ ] **Trishir / vaultum-agent-bonds — Dynamic Bond Pricing Integration** — AgentBond requires agents to post performance bonds before accepting work. Trishir proposed that AHS behavioural scores could inform dynamic bond sizing — strong AHS score (consistent D2 patterns, clean D1) qualifies for lower bond percentage; weak score requires higher collateral. Credit score → loan terms model applied to agent work escrow; maps directly to AHM's existing D1/D2 scoring outputs without requiring new AHM infrastructure. Trust level on ETH Magicians now allows DM follow-up; relationship to be developed alongside ERC-8210 v2 engagement (Trishir is active in same thread). First noted: Apr 27 2026
 - [ ] **ERC-8210 assessor schema alignment** — Review ERC-8210 draft spec when available. Ensure AHM's D1/D2/D3 output format matches the assessor schema (`type: rule`, `id: ahs-d1-d2-d3`, `verdict: APPROVE/REJECT`, `confidence: 0-1`). Consider publishing AHS verdicts as IPFS-pinned outputs to serve as verifiable assessor outputs (links to EAS integration backlog item). No action until ERC-8210 draft is shared
 - [ ] **Agent Alerts System** — Build an alerting layer allowing integrators and agents to set custom alerts on wallet/agent activity. Use cases to think through before building: (1) **Integrator alerts** — notify when an agent they are routing drops below a configured AHS threshold; (2) **Abuse detection alerts** — flag agents attempting to manipulate routing policies or allowlists. Requirements and scope TBD — needs design spike before building
 - [ ] **Evidence object in API responses** — Add a structured `evidence` object to `/ahs` and `/ahs/route/{address}` endpoint responses. Should include: per-dimension signal breakdown, weighted scores, data sources, and reasoning — not just the final grade. Rationale: strengthens "no black boxes" positioning, makes AHM more composable for `IRiskHook` implementations per ERC-8210. Inspired by RNWY's public disclosure of their evidence object pattern (Apr 8 2026). **Do not build yet.** Review after D3 Operational Stability is live
@@ -119,6 +120,8 @@ ERC-8210 verification schema names AHM as a reference implementation. AHS D1/D2/
 - Fix: introduce a separate scoring path for zero-history wallets — score as "Unrated" rather than mapping to D/E grade
 - Unrated wallets should route to escrow (not reject) by default — client assumes counterparty risk with funds protected
 - Review alongside D2 session continuity gate (April 21 2026)
+- Job #3 (Apr 27 2026) was the first live test case of this gap. ThoughtProof's wallet scored 58/D with INSUFFICIENT confidence (zero transaction history). AHM called complete() rather than reject(), with reasoning hashed on-chain (tx 0x2a33b40e...) and explained publicly on the ETH Magicians ERC-8183 thread. Bakugo32 cited this case as design input for Treasury.sol fee structure
+- Confidence-based routing is the committed next refinement (see new entry under P2 — Product Backlog → New Endpoints / Features). Public commitment made in the abstain() architectural reply on the ERC-8183 thread
 
 ---
 
@@ -143,6 +146,9 @@ ERC-8210 verification schema names AHM as a reference implementation. AHS D1/D2/
 
 ### Other
 
+- [ ] **Evaluator daemon receipt-based fallback** — Daemon currently relies solely on eth_getLogs polling to detect EvaluatorAssigned events. Base Sepolia RPC indexing lag has been observed to exceed 24 hours, causing the daemon to miss assignments confirmed in transaction receipts (Job #3, Apr 26). Bakugo32's EVALUATOR.md guide specifies eth_getTransactionReceipt with topics[2] filtering as the resilient fallback. Implementation: extend evaluator-daemon.ts OnChainWatcher to maintain recent transaction hashes (received via webhook or polling JobFunded events on AgentJobManager) and as fallback fetch their receipts to extract any EvaluatorAssigned events with the daemon's address in topics[2]. Future-proofs daemon for similar indexer outages; Job #3 was first known incident requiring manual workaround. First noted: Apr 27 2026
+- [ ] **Issue #140 — Wallet-primitive bucket in classify_agents_taxonomy.py** — Currently agents holding wallet primitives (Gnosis Safe, Multicall3) are classified as unclassifiable. Conflates two distinct cases: agents we have not yet built an anchor for vs agents whose on-chain footprint is fundamentally wallet operations rather than functional agent activity. Proposed three-bucket model: classified | wallet-only | unclassifiable. Improves taxonomy coverage interpretation and future categorisation methodology. Filed as GitHub issue Apr 26 2026 in PR #139 / 140 cycle
+- [ ] **Configurable routing docs update** — PR #112 shipped configurable routing (PUT /ahs/route/policy) but public docs at docs.agenthealthmonitor.xyz have not been updated. Public commitment made in the abstain() architectural reply on ERC-8183 thread referenced PR #112 as the policy infrastructure foundation; integrators reading that post and looking for documentation will hit a gap. Action: update docs site with /ahs/route/policy endpoint reference, schema description, and example configurations including grade mappings, escrow_disabled, and address allowlists. Pre-document confidence_overrides slot for the upcoming confidence-based routing build so integrators see the trajectory. First noted: Apr 27 2026
 - [ ] **Proper OG banner (1200x630)** — `generate_og_banner.py` created, interim logo fix live. Complete this week
 - [ ] Wash scan composite scoring refinement (see wash_spike_results.md for formula)
 
@@ -201,6 +207,34 @@ A live public dashboard showing aggregate health stats across all agent wallets 
 - Relevant for AHM Shield Phase 2: if Shield evolves toward risk-premium pricing, variable per-agent costs map better to "upto" than "exact"
 - Action: adopt "upto" scheme for AHM Verify payment endpoints when building the service. Review x402 SDK upto implementation before AHM Verify v0.1 build starts.
 - First noted: Apr 9 2026
+
+### ERC-1705 — Trust Infrastructure for Agents and Assets
+- Five-interface ERC drafted by Patrick Nicolas Badoui (avwatari.io); Nicopat is primary advocate
+- Interfaces: IAttestation (MUST), IDecisionTrail (SHOULD), IAccountability (SHOULD), IRiskSignal (MAY), IRWAPassport (MAY)
+- Reference implementation deployed: 19 contracts on Base mainnet, 7 on Gnosis Chain, 439 tests passing, 120+ tokenized assets scored continuously
+- AHM is a textbook IAttestation implementer — AHS scoring output (factual, signed, multi-dimensional measurements with INSUFFICIENT confidence flags) maps directly to the IAttestation interface signature
+- Patrick's adversarial constraints (attester collusion, score manipulation) explicitly require multi-evaluator implementations; AHM's multi-registry coverage (ACP, Olas, ERC-8004, Arc, Celo) is exactly that
+- Patrick has 5 explicit feedback questions on the thread; AHM has lived experience of all 5 (interface granularity, score range, regime states, deployment topology, ERC-8192 composability)
+- Action: read full spec, draft public response on ETH Magicians thread, decide whether to build a reference IAttestation implementation against AHM's AHS scoring as canonical AI-agent example alongside Patrick's RWA-focused reference deployment
+- First noted: Apr 26 2026
+
+### ERC-8239 / ERC-8240 — Agent Skill Registry + Quality Scoring
+- ERC-8239 (Agent Skill Registry, bransdotcom): capability registry — what an agent can do; jobContract + jobId + manifestHash + taxonomy classification fields
+- ERC-8240: quality scoring layer composable with ERC-8239; getQualityForAgent returns score (0-100) + trend + volatility + timestamp; AAA-CCC tier filtering for marketplace consumers
+- ERC-8240 is functionally a standardisation of what AHM already does — score range, tier system, trend tracking all map directly to AHS
+- Strategic choice: become reference implementation for ERC-8240 (the way ERC-8210 names AHM), or risk being left out as the spec firms up
+- AHM has already engaged on ERC-8239 (capability composability point about taxonomy classifications as structured enums vs free-form strings); Nicopat replied Apr 27 asking how AHM sees the skill-to-quality link
+- Action: respond substantively to Nicopat once strategic prioritisation allows; engage with ERC-8240 spec drafting; consider proposing AHS as the reference quality scoring methodology
+- First noted: Apr 26-27 2026
+
+### ERC-8210 v2 active drafting
+- JackyWang (ERC-8210 author) is in active v2 changelog drafting mode; v2 imminent
+- Open questions on RoleCollusion, behavioural similarity, IIndependenceSignal vs IRiskHook hierarchy — all directly affect how AHM's D1/D2/D3 outputs compose in multi-evaluator scenarios
+- Bakugo32 cross-referencing ERC-8183 settlement layer (EvaluatorSlashed event with jobId field) into ERC-8210 fileClaim, anchoring outcomes to slash records
+- AHM is named as reference implementation in v1 (assessor type: ahs-d1-d2-d3); v2 changes risk weakening this status if AHM doesn't engage
+- Pablo Castejon Espejo (separate person, ETH Magicians username "Pablo / AHM") is shaping v2 directly with substantive technical input
+- Action: read full thread, decide whether to engage on v2 with AHM perspective on the open questions before changelog draft closes
+- First noted: Apr 27 2026
 
 ### Arc Mainnet Migration — Evaluator Readiness
 - Arc announced open sourcing of testnet code and approach to mainnet on Apr 9 2026
@@ -364,6 +398,23 @@ Industry sectors (cross-cutting):
 
 **Action:** Draft v1 taxonomy as a document. Publish on intelligence subdomain. Invite community input and iteration. Keep it simple to start.
 
+#### Per-category landing pages (SEO + content strategy)
+- Each of the 10 v1 taxonomy categories gets a dedicated landing page on intelligence.agenthealthmonitor.xyz/taxonomy/{category}
+- Goals: SEO discovery (long-tail searches like "trading agent", "verification agent"), first-mover taxonomy authority before competitors capitalise, citation bait for ERC discussions (1705, 8210, 8183, 8239/8240), conversion path to paid AHM endpoints
+- Common page structure: hero with stat snapshot, definition and scope, sub-category breakdown, 3-5 real-world examples with project links and on-chain references, use cases, trust considerations specific to category, AHM endpoint CTAs, related categories, citations and further reading, methodology footer linking to taxonomy POC summary
+- Schema.org JSON-LD Article structured data on every page for rich snippets; "Cite this page" snippet (BibTeX-style) for researcher citation; cross-page consistency in voice and depth
+- Phased build: 3 anchor pages first (Financial, Intelligence & Analytics, Creative — the HIGH-coverage categories), then 3 MEDIUM, then 4 EMERGING. Estimated 2-3 hours per page including research; 20-30 hours total
+- Long-term content strategy foundation; future Layer 3 visualisations plug into these pages rather than replacing them
+- First noted: Apr 27 2026
+
+#### Two-axis taxonomy v2 (function × sector)
+- V1 taxonomy classifies agents by function (what they do): 10 categories shipped April 2026
+- Real-world deployment patterns indicate a parallel sector axis (where they operate / who governs them) is becoming equally significant — driven by emerging sovereign-scale procurement (UAE 50% government services to agentic AI, Apr 2026), regulated finance positioning (Franklin Templeton via t54.ai), and sector-specific trust requirements that don't reduce to function categories alone
+- V2 design: each agent gets both a function tag (existing 10 categories) and a sector tag (proposed: Public Sector, Financial Services, Healthcare, Sales & Marketing, Defence, Supply Chain, Research & Science, Consumer / Retail, Industrial, Cross-sector). Examples: UAE government trading bot = Financial Agent + Public Sector; pharma research automation = Research Agent + Healthcare
+- Strategic value: enables sector-specific commercial intelligence reports (high-leverage content); doubles SEO surface area (function landing pages + sector landing pages); positions AHM to reason about sector-specific trust requirements; creates natural extension path as new domains emerge
+- Do not build until v1 function pages are stable and at least 3 anchor pages have shipped
+- First noted: Apr 27 2026 (UAE 50% government services to agentic AI announcement as validating signal)
+
 ---
 
 ### Layer 3 — Enriched Intelligence Reports (future / v3+)
@@ -374,6 +425,15 @@ Examples of future reports:
 - How does agent health differ between finance and defence sectors?
 - What tasks are agents performing, and how do those differ by sector?
 - Which registries host which categories of agent?
+
+#### Commercial behavioural intelligence (Layer 3 anchor — Financial agents slice)
+- Cross-reference AHS scoring data with transaction-level behavioural data to surface commercial differentiators between healthy and unhealthy agents
+- Initial slice: Financial Agents category (413 agents post-Phase 2 classification)
+- Metrics to explore: average transaction value, spending velocity, counterparty diversity, failed-transaction ratio, gas spend efficiency, dwell time between transactions, ratio of value-creating vs value-destroying activity
+- Hypothesis: B-grade Financial agents will show fundamentally different commercial signatures from D-grade ones, and those signatures are themselves saleable insight
+- Strategic value: bridges AHM's two existing data assets (scoring + behavioural) into shareable narrative content; high SEO and social shareability; validates AHM as authoritative source of commercial intelligence on the agent economy not just a scoring API; citation bait for media and ERC discussions; reuses Phase 2 taxonomy classifications directly with no new data infrastructure required
+- Sequencing: build after taxonomy landing pages so Financial Agents page can launch with this analysis as anchor content; other category pages follow same template; Layer 3's recurring content engine
+- First noted: Apr 27 2026
 
 ---
 
@@ -506,6 +566,21 @@ Full ecosystem scan of 402index.io service directory. 15,658 indexed services, b
 - Action: Monitor closely. Accelerate Invoica design partner lock-in. Double down on ERC-8183 as unclaimed territory. Explore B2B data partnership angle.
 - First noted: Apr 8 2026
 
+### Parallel Web Systems (@p0, parallel.ai) — TIER 3 ECOSYSTEM WATCH
+- Founder Parag Agrawal (former Twitter CEO); $130M total funding ($100M Series A Nov 2025 co-led by Kleiner Perkins and Index Ventures, $740M valuation, board seat for Mamoon Hamid at KP)
+- Product: web infrastructure APIs purpose-built for AI agents — Search, Extract, Deep Research; x402 payment support announced Apr 27 2026 starting at $0.01/call, tagging @CoinbaseDev and @linuxfoundation
+- Not a direct competitor to AHM — horizontal web research API, not agent trust infrastructure
+- Long-term ecosystem angle: Parallel's enterprise customers (M&A research, insurance underwriting, sales analysis) are exactly the high-value agent buyers AHM is positioned to score; their planned "open market mechanism" for content publishers implicitly requires identifying and trusting agent buyers — AHM scoring is a natural fit. Don't pitch yet (AHM scale-mismatch); revisit when AHM has measurable mainnet evaluator volume
+- Their success expands the addressable market AHM serves — tailwind, not headwind
+- First noted: Apr 27 2026
+
+### termixai / TermiX-official AACP — INVESTIGATION REQUIRED
+- Posted on ERC-8183 thread Apr 27 2026: "We propose our new business agreement based on 8183. GitHub - TermiX-official/aacp-whitepaper: Agent Autonomous Commerce Protocol"
+- Same general space as Verdict Protocol — a layer/protocol proposal on top of ERC-8183
+- No analysis done yet; classify as competitor / partner / irrelevant after reading the whitepaper
+- Action: read whitepaper and TermiX repo, classify, then either add a substantive Competitive Intelligence entry or note as "reviewed and irrelevant" in a deferred update
+- First noted: Apr 27 2026
+
 ---
 
 ## Strategic Positioning
@@ -625,6 +700,11 @@ Revisit if a specific commercial use case emerges.
 - [x] RetryBot with non-custodial ready-to-sign transactions
 - [x] Protection Agent autonomous triage
 - [x] Wash API spike completed (see wash_spike_results.md)
+
+### Completed Apr 27 2026
+
+- [x] **Job #3 cycle** — first live ERC-8183 evaluator action — ThoughtProof scored 58/D with INSUFFICIENT confidence; AHM called complete() with verdict JSON hashed on-chain (verdict hash 0xbe9c3ba2..., tx 0x2a33b40e...). Public transparency post on ETH Magicians ERC-8183 thread explaining INSUFFICIENT confidence reasoning. Followed up with abstain() architectural argument (5-point defence of binary terminal states + middleware approach) and Treasury.sol fee design observations (3 concrete points on charging on reject(), 80/20 split, MIN_BUDGET dynamic pegging). Bakugo32 cited Job #3 reasoning as design input for Treasury.sol fee structure. AHM positioning shifting from "evaluator running on the protocol" to "design contributor whose decisions shape the protocol"
+- [x] **AHM Intelligence dashboard + Taxonomy v1 publication** — taxonomy POC complete (754 agents classified, 6 anchored categories: Financial, Intelligence & Analytics, Research, Verification, Orchestration, Identity & Trust; 1 latent: Creative; 3 pending: Infrastructure, Commerce, Physical World). Live page at intelligence.agenthealthmonitor.xyz/taxonomy with ANCHORED/LATENT/PENDING badges, methodology disclosure, link to POC summary. Stats footer per category. PRs #137, #138, #139, #141 (taxonomy POC), #142 (backlog evaluator key rotation), and ahm-intelligence PR #1 (live page update) all merged
 
 ### Completed Mar 17 2026
 
