@@ -4,7 +4,7 @@
 
 ---
 
-## Current State (as of Apr 27 2026)
+## Current State (as of Apr 29 2026)
 
 - **14 endpoints** live on Base mainnet at agenthealthmonitor.xyz, including /ahs/batch and configurable routing via PUT /ahs/route/policy (PR #112)
 - **ERC-8004 registered** — agentId #32328; live ERC-8183 evaluator on Base Sepolia (Jobs #1, #2, #3 completed Apr 7-27 2026)
@@ -13,6 +13,7 @@
 - **Listed on:** Virtuals ACP, x402scan, Bankr Skills, agdp.io, 8004scan.io, 402index.io, Coinbase x402 ecosystem
 - **Stack unchanged:** FastAPI, x402 SDK v2, Nansen, Blockscout, Base mainnet, Railway
 - **Cross-registry tracking** across ACP / Olas / ERC-8004 / Arc / Celo
+- **Agent scan count:** 13K agents (as of Apr 28 2026, supersedes earlier "5K" / "245 wallets" calibration figures from earlier scanning phases)
 
 ---
 
@@ -60,6 +61,10 @@ Now that /ahs/batch is live, the following need updating:
 - [ ] 402index.io — manually register /ahs/batch endpoint (manual step, $10.00 for up to 10 wallets)
 - [ ] PARTNERSHIPS.md or any outreach docs referencing endpoint count
 - [ ] README if it lists endpoints
+
+### Pending Outreach / Re-engagement
+
+- [ ] **Alfred Zhang (@Alfredz0x) / OpenPasskey integration angle — relationship status to clarify** — April 3 2026 X exchange (visible in current notifications on restored @AHMprotocol account): Alfred replied substantively to AHM, identifying integration thesis — OpenPasskey HTTP tap logs + AHM on-chain signals as composite intelligence layer for physical-to-onchain payment verification (RIP-7212 / P-256 on Base L2). Alfred published a relevant deep-dive on dev.to (RIP-7212 / OpenPasskey card verification). His tweets quoted: "got it! checking email now. excited to explore the data share angle... could surface patterns neither of us sees alone" and "the data layer between physical taps and on-chain settlement is exactly where something like AHM would fit". Status of follow-through unclear in current records. Shadow analysis work referenced in earlier sessions but state unknown. Action: Locate prior email thread with Alfred (search Proton inbox for "Alfred Zhang" / "Alfredz0x" / "OpenPasskey"), locate any AHM repo or local notes on OpenPasskey, RIP-7212, P-256, card taps, read his dev.to article if not already, decide based on findings: re-engage with substantive update, close cleanly with appreciation, or treat as cold and let lie. Do not re-engage on X without first reconstructing the state. Premature reply risks looking either negligent (if commitments were made and missed) or naive (if forgotten context exists). @AHMprotocol account restoration (Apr 28) makes any future re-engagement easier — original handle Alfred tagged is now functional again. First noted: Apr 29 2026
 
 ### ERC-8004 (added Mar 13-16)
 
@@ -146,6 +151,10 @@ ERC-8210 verification schema names AHM as a reference implementation. AHS D1/D2/
 
 ### Other
 
+- [ ] **Site analytics + source attribution** — No web analytics implemented on agenthealthmonitor.xyz (no GA, no Plausible, no Cloudflare Web Analytics surfaced). Cloudflare aggregate shows 4.11K unique visitors / 73K requests / 13.67% cache rate over 30 days, with April 25-28 spike correlating to ETH Magicians activity (Job #3, abstain() argument, Treasury observations) — suggests standards-engagement drives traffic but cannot prove it without referrer attribution data. Action: Implement Plausible (privacy-friendly, ~£8/month, GDPR-clean — fits AHM's trust positioning) or Cloudflare Web Analytics (free) on agenthealthmonitor.xyz to capture page-level views, referrer data, traffic source attribution. Goal: prove the standards-thread → site visit pipeline quantitatively, identify which content pages convert best, surface unexpected traffic sources (e.g., did Don visit the site after the bump email lands?). First noted: Apr 28 2026
+- [ ] **Contact form audit** — Verify whether agenthealthmonitor.xyz currently has a working contact form for inbound enquiries. Documented contact channels in customer-facing materials are pablo@agenthealthmonitor.xyz and @agenttrust on X — both are friction-heavy compared to a one-click form. If form is missing or broken, this represents a direct conversion leak: every potential design partner equivalent to Don who lands on the site has to email cold or DM on Twitter, both of which are higher-friction than a one-click contact form. Action: open agenthealthmonitor.xyz in incognito, confirm form presence and function. If absent, build/restore as a high-priority fix. First noted: Apr 28 2026
+- [ ] **Conversion analytics consolidation** — No single view of how site traffic converts to revenue. Stripe shows human API key purchases (currently zero). x402 revenue wallet shows agent micropayments. Application logs show endpoint hits. All separate, no consolidated funnel view. Action: maintain a fortnightly conversion summary mapping: visitors → API key signups → x402 paying calls → genuine inbound enquiries. Foundation for understanding which marketing channels (standards threads, Twitter, search) actually produce revenue. Pairs naturally with site analytics implementation (3d). First noted: Apr 28 2026
+- [ ] **Public roadmap refresh (static/ahm-roadmap.html) — deferred** — Public roadmap is dated March 2026 and reads as stale. Refresh once strategic prioritisation conversation produces stable positioning. Likely changes: add suite framing (Health/Shield/Verify/Intelligence) if explicit positioning is the agreed strategic direction; refresh "LIVE" phase to reflect ERC-8183 evaluator role and configurable routing (PR #112); refresh "NEXT" phase based on agreed 60-day priorities from strategic conversation. Do not update piecemeal. Wait for stable positioning to avoid churning the public-facing version. First noted: Apr 29 2026
 - [ ] **Evaluator daemon receipt-based fallback** — Daemon currently relies solely on eth_getLogs polling to detect EvaluatorAssigned events. Base Sepolia RPC indexing lag has been observed to exceed 24 hours, causing the daemon to miss assignments confirmed in transaction receipts (Job #3, Apr 26). Bakugo32's EVALUATOR.md guide specifies eth_getTransactionReceipt with topics[2] filtering as the resilient fallback. Implementation: extend evaluator-daemon.ts OnChainWatcher to maintain recent transaction hashes (received via webhook or polling JobFunded events on AgentJobManager) and as fallback fetch their receipts to extract any EvaluatorAssigned events with the daemon's address in topics[2]. Future-proofs daemon for similar indexer outages; Job #3 was first known incident requiring manual workaround. First noted: Apr 27 2026
 - [ ] **Issue #140 — Wallet-primitive bucket in classify_agents_taxonomy.py** — Currently agents holding wallet primitives (Gnosis Safe, Multicall3) are classified as unclassifiable. Conflates two distinct cases: agents we have not yet built an anchor for vs agents whose on-chain footprint is fundamentally wallet operations rather than functional agent activity. Proposed three-bucket model: classified | wallet-only | unclassifiable. Improves taxonomy coverage interpretation and future categorisation methodology. Filed as GitHub issue Apr 26 2026 in PR #139 / 140 cycle
 - [ ] **Configurable routing docs update** — PR #112 shipped configurable routing (PUT /ahs/route/policy) but public docs at docs.agenthealthmonitor.xyz have not been updated. Public commitment made in the abstain() architectural reply on ERC-8183 thread referenced PR #112 as the policy infrastructure foundation; integrators reading that post and looking for documentation will hit a gap. Action: update docs site with /ahs/route/policy endpoint reference, schema description, and example configurations including grade mappings, escrow_disabled, and address allowlists. Pre-document confidence_overrides slot for the upcoming confidence-based routing build so integrators see the trajectory. First noted: Apr 27 2026
@@ -256,18 +265,31 @@ A live public dashboard showing aggregate health stats across all agent wallets 
 
 ## Phase 3 — Future Products
 
-### AHM Verify — Post-Transaction Output Quality Scoring
+### AHM Verify — production status to verify
+
+- Customer-facing materials (AHM Overview deck sent to Don Gossen Apr 15 2026; Getting Started guide drafted Apr 28 2026) describe AHM Verify as live at verify.agenthealthmonitor.xyz with POST /v1/outputs endpoint, $0.50 standard / $1.50 deep verdict pricing, six-model LLM adjudication panel (Claude, GPT-4o, Gemini, DeepSeek)
+- Earlier backlog state (PR #143 and prior) said "do not build yet"
+- Action required: Verify actual production state of AHM Verify before May 6 Nevermined call. Three possibilities:
+  - Verify is genuinely live and the backlog was stale on this point
+  - Verify is partially live (endpoint returns plausible output but not production-grade)
+  - Customer materials over-positioned and Verify needs shipping work before May 6
+
+- First-hand reading suggests Verify shipped further than backlog reflected, but explicit CC verification of the codebase, deployment status, and endpoint behaviour is required before treating Verify as a confident demo asset on the May 6 call
+- Verify spike doc (AHM_VERIFY_DESIGN_SPIKE.md if exists) and prompt design notes should be located and reviewed
+- First noted (verification gap): Apr 28 2026
+
+**Architectural reasoning (subject to verification):**
 
 - Standalone service (separate repo: `ahm-verify`, separate Railway project)
-- Multi-LLM adjudication panel (3-model: Claude, GPT, Gemini) scores delivered output against pre-registered job spec
+- Multi-LLM adjudication panel — original design: 3-model (Claude, GPT, Gemini); customer materials cite 6-model (Claude, GPT-4o, Gemini, DeepSeek) — reconcile count discrepancy during verification
 - Core moat: AHM trust registry cross-reference makes verdicts stateful and identity-anchored — ThoughtProof cannot replicate without building a competing registry
 - Architecture: Option C — standalone service with read-only access to AHM core via `/internal/agent-profile/{address}`
-- Monetisation: $0.25/verdict (single), $0.35 combined verdict+AHS report, subscription TBD
+- Monetisation: **CONFLICT FLAGGED** — original spike pricing was $0.25/verdict (single), $0.35 combined verdict+AHS report, subscription TBD; customer materials cite $0.50 standard / $1.50 deep verdict. Verify actual pricing tier during codebase review.
 - Submission flow MVP: client-submitted only. Phase 2: agent self-submission. Phase 3: ERC-8183 evaluator role
 - D4 composite feedback into AHM core AHS: deferred until >500 verdicts/week and D3 is live
 - Full feasibility spike saved at `docs/ahm_verify_spike.md`
 - Positioning: Monitor (before) + Shield (during) + Verify (after) = complete agent health lifecycle
-- **Do not build yet.** Next step: prompt design doc + 20-30 hand-labelled test set to validate panel agreement rate before any code
+- Original guidance: **Do not build yet.** Next step: prompt design doc + 20-30 hand-labelled test set to validate panel agreement rate before any code
 - Spike completed: Apr 8 2026
 
 ---
@@ -542,16 +564,13 @@ Full ecosystem scan of 402index.io service directory. 15,658 indexed services, b
 - Action: Monitor only. Do not engage publicly. Review positioning if they reach Phase 3+ or follower count exceeds 1K.
 - First noted: Apr 8 2026
 
-### AgentProof (@agentproof, agentproof.sh) — ELEVATED THREAT, NEEDS INVESTIGATION
-- Positioning: "Know Your Agent" — on-chain reputation oracle for AI agents
-- Scale: 158.2K agents indexed, 222.7K evaluations, 375.7K+ screenings, 21 chains, oracle live
-- Notable features: agent leaderboard with trust scores, Deployer Storm visualisation (shared deployer rings, coordinated deployment detection, wallet age colour coding), live threat intelligence, flagged agents, zero-history deployer detection, Agent Directory
-- Direct overlap: on-chain reputation scoring, agent leaderboard, sybil/collusion detection, multi-chain coverage (21 chains vs AHM's 5)
-- Scale gap: 158K indexed agents vs AHM's 5K — significant
-- Notable: tweet from @BuilderBenv1 "You basically outlined AgentProof..." — suggests AHM concept maps closely to their existing product
-- Not previously captured in competitive intelligence — discovered Apr 8 2026
-- Threat level: ELEVATED. Larger scale, more chains, live oracle, sophisticated visualisations.
-- Action: Full competitive analysis needed. Investigate funding, team, API, pricing, and differentiation from AHM. Schedule for next session.
+### AgentProof (@agentproof, agentproof.sh) — Complementary ecosystem partner
+
+- On-chain reputation oracle, 158K+ agents indexed, 21 chains, live oracle
+- Reclassified from "ELEVATED THREAT" (April 8 2026) to complementary positioning following deeper review: AgentProof addresses on-chain reputation aggregation; AHM addresses behavioural trust scoring with INSUFFICIENT confidence handling and ERC-8183 evaluator role. Different layers of the trust stack, not competing offers.
+- The ERC-8183 evaluator collaboration with ThoughtProof (Job #2 and Job #3 cycle) demonstrates the cooperative dynamic in the trust-infrastructure space — multiple specialised evaluators and oracles co-exist by addressing different trust questions.
+- Strategic monitoring rather than competitive response: track AgentProof's API surface and pricing for ecosystem mapping, but no defensive positioning required.
+- First noted: Apr 8 2026 (as threat). Reclassified: Apr 28 2026.
 
 ### t54.ai (@t54ai, t54.ai) — ELEVATED THREAT
 - Founded: September 2024. San Francisco. 10.6K followers.
@@ -583,7 +602,48 @@ Full ecosystem scan of 402index.io service directory. 15,658 indexed services, b
 
 ---
 
+## Active Design Partner Relationships
+
+### Nevermined (Don Gossen) — primary B2B design partner
+
+- Status: active design partner with live partner API key
+- Relationship sequence:
+  - Apr 8 2026: Cold contact via Nevermined website form (positioned AHM as "trust gate within Nevermined payment flows")
+  - Apr 9 2026: Don replied within 17 hours requesting a Calendly link
+  - Apr 15 2026: Initial 30-min call held
+  - Apr 15 2026 (post-call): 3-month complimentary access offered (coupon TEST-ELITE), enterprise partner API key issued (ahm_live_8bc21d3b..., partner_id "nevermined", expires Jul 15 2026)
+  - Apr 28 2026: Bump email drafted (sending Apr 29) including AHM Getting Started guide as additional context
+  - ~May 6 2026: Follow-up call scheduled (3 weeks from initial call)
+
+- Two endpoints positioned as primary value:
+  - POST /ahs/{address} — pre-payment trust scoring (the trust gate)
+  - POST /v1/outputs via verify.agenthealthmonitor.xyz — post-payment output quality scoring
+
+- AHM Shield SDK integration path proposed (3-line drop-in pattern)
+- Outstanding deliverable: structured walkthrough/onboarding deck for May 6 call (committed to in Apr 15 email follow-up)
+- Strategic significance: Only confirmed B2B design partner with live partner API key. May 6 call is the primary commercial inflection point for next 60 days. Conversion would validate the entire suite commercial positioning. Failure forces fundamental rethink of B2B angle.
+- Don's state pre-call: travelling Portugal → LA the week of Apr 28; testing status unknown until May 6 call surfaces it
+- First noted in backlog: Apr 28 2026 (relationship dates back to Apr 8 2026)
+
+---
+
 ## Strategic Positioning
+
+### Standards-layer engagement as primary strategic surface
+
+AHM has emerged in 2026 Q2 as a substantive contributor to multiple ERC-companion specifications, with standards-thread activity tied directly to traffic spikes and design-credibility wins. Pattern recognised across:
+
+- ERC-8183 (Bakugo32): AHM's abstain() architectural argument accepted, Treasury fee design observations adopted (MIN_BUDGET to 1 USDC, dynamic pegging noted, fixed-fee per-evaluation reinforced). Bakugo invited AHM to review INTERFACES.md before finalising Treasury implementation.
+- ERC-8210 v2 (JackyWang): AHM is named as reference implementation in v1; Pablo Castejon Espejo (separate person, ETH Magicians username "Pablo / AHM") is shaping v2 directly. Active changelog drafting.
+- ERC-1705 (Patrick Nicolas Badoui): AHM is textbook IAttestation implementer. 19 contracts on Base mainnet, 7 on Gnosis Chain, 439 tests passing reference deployment. Patrick has 5 explicit feedback questions on the thread.
+- ERC-8239 / ERC-8240 (bransdotcom / Nicopat): ERC-8239 capability registry; ERC-8240 quality scoring layer. Nicopat confirmed (Apr 29) that an ERC-8183 adapter has been built mapping AHM-shaped verdicts into the ERC-8240 24-slot ring buffer. Three-layer composition validated.
+- ADW (Oak / Jinn Network): companion to ERC-8004, document-level trust positioning. Composable with AHM's wallet-level scoring.
+
+Strategic implication: Standards-engagement work is AHM's highest-leverage marketing channel (causally tied to traffic spikes per Cloudflare data) AND highest-leverage credibility builder (publicly documented design contributions). Worth treating as a coherent workstream rather than handling each ERC ad hoc.
+
+Action: review whether to formalise a "standards engagement strategy" as an explicit workstream. Decision deferred to next strategic prioritisation conversation.
+
+First noted: Apr 29 2026
 
 ### ARS (Agentic Risk Standard) — Positioning Opportunity
 - Paper: "Quantifying Trust: Financial Risk Management for Trustworthy AI Agents" (arxiv 2604.03976)
@@ -612,6 +672,82 @@ Full ecosystem scan of 402index.io service directory. 15,658 indexed services, b
 - AHM Verify's verdict + evidence object is exactly that evaluator implementation
 - Strengthens AHM Verify positioning: not just a quality scorer but a standards-compliant ARS evaluator
 - Reference when drafting AHM Verify launch messaging
+
+---
+
+## Operational
+
+### X / @AHMprotocol account status
+
+- Original @AHMprotocol handle restored Apr 28 2026 after several weeks suspended
+- Verified, branded, 57 followers preserved, pinned post intact (April 7 AHM Shield announcement)
+- Premium subscription remained active throughout suspension (no chargeback action taken; account is now functional and paid up)
+- Strategic decision: X is an auxiliary channel for research and comms, not a primary engagement surface. Empirical engagement was low pre-suspension and platform reliability has shown itself unreliable. Primary public engagement remains ETH Magicians threads and direct outreach.
+- @agenttrust (fallback handle used during suspension) running in parallel for now; quiet retirement when convenient.
+- First noted: Apr 28 2026.
+
+### Active public commitments — tracker
+
+Public commitments made in ETH Magicians threads, X exchanges, and design partner emails that require follow-through:
+
+- Confidence-based routing build — committed in abstain() architectural reply on ERC-8183 thread. Foundation: extend PR #112 routing policy with confidence_overrides schema. Driver: Job #3 INSUFFICIENT verdict surfaced the gap.
+- Per-registry metric label + cross-registry overlap stat on intelligence page — committed to Oak / @tannedoaksprout in 4-tweet thread. Two specific changes to ship: (a) explicit metric definition ("wallets with this registry membership"); (b) overlap stat surfaced on the page with footnote on Olas → ERC-8004 syndication.
+- INTERFACES.md review — committed to Bakugo32 in Treasury thread reply. Bakugo is drafting the diff; AHM committed to review before he finalises implementation.
+- ERC-8240 alignment dig — committed to Nicopat in ERC-8239 thread reply. Substantive engagement on skill-to-quality link, evidenceHash → evaluator input mapping. Picked up wherever Nicopat directs (8239 or 8240 thread).
+- May 6 walkthrough/onboarding deck for Don Gossen (Nevermined) — committed in Apr 15 post-call email.
+
+Track status of each fortnightly. Non-delivery on stated commitments degrades AHM's design-contributor positioning credibility.
+
+First noted: Apr 29 2026
+
+---
+
+## Commercial / Revenue
+
+### Stripe revenue baseline (as of Apr 28 2026)
+
+- Live Stripe dashboard (account acct_1TGOSnBtIhkG7uE2, pk_live_) shows: gross volume £0.00, net volume £0.00, 0 new customers, no top customers, no payment data for the last 4 weeks
+- Despite 8,800+ agents scanned, 14 endpoints live, growing site traffic (4.11K unique visitors / 73K requests over 30 days, accelerating in late April), and substantive standards engagement, AHM has no Stripe-paid customers
+- Pricing tiers (£9 Starter / £39 Pro / £99 Unlimited) have produced zero conversions since launch
+- Possible explanations (to investigate, not assume):
+  - Site traffic is researcher / standards-watcher audience, not buyer audience
+  - Pricing model wrong (too high, wrong tiering, wrong unit of consumption)
+  - Conversion path broken (no contact form audit pending; CTA placement unverified)
+  - Product-market fit at API-key level not yet there; B2B angle (Nevermined) is the right fit
+  - Likely some combination of the above
+
+- x402 wallet revenue (Base mainnet) — separate revenue stream, not yet checked. May or may not show actual revenue from agent-paid micropayments.
+- Action: check x402 revenue wallet inbound transactions over last 30 days to determine whether AHM has zero revenue full stop, or zero Stripe revenue with x402 activity
+- Strategic implication: AHM's traction is currently in attention and design credibility, not revenue. The Nevermined B2B path is materially more important than the Stripe self-serve path until conversion improves on the latter.
+- First noted: Apr 28 2026
+
+---
+
+## Adjacent Builders Worth Tracking
+
+### Jinn Network (Oak / @tannedoaksprout) — adjacent builder, ADW spec author
+
+- Project: Jinn Network — decentralised reasoning framework for AI agents. Agentic LAMP stack (LLM + Agents + MCP + Persistence). Built as reasoning layer on top of Olas (Autonolas).
+- GitHub: github.com/jinn-network (monorepo + adw-spec + jinn-node + jinn-gemini + shared-skills)
+- Authored ERC-companion spec: Agentic Document Web (ADW) — open specification for decentralised agent document identity, discovery, trust, and provenance. Companion to ERC-8004.
+- Strategic positioning: ADW handles document-level trust (provenance, attestation, identity); AHM handles wallet-level behavioural trust. Naturally composable, not competing.
+- Reclassification (Apr 29 2026): Initial framing as "Olas insider" was overstated. Oak's own Apr 28 reply revealed he's no longer working on Olas core; his Olas knowledge is informed but second-hand. Primary Olas contact is Valory AG (@valoryag) — see below.
+- Relationship state: First contact via X reply on registry double-counting question (Apr 28 2026). Substantive technical exchange about Olas → ERC-8004 syndication methodology. Oak directionally answered "close to 100%" syndication ratio and referred to @valoryag for confirmation. Public methodology improvements committed (per-registry metric labelling + cross-registry overlap stat).
+- Action: maintain conversation through X reply when natural; engage substantively on ADW spec if it becomes formalised; consider ADW + AHM integration angle once both specs stabilise. No urgent action required.
+- First noted: Apr 28 2026
+
+### Valory AG (@valoryag, valory.xyz) — Olas / Pearl ecosystem primary contact
+
+- Company: Valory AG, Zug Switzerland, joined X September 2021, 2,826 followers
+- Funding: $13.8M raise led by 1kx (Feb 2025); Olas Accelerator with $1M grants programme; Pearl ("Agent App Store"); currently hiring
+- Strategic relevance:
+  - Primary contact for Olas (formerly Autonolas) — they are the company behind it
+  - Pearl as agent marketplace creates natural surface for AHM trust scoring integration
+  - Olas as registry layer creates natural surface for AHM ecosystem coverage
+
+- Initial contact: Apr 29 2026 — public X reply on Oak thread tagging @valoryag with cross-registry overlap methodology question. Low-friction first contact. No reply yet at time of writing.
+- Action: if Valory replies on the methodology question, follow up substantively; either way, the relationship is now warmly initiated. Engage further post-Nevermined call (May 6+) to avoid fragmenting attention.
+- First noted: Apr 29 2026
 
 ---
 
