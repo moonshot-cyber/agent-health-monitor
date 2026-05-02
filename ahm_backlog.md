@@ -122,6 +122,12 @@ ERC-8210 verification schema names AHM as a reference implementation. AHS D1/D2/
 - [ ] **Multi-chain support (Solana priority, deferred)** — Declined PayAI Solana Alphathon Feb 2026 ($1K prize for week of multi-chain port). Decision: multi-chain deferred until Nansen work completed and feature set deeper. Solana entry conditional on broader multi-chain rationale. Revisit when product depth justifies.
 - [ ] **Soulbound Tokens (Phase 2)** — Non-transferable AHS score attestation tokens. Phase 2 after Shield + design partner. Aligns with Agent Certification concept.
 
+#### Research / Open Concepts (not on build path, periodic revisit)
+
+- [ ] **Agent Intent Detection** — Measure drift from declared agent purpose to unrelated contract interactions. Build a 30-day baseline behaviour profile per agent, flag deviations. No commitment to build; track for periodic revisit. First noted: May 2 2026 (chat history extract)
+- [ ] **Decision Quality / Learning Rate Measurement** — Measure whether agents adapt after failures (post-failure gas adjustment = healthy learning) or repeat identical failures (broken decision loop). Distinct from D2 retry storm detection. No commitment to build. First noted: May 2 2026 (chat history extract)
+- [ ] **Hidden Backdoor Detection** — Adjacency to Project Glasswing. On-chain code analysis of agent contracts for suspicious patterns. No commitment to build; track as ecosystem awareness item. First noted: May 2 2026 (chat history extract)
+
 ### AHS Enhancements
 
 - [ ] AHS D3 infrastructure probing — expand probe coverage (uptime, latency, error rates)
@@ -143,18 +149,6 @@ ERC-8210 verification schema names AHM as a reference implementation. AHS D1/D2/
 - Review alongside D2 session continuity gate (April 21 2026)
 - Job #3 (Apr 27 2026) was the first live test case of this gap. ThoughtProof's wallet scored 58/D with INSUFFICIENT confidence (zero transaction history). AHM called complete() rather than reject(), with reasoning hashed on-chain (tx 0x2a33b40e...) and explained publicly on the ETH Magicians ERC-8183 thread. Bakugo32 cited this case as design input for Treasury.sol fee structure
 - Confidence-based routing is the committed next refinement (see new entry under P2 — Product Backlog → New Endpoints / Features). Public commitment made in the abstain() architectural reply on the ERC-8183 thread
-
----
-
-## Future Dimensions
-
-### Spike: D5 Security Posture
-- Explore whether on-chain security signals could form a new AHM scoring dimension
-- Signal sources to investigate: flagged contract interactions, known exploit wallets, phishing-adjacent addresses, sanctioned addresses (Chainalysis/OFAC lists)
-- Context: Project Glasswing (Anthropic + Linux Foundation + Microsoft/Google/NVIDIA coalition) launched Apr 8 2026 — focused on code/software vulnerability detection via Claude Mythos Preview
-- AHM angle: Glasswing secures agent code, AHM monitors live runtime behaviour — complementary positioning opportunity
-- Linux Foundation is also an x402 founding partner — potential ecosystem overlap worth monitoring
-- Do not build yet. Review after D3 Operational Stability is live.
 
 ---
 
@@ -581,12 +575,7 @@ Full ecosystem scan of 402index.io service directory. 15,658 indexed services, b
 
 ### Opportunities — Build Now
 
-- [ ] **Trust Registry + Agent Certification** — Ecosystem is actively asking for a reputation/quality layer. Ryan Gentry and Austin Danson both identified this gap publicly. Directly extends backlog Spike 13 (Agent Certification). WoT Scoring API exists for Nostr-only; DJD Agent Score exists but is alone. AHM is positioned to own this for on-chain agents
 - [ ] **Proactive Ecosystem Scanning** — Already P4 in backlog. Confirmed as the right next build based on market analysis. The index itself demonstrates demand for health/quality monitoring (health_status, reliability_score, uptime_30d fields are core to the directory)
-
-### Opportunities — Build Next (1–3 months)
-
-- [ ] **AHM Shield** — Already in backlog (Long-term Product Visions). Market analysis confirms recurring subscription model would differentiate from pay-per-call competitors. No other provider offers always-on monitoring. The ecosystem's reliability problems (services going down, payment validation failures) create demand for continuous health assurance
 
 ### Opportunities — Park for Later
 
