@@ -148,6 +148,7 @@ ERC-8210 verification schema names AHM as a reference implementation. AHS D1/D2/
 
 - [ ] **AHM Logo — Homepage Link** — The AHM logo on the app page (agenthealthmonitor.xyz/app) has no link. It should link back to the homepage (agenthealthmonitor.xyz). Quick fix, low priority
 - [ ] **Global Navigation on App Page** — No navigation bar present on the app page. Add a minimal nav bar with links to Homepage, Docs (docs.agenthealthmonitor.xyz), and App for consistency across the site. Low priority but worth tidying before design partner demos
+- [ ] **Docs site: dedicated Downloads/Resources section** — Currently the AHM Getting Started PDF is accessible via a link on the Getting Started page (docs.agenthealthmonitor.xyz/getting-started) but is not discoverable from the side nav. Anyone landing on the docs site looking for downloadable assets (PDF guides, future case studies, integration patterns) has no clear path. Add a top-level "Resources" or "Downloads" nav item that surfaces all downloadable assets in one place. Pre-build the section structure so future assets (Nevermined integration walkthrough, suite framing one-pager, design partner case studies) land in a predictable home rather than getting buried as inline links across content pages. First noted: Apr 29 2026
 
 ### Other
 
