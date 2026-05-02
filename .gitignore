@@ -22,3 +22,16 @@ docs/*
 !docs/d1-chainalysis-phase1-plan.md
 !docs/taxonomy-poc-report-*.txt
 *_checkpoint.json
+
+# Claude.ai exports — never commit raw exports
+claude-exports/
+**/conversations.json
+**/memories.json
+**/users.json
+
+# Prompts directory — local-only working files by default; commit only allowlisted files
+prompts/*
+!prompts/ahm_chat_history_extract_2026-05.md
+
+# Chat archive (review before committing)
+prompts/ahm_chat_archive/
