@@ -4,7 +4,7 @@
 
 ---
 
-## Current State (as of Apr 29 2026)
+## Current State (as of May 2 2026)
 
 - **14 endpoints** live on Base mainnet at agenthealthmonitor.xyz, including /ahs/batch and configurable routing via PUT /ahs/route/policy (PR #112)
 - **ERC-8004 registered** — agentId #32328; live ERC-8183 evaluator on Base Sepolia (Jobs #1, #2, #3 completed Apr 7-27 2026)
@@ -14,10 +14,16 @@
 - **Stack unchanged:** FastAPI, x402 SDK v2, Nansen, Blockscout, Base mainnet, Railway
 - **Cross-registry tracking** across ACP / Olas / ERC-8004 / Arc / Celo
 - **Agent scan count:** 13K agents (as of Apr 28 2026, supersedes earlier "5K" / "245 wallets" calibration figures from earlier scanning phases)
+- **Nevermined walkthrough deck shipped** May 1 2026 — corrected D4 framing; May 6 follow-up call pending confirmation
+- **@AHMprotocol restored** Apr 28 2026 — verified, branded, 57 followers, pinned post intact
 
 ---
 
 ## P1 — Active / In-Flight
+
+### Homepage D4 Framing Fix (pre-Don visibility priority)
+
+- [ ] **static/index.html D4 formula correction** — Homepage currently shows D4 as part of the AHS composite formula but production scoring code (`monitor.py:2972-2976`) only uses D1/D2/D3. Need to fix homepage to match production reality. AHM Verify stays as a separate product surface (not a fourth AHS dimension). Priority: fix before May 6 Nevermined call — Don should not see mismatched framing if he visits the site. First noted: May 2 2026
 
 ### Distribution & Partnerships
 
@@ -102,19 +108,29 @@ ERC-8210 verification schema names AHM as a reference implementation. AHS D1/D2/
 
 ### Long-term Product Visions
 
-- [ ] **AHM Shield** — Always-on agent protection middleware. SDK → Proxy → Enterprise Fleet. Business model evolution: pay-per-call → per-transaction → subscription → enterprise per-agent pricing. "Norton/CrowdStrike for the agent economy"
+- [ ] **AHM Shield** — Always-on agent protection middleware. SDK → Proxy → Enterprise Fleet. Business model evolution: pay-per-call → per-transaction → subscription → enterprise per-agent pricing. "Norton/CrowdStrike for the agent economy". Separate repo (moonshot-cyber/ahm-shield), separate PyPI package, partner API keys at wholesale rate (~50% retail), white-label wrappers.
 - [ ] **Agent Title Registry** — Ownership transparency modelled on UK Land Registry (proprietorship, property, charges & restrictions)
-- [ ] **Agent Certification** — On-chain attestation badges (Gold/Silver/Bronze), 90-day renewal
+- [ ] **Agent Certification** — On-chain attestation badges (Gold/Silver/Bronze), 90-day renewal. Multi-dimensional assessment covering ISO 25010, OWASP API Security Top 10, x402 v2 spec, OpenAPI, MCP, RFC 9457, ERC-8004, ERC-7730. Tiered certification on-chain via EAS.
 - [ ] **Agent Power Index** — Comprehensive measure of agent digital footprint and influence
 - [ ] **Micro-Utility Portfolio** — 20-50 tiny single-purpose x402 endpoints, separate strategy
 - [ ] **ERC-8183 pre-flight check** — AHM as the health verification layer before a client funds an ERC-8183 job escrow. Natural fit: x402 (payments) + ERC-8004 (identity) + ERC-8183 (commerce) + AHM (health) = complete agent stack
+- [ ] **AHM Forecast / Agent Risk Prediction Layer (Phase 3+)** — Predictive probability estimates derived from D1/D2/D3 + D4 verdict history; ARS-style underwriting basis. Answers "what is the probability this agent fails its next job?" rather than "is it healthy right now?" Source: ARS paper positioning, Apr 8 2026
+- [ ] **Prediction Market Angle (Phase 4)** — AHM-powered binary outcomes pricing (e.g. "Will agent X complete next 5 jobs with ALLOW verdicts?"). Pricing engine = AHM scoring model. Requires AHM Forecast layer to be built first. Far future concept.
+- [ ] **AHM Compromise Detection (concept)** — Behavioural baseline + Nansen labels + supply chain dependency monitoring. Detect when an agent has been compromised (wallet key stolen, agent logic replaced). Distinct from AHS scoring — binary detection rather than composite scoring.
+- [ ] **EAS Integration (Phase 2)** — Publish AHM scores as on-chain attestations on Base via Ethereum Attestation Service. Makes AHS composable with any protocol that reads EAS. Phase 2 after design partner locked in. Source: ERC-8210 assessor schema alignment discussion.
+- [ ] **ENS Agent Identity (ENSIP-25/26)** — ERC-8004 + ENS as emerging agent identity stack. Monitor ENSIP-25/26 progress; consider ENS name resolution in AHS API. No action until ENS agent naming conventions stabilise.
+- [ ] **Multi-chain support (Solana priority, deferred)** — Declined PayAI Solana Alphathon Feb 2026 ($1K prize for week of multi-chain port). Decision: multi-chain deferred until Nansen work completed and feature set deeper. Solana entry conditional on broader multi-chain rationale. Revisit when product depth justifies.
+- [ ] **Soulbound Tokens (Phase 2)** — Non-transferable AHS score attestation tokens. Phase 2 after Shield + design partner. Aligns with Agent Certification concept.
 
 ### AHS Enhancements
 
 - [ ] AHS D3 infrastructure probing — expand probe coverage (uptime, latency, error rates)
 - [ ] Cross-dimensional pattern library — expand beyond Zombie Agent, Cascading Infrastructure Failure, Spam Drain, Gas Hemorrhage
 - [ ] Trend tracking improvements — JWT-based score history
+- [ ] **Per-dimension methodology versioning** — Currently `model_version: "AHS-v1"` is report-level. Patrick / ERC-8240 coordination may require finer per-dimension version tags (e.g. `d1_version: "D1-v2"`, `d2_version: "D2-v1"`) to signal when individual dimension methodologies change without a full composite version bump. Review when ERC-8240 alignment work progresses. First noted: May 2 2026
 - [ ] **D4 Output Quality Score (concept, Phase 2)** — Potential future AHS dimension derived from aggregated post-transaction output quality verdicts across an agent's job history. If an agent consistently produces low-quality deliverables that get rejected by content verification evaluators (e.g. ThoughtProof-style DISSENT/HOLD verdicts), that rejection pattern should feed into their AHS score as a fourth dimension alongside D1 Solvency, D2 Behavioural Consistency, D3 Operational Stability. Would require either: (a) a data-sharing agreement with content verification providers, or (b) reading rejection patterns from on-chain ERC-8183 job history. No action until D3 is live and ERC-8183 mainnet job volume is measurable. Source: ThoughtProof research, Apr 7 2026
+- [ ] **D4 fold-in gates report (decision input, not feature)** — Before deciding whether to accelerate D4 fold-in into AHS composite, produce a structured report covering: (1) current AHM Verify weekly verdict volume + trend; (2) D3 operational status; (3) engineering scope of fold-in (file changes, tests, JWT/cached score migration); (4) calibration methodology question (documented or needs deriving?); (5) customer impact analysis (how many AHS customers' scores would meaningfully shift). Backlog item gates remain: >500 verdicts/week + D3 operational stability. Worth re-examining whether gates still bind given commercial momentum. This is a decision input deliverable, not the fold-in itself. First noted: May 1 2026
+- [ ] **ThoughtProof PLV (Plan-Level Verification) composition** — ThoughtProof proposed PLV as middleware-level signal that composes with AHM's behavioural score. Reasoning-trace verification: per-step verdicts, evidence support, provenance gaps, criticality flags. Explicitly does NOT modify ERC-8183 binary primitive. AHM positions PLV as occupying a potential future dimension within AHM's framework (potential 5th dimension or external composable signal), not as peer over-architecture. Reply drafted with refined "trust layer" framing — not yet sent. ThoughtProof remains complementary positioning. Long-term: if PLV matures, could be folded into AHS composite at the routing layer rather than as an internal dimension. First noted: May 2 2026
 - [ ] **D5 Security Posture (spike, concept)** — Explore whether on-chain security signals could form a new AHM scoring dimension. Signal sources to investigate: flagged contract interactions, known exploit wallets, phishing-adjacent addresses, sanctioned addresses (Chainalysis/OFAC lists). Context: Project Glasswing (Anthropic + Linux Foundation + Microsoft/Google/NVIDIA coalition) launched Apr 8 2026 — focused on code/software vulnerability detection via Claude Mythos Preview. AHM angle: Glasswing secures agent code, AHM monitors live runtime behaviour — complementary positioning opportunity. Linux Foundation is also an x402 founding partner — potential ecosystem overlap worth monitoring. **Do not build yet.** Review after D3 Operational Stability is live
 - [ ] **Reputation decay scoring (concept)** — Agents that were once healthy but have gone dormant should score progressively lower over time. Influence/score should decay without fresh verified on-chain activity — health must be continuously re-earned. Aligns with AHM's existing Zombie Agent pattern detection — decay is the scoring complement to zombie flagging. Rationale: validated by RNWY's public reputation decay concept (Apr 8 2026). **Do not build yet.** Review alongside D3 Operational Stability
 - [x] **Smart contract wallet scoring** (completed Mar 24) — When `txlist` returns < 10 outgoing txs, `calculate_ahs()` now falls back to Blockscout V2 `token-transfers` API. D2 uses 4/8 signals (timing regularity, transfer diversity, counterparty breadth, activity gaps) with redistributed weights. Verified: ACP agents now score D2 10-68 (was baseline 50). EOA wallets unaffected (64/64 tests pass). New: `fetch_token_transfers()`, `calculate_d2_score_from_transfers()`, `_calc_token_transfer_diversity_score()`, `AHSResult.d2_data_source` field
@@ -161,6 +177,8 @@ ERC-8210 verification schema names AHM as a reference implementation. AHS D1/D2/
 - [ ] **Configurable routing docs update** — PR #112 shipped configurable routing (PUT /ahs/route/policy) but public docs at docs.agenthealthmonitor.xyz have not been updated. Public commitment made in the abstain() architectural reply on ERC-8183 thread referenced PR #112 as the policy infrastructure foundation; integrators reading that post and looking for documentation will hit a gap. Action: update docs site with /ahs/route/policy endpoint reference, schema description, and example configurations including grade mappings, escrow_disabled, and address allowlists. Pre-document confidence_overrides slot for the upcoming confidence-based routing build so integrators see the trajectory. First noted: Apr 27 2026
 - [ ] **Proper OG banner (1200x630)** — `generate_og_banner.py` created, interim logo fix live. Complete this week
 - [ ] Wash scan composite scoring refinement (see wash_spike_results.md for formula)
+- [ ] **USDC sweep automation** — Auto-sweep revenue wallet to cold storage/burner on a schedule. Nice-to-have operational hygiene. No priority until x402 revenue volume justifies the build.
+- [ ] **AHM Unlimited pricing decision** — Decide whether the $99/mo Unlimited tier should include D4 (AHM Verify) verdicts or keep them separately priced. Currently zero Stripe conversions across all tiers, so decision is not urgent but should be made before any pricing refresh. Source: chat history
 
 ---
 
@@ -168,7 +186,7 @@ ERC-8210 verification schema names AHM as a reference implementation. AHS D1/D2/
 
 - [ ] **ERC-8004 ecosystem** — @quantu_ai, @cascade_fyi, Warden ($4M funded, Messari-backed)
 - [ ] **FairScale (@fairscalexyz)** — Solana credibility scoring, track for potential cross-chain angle
-- [ ] **PayAI Network** — monitor new analytics dashboard when it ships
+- [ ] **PayAI Network** — confirmed infrastructure dependency, NOT competitor (May 2 2026). AHM has used `https://facilitator.payai.network` as x402 facilitator since February 2026. PayAI's "Under the Hood: how trust is handled between agents" thread (May 2 2026) is positioning by an existing infrastructure partner, not a new entrant. Monitor new analytics dashboard when it ships. Complementary infrastructure positioning confirmed
 - [ ] **Virtuals ACP** — maintain 11 offerings. **Note:** Virtuals agents share 10 TBA shards (no independent wallets), so per-agent AHS is not meaningful. Consider a "Virtuals protocol health" monitoring endpoint instead of per-agent scans
 - [ ] **ERC-8004 scan coverage** — 32,738 agents registered, only 400 scanned so far (IDs 1-352 + 30000-30355). Consider periodic scans of new registrations and mid-range IDs (1000-29999) for broader calibration
 - [ ] **Major registrar `0x6ffa1e...99bc`** — owns ~40% of agents in 30000+ range, likely a registration platform (Synthesis?). AHS 48/D. Monitor for platform-level outreach opportunity
@@ -236,6 +254,35 @@ A live public dashboard showing aggregate health stats across all agent wallets 
 - AHM has already engaged on ERC-8239 (capability composability point about taxonomy classifications as structured enums vs free-form strings); Nicopat replied Apr 27 asking how AHM sees the skill-to-quality link
 - Action: respond substantively to Nicopat once strategic prioritisation allows; engage with ERC-8240 spec drafting; consider proposing AHS as the reference quality scoring methodology
 - First noted: Apr 26-27 2026
+
+#### subjectId Translation Layer Commitment (May 1 2026)
+- AHM willing to converge on `keccak256(abi.encode(uint256 chainId, address registry, address agent))` as translation layer at ERC-8240 emission boundary if it becomes the standard
+- Internal storage stays as raw lowercased addresses (db.py:302) — no migration needed
+- Triggered by ERC-8239 coordination with bransdotcom; natural convergence point between AHM's existing storage scheme and the registry's addressable identity format
+- First noted: May 1 2026
+
+#### ERC-8239 Public Reply — Drafted, Held Pending Verification
+- Three-question response drafted covering: (1) confidence format — string enum HIGH/MED/LOW/INSUFFICIENT plus 0-100 numeric score; (2) aggregation — weighted multi-dimensional + EMA-based temporal scoring, single-evaluator architecture; (3) subjectId — raw lowercased addresses, chain ambient per deployment, willing to converge on keccak256 translation layer
+- Closing position: async preferred, subjectId as smallest-decision-first convergence point
+- Held pending Patrick / ALIA verification (see below)
+- First noted: May 1 2026
+
+#### Patrick / Nicopat / ALIA Collaboration Proposal — HOLD Pending Verification
+- Patrick (Nicopat on EthMag) sent private DM May 1 with five-axis collaboration proposal:
+  1. Cross-evaluator calibration framework co-spec
+  2. Confidence propagation in multi-evaluator systems co-research
+  3. Bidirectional data exchange under MoU (AHM scan-level signals exchanged for ALIA on-chain detection signals)
+  4. 8004×8240 quality bridge co-design
+  5. ZK1 privacy-preserving evaluator (longer term)
+- Also offering AHM reference in ALIA-published end-of-May/early-June industry report ("mutual credibility" framing)
+- **Verification status:** ERC-8239 thread on EthMag confirmed real (URL: ethereum-magicians.org/t/erc-8239-agent-skill-registry/28335) — Pablo is active participant. ALIA entity claims, institutional clients, published report, on-chain detection contracts (FlashLoanDetector, GovernanceChangeDetector, CascadeForecast) NOT independently verified via web search.
+- **Verification work pending:** contract on-chain verification, DNS check on lockstep.defire.business and catalyst.defire.business, ALIA entity background
+- **Hard constraints:**
+  - Any signal-level data exchange involving Nevermined-derived signals requires explicit Nevermined consent first
+  - No MoU language without prior verification
+  - No private-call commitment until verification complete and technical advisor in loop
+  - Async-first posture preferred
+- First noted: May 1 2026
 
 ### ERC-8210 v2 active drafting
 - JackyWang (ERC-8210 author) is in active v2 changelog drafting mode; v2 imminent
@@ -614,14 +661,15 @@ Full ecosystem scan of 402index.io service directory. 15,658 indexed services, b
   - Apr 15 2026: Initial 30-min call held
   - Apr 15 2026 (post-call): 3-month complimentary access offered (coupon TEST-ELITE), enterprise partner API key issued (ahm_live_8bc21d3b..., partner_id "nevermined", expires Jul 15 2026)
   - Apr 28 2026: Bump email drafted (sending Apr 29) including AHM Getting Started guide as additional context
-  - ~May 6 2026: Follow-up call scheduled (3 weeks from initial call)
+  - May 1 2026: `AHM-Nevermined-Integration-Walkthrough.pdf` shipped with corrected D4 framing. Email reframed as "Design partnership — follow-up ahead of next call"
+  - ~May 6 2026: Follow-up call — awaiting Wednesday 5pm GMT confirmation for May 6. Pre-call prep needed: D1 Chainalysis enrichment live, AHM Verify e2e tested
 
 - Two endpoints positioned as primary value:
   - POST /ahs/{address} — pre-payment trust scoring (the trust gate)
   - POST /v1/outputs via verify.agenthealthmonitor.xyz — post-payment output quality scoring
 
 - AHM Shield SDK integration path proposed (3-line drop-in pattern)
-- Outstanding deliverable: structured walkthrough/onboarding deck for May 6 call (committed to in Apr 15 email follow-up)
+- Walkthrough deck deliverable: SHIPPED May 1 2026 (`AHM-Nevermined-Integration-Walkthrough.pdf`). Slide 4 includes "configurable for swarm and high-throughput contexts" callout — captures Don's earlier swarm-agent feedback that one-size-fits-all routing wouldn't work for multi-agent systems. Per-integrator threshold configuration and bulk allowlist support framed as design-partner-feedback driven, not Don-specific.
 - Strategic significance: Only confirmed B2B design partner with live partner API key. May 6 call is the primary commercial inflection point for next 60 days. Conversion would validate the entire suite commercial positioning. Failure forces fundamental rethink of B2B angle.
 - Don's state pre-call: travelling Portugal → LA the week of Apr 28; testing status unknown until May 6 call surfaces it
 - First noted in backlog: Apr 28 2026 (relationship dates back to Apr 8 2026)
@@ -645,6 +693,14 @@ Strategic implication: Standards-engagement work is AHM's highest-leverage marke
 Action: review whether to formalise a "standards engagement strategy" as an explicit workstream. Decision deferred to next strategic prioritisation conversation.
 
 First noted: Apr 29 2026
+
+### AHM Dimensional Framework as Over-Architecture (standing positioning rule)
+
+- **Hold "trust layer for the agent economy" framing.** Reject "specialist evaluator in a stack" framing in standards-track conversations.
+- Applied in: May 2 ThoughtProof PLV draft reply (AHM positions PLV as dimension within AHM's framework); May 1-2 ERC-8239 Patrick reply draft (AHM as score authority, not as peer evaluator in a federation).
+- Rationale: AHM's multi-dimensional model (D1/D2/D3 + future D4/D5) is the over-architecture into which external signals compose, not one signal among peers. This framing protects AHM from being commoditised into "one of N evaluators" in ERC-8210/8240 contexts.
+- When to apply: any public reply on ETH Magicians, any positioning deck, any partnership framing where AHM's role could be minimised.
+- First noted: May 2 2026
 
 ### ARS (Agentic Risk Standard) — Positioning Opportunity
 - Paper: "Quantifying Trust: Financial Risk Management for Trustworthy AI Agents" (arxiv 2604.03976)
@@ -686,6 +742,17 @@ First noted: Apr 29 2026
 - Strategic decision: X is an auxiliary channel for research and comms, not a primary engagement surface. Empirical engagement was low pre-suspension and platform reliability has shown itself unreliable. Primary public engagement remains ETH Magicians threads and direct outreach.
 - @agenttrust (fallback handle used during suspension) running in parallel for now; quiet retirement when convenient.
 - First noted: Apr 28 2026.
+
+### Standing Process / Capability Gaps (May 2 2026)
+
+- [ ] **Cross-session context capability gap** — Claude Code has no direct access to Claude.ai conversation history. Manual workaround in place: `prompts/ahm_chat_history_extract_2026-05.md` is the curated cross-session reference artefact. Full Claude.ai data export saved at `C:\Users\Pablo\claude-exports\2026-05-02\` (gitignored). Future export pattern: Settings → Privacy → Export Data → save outside repo → run filter pass to extract AHM-relevant content into `prompts/ahm_chat_archive/` (currently gitignored). Revisit if Claude.ai adds project-level export API.
+- [ ] **Technical advisor needed** — Solo founder vs well-resourced multi-person teams in adjacent space (t54 $5M, Parallel $130M, Valory $13.8M). Worth identifying someone in agent-economy/crypto space who can sanity-check protocol-level conversations before they go further. Especially critical for Patrick/ALIA-type proposals involving MoUs, data sharing, or co-publication.
+- [ ] **Verification-before-engagement default** — When new counterparties propose data sharing, MoUs, or co-publication, default posture is verify-then-respond rather than respond-then-verify. 48-hour delay is normal counterparty behaviour. Applied to: Patrick/ALIA (May 1), any future inbound.
+- [ ] **Async-first posture for protocol coordination** — Keep substantive standards-track coordination on public threads where it belongs; private channels reserved for things that genuinely can't be said publicly. Decline calls until technical depth is matched by preparation or a co-author. Applied to: Patrick/ALIA (declined call), ThoughtProof PLV (public thread preferred).
+
+### Git Hygiene Note
+
+- Squash-merge workflow leaves branches showing as "unmerged" in `git branch --no-merged` after their content reaches master. Future audits should use content diff (`git diff branch master -- file`), not ancestry checks. Cleanup of post-PR branches should be part of merge workflow itself. First noted: May 2 2026
 
 ### Active public commitments — tracker
 
@@ -771,6 +838,13 @@ Approach: don't cold pitch — show up in their threads with genuine insight fir
 - [ ] **Alchemy** — Already in x402 ecosystem. Enterprise credibility, large developer audience
 - [ ] **Firecrawl / Browserbase** — Web scraping agents are active x402 users. Their customers are building autonomous agents that would benefit from AHM
 
+### Tier 2.5 — Integration Angle Identified, Engagement Pending
+
+- [ ] **Pagga (@obchakevich, 67.1K followers)** — Autonomous OS for crypto company back office; Polygon/Visa/Avalanche/Dune/Artemis trust signals. Natural AHM integration point: pre-transaction check for Pagga's treasury agents before they execute autonomous financial operations. Outreach reply drafted but engagement status unclear. Source: chat history, earlier session
+- [ ] **Agent Agora (GitHub agentkit issue #958)** — Offered to share participating agent wallets for bulk analysis. Free data source for trust registry expansion. Follow up when bandwidth allows.
+- [ ] **Venice (@venice_ai)** — Privacy-focused AI inference platform; recently x402-integrated. Candidate model provider for AHM Verify v0.2 adjudication panel (adds privacy-preserving inference option). Monitor.
+- [ ] **APINow (apinow.fun)** — x402 API marketplace. List AHM endpoints when @AHMprotocol account is active and site presence is strong. Low priority.
+
 ### Tier 3 — Monitor and Engage Opportunistically
 
 - [ ] **Sats4AI** — Full AI suite on L402. Different payment rail but same developer community
@@ -784,6 +858,7 @@ Approach: don't cold pitch — show up in their threads with genuine insight fir
 - [ ] **Demo recording** — Short Loom walkthrough of AHM for hackathon submissions, partnership pitches, cold outreach. Record this week
 - [ ] **@BaseHubHB engagement** — weekly Base launch curator, 2.5K+ views per post. Engage every week for inclusion in roundups
 - [ ] **Pin a new X post** — Draft and pin a fresh @AHMprotocol post once a meaningful milestone is hit (e.g. first organic payment, OpenServ selection, Coinbase PR merge). Replace the unpinned post with something current
+- [ ] **EtherMage / Jesse Pollak X thread reply (drafted, not posted)** — "Agent society" 6-point manifesto thread (replying to Jesse Pollak quoting Marc Andreessen). JayM9x's "who enforces good rewarded, bad punished?" reply is the engagement hook. Draft reframes "enforcement" as economic cost-structure shift, mentions AHM/agenthealthmonitor.xyz descriptively in one line, closes on calibration as harder problem. Post when timing is right (e.g., after a milestone that adds credibility to the claim). First noted: May 2 2026
 
 ---
 
