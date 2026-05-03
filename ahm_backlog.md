@@ -172,7 +172,7 @@ ERC-8210 verification schema names AHM as a reference implementation. AHS D1/D2/
 - [ ] **Proper OG banner (1200x630)** — `generate_og_banner.py` created, interim logo fix live. Complete this week
 - [ ] Wash scan composite scoring refinement (see wash_spike_results.md for formula)
 - [ ] **USDC sweep automation** — Auto-sweep revenue wallet to cold storage/burner on a schedule. Nice-to-have operational hygiene. No priority until x402 revenue volume justifies the build.
-- [ ] **Evaluator daemon evidence persistence** — Job #3 was manually completed via `complete-job3.ts` which hashed the actual verdict JSON (`verdict-job3.json`), giving content-addressable verification (`keccak256(file) == on-chain reason hash 0xbe9c3ba2...`). Subsequent daemon-processed jobs use a template-string hashing pattern (`keccak256("ahm-job-{id}-{grade}-{action}")`) which doesn't anchor a rich evidence document on-chain. Action: extend `evaluator-daemon.ts` to construct and hash actual verdict JSON (with score, grade, confidence, reasoning note) rather than template strings, future-proofing the content-addressable verification pattern that ThoughtProof's PLV pass validated as valuable. Also decide where verdict JSON files should live for daemon-processed jobs — currently `ahm-staking/verdict-job3.json` was a one-off manual artefact; production pattern needs a `verdicts/` directory or database table with retention policy. First noted: May 2 2026
+- [x] **Evaluator daemon evidence persistence** — COMPLETED May 2 2026 (ahm-staking PR #6). See cross-reference under Arc Mainnet Migration — Evaluator Readiness for full details. Content-addressable JSON hashing now replaces template-string hashing; verdict files persist to /data/verdicts/ on Railway volume; /verdicts/:jobId endpoint serves JSON for external verification. First noted: May 2 2026
 - [ ] **AHM Unlimited pricing decision** — Decide whether the $99/mo Unlimited tier should include D4 (AHM Verify) verdicts or keep them separately priced. Currently zero Stripe conversions across all tiers, so decision is not urgent but should be made before any pricing refresh. Source: chat history
 
 ---
@@ -270,8 +270,17 @@ A live public dashboard showing aggregate health stats across all agent wallets 
   4. 8004×8240 quality bridge co-design
   5. ZK1 privacy-preserving evaluator (longer term)
 - Also offering AHM reference in ALIA-published end-of-May/early-June industry report ("mutual credibility" framing)
-- **Verification status:** ERC-8239 thread on EthMag confirmed real (URL: ethereum-magicians.org/t/erc-8239-agent-skill-registry/28335) — Pablo is active participant. ALIA entity claims, institutional clients, published report, on-chain detection contracts (FlashLoanDetector, GovernanceChangeDetector, CascadeForecast) NOT independently verified via web search.
-- **Verification work pending:** contract on-chain verification, DNS check on lockstep.defire.business and catalyst.defire.business, ALIA entity background
+- **Verification status (May 2 2026):** Verification audit completed. Results: 2 verified / 7 partially verified / 2 unverified / 1 contradicted (12 claims total).
+  - Significant positive findings: Julien Piguet fully verified as professional GT4 racing driver and Avvatar co-founder; Racingboyz / AVR Racing flagship is real, multi-season competing team.
+  - Significant concerning findings: oracle.alia.network (claimed live ALIA dashboard) redirects to expired domain parking page — directly contradicts Patrick's infrastructure claim; Emmanuel Hubert / SCOR board membership claim cannot be substantiated through public sources; Patrick Nicolas Badoui LinkedIn returns 404; no corporate registry records accessible for Avvatar Labs.
+  - Net assessment: consistent with "early-stage operating entity with one strong real asset (racing team) and significant gap between marketing claims and verifiable infrastructure." Not consistent with elaborate fabrication; not consistent with established institutional player.
+- **Engagement decisions per axis:**
+  - Axis 1 (calibration framework on EthMag): PROCEED when Patrick posts. Public-thread, low-risk.
+  - Axis 3 (bidirectional data exchange under MoU): RETRACTED by Patrick himself May 2 — verification posture worked as designed.
+  - Axis 4 (end-of-May/early-June industry report co-publication): PROVISIONALLY ACCEPT subject to seeing structural draft before AHM's section is written. Reply if/when Patrick raises it: "Happy to consider. Before drafting AHM's section I'd find it useful to see the report's structural framing — how the three implementations are introduced, what the report says about ALIA's current production status, and the intended distribution. Editorial control on AHM's section is already understood."
+  - Axis 5 (ZK1 privacy-preserving evaluator): Long-term, no immediate action.
+- Audit saved at prompts/alia-patrick-verification-audit.md (gitignored, local only).
+- Standing rule validation: Patrick's response to AHM's verification-before-engagement holding posture was to retract the most contentious axis, accept the call decline, and provide concrete entity detail. That's the desired counterparty behaviour. Treat as evidence the verification rule produces correct outcomes.
 - **Hard constraints:**
   - Any signal-level data exchange involving Nevermined-derived signals requires explicit Nevermined consent first
   - No MoU language without prior verification
@@ -302,6 +311,7 @@ A live public dashboard showing aggregate health stats across all agent wallets 
   5. Monitor Arc mainnet timeline — when mainnet launches, evaluator daemon needs pointing at mainnet RPC and contract addresses
   6. Generate a fresh evaluator wallet address before mainnet migration. The current Base Sepolia evaluator key was exposed in conversational context during testnet operations on April 26 2026. Acceptable risk on testnet (negligible funds, no economic value, no real reputation stake), but mainnet must start with a clean, never-exposed key. Steps: generate new wallet, fund with ETH and VRT from a fresh source, stake on mainnet EvaluatorRegistry, update Railway env vars in the ahm-staking project, notify Bakugo32 of the new evaluator address so future job assignments route correctly. Time this with the mainnet contract addresses being published — bundle the rotation into the natural mainnet transition rather than disrupting testnet operations.
 - Arc testnet code now open source — review for wallet behaviour patterns that could feed AHM D1/D2 scoring signals
+- **May 2 2026 — Daemon evidence persistence fix shipped (ahm-staking PR #6 merged).** Pre-fix problem: ERC-8183 evaluator daemon submitted on-chain reason hashes from a template string (keccak256("ahm-job-{id}-{grade}-{action}")), not from actual verdict content. Job #3 (manually completed) had content-addressable evidence; future daemon-processed jobs would not. Fix replaces template-string hashing with content-addressable JSON hashing — daemon now generates a 6-field verdict JSON matching Job #3's reference structure, persists to /data/verdicts/verdict-job-{id}.json on Railway volume, hashes the file bytes, submits that hash on-chain. New /verdicts/:jobId endpoint serves the JSON for external verification. 20 tests passing including Job #3 reference hash assertion. Strict failsafe: if write fails, no on-chain tx. Daemon currently PAUSED on Railway pending Step 7 (manual test job verification before resume). Repo: moonshot-cyber/ahm-staking, master at commit b168cbc.
 - First noted: Apr 9 2026
 
 ---
@@ -739,6 +749,7 @@ First noted: Apr 29 2026
 - [ ] **Technical advisor needed** — Solo founder vs well-resourced multi-person teams in adjacent space (t54 $5M, Parallel $130M, Valory $13.8M). Worth identifying someone in agent-economy/crypto space who can sanity-check protocol-level conversations before they go further. Especially critical for Patrick/ALIA-type proposals involving MoUs, data sharing, or co-publication.
 - [ ] **Verification-before-engagement default** — When new counterparties propose data sharing, MoUs, or co-publication, default posture is verify-then-respond rather than respond-then-verify. 48-hour delay is normal counterparty behaviour. Applied to: Patrick/ALIA (May 1), any future inbound.
 - [ ] **Async-first posture for protocol coordination** — Keep substantive standards-track coordination on public threads where it belongs; private channels reserved for things that genuinely can't be said publicly. Decline calls until technical depth is matched by preparation or a co-author. Applied to: Patrick/ALIA (declined call), ThoughtProof PLV (public thread preferred).
+- [ ] **Public-thread replies don't volunteer schedule status (May 2 2026)** — AHM's positioning ("trust layer for the agent economy") doesn't tolerate self-flagellation in standards forums. Internal commitments not yet shipped get captured in the backlog, not announced as outstanding in public threads. Disclosure is for things that genuinely warrant it (security findings, methodology changes), not for normal scheduling lag. If asked directly about an unshipped commitment in a public thread, the answer is "in progress, scoped, lands alongside [related work]" — present-tense, brief, no apology, said once. First applied: ThoughtProof PLV reply May 2 2026 (confidence-based routing self-disclosure removed from final draft).
 
 ### Git Hygiene Note
 
@@ -757,6 +768,10 @@ Public commitments made in ETH Magicians threads, X exchanges, and design partne
 Track status of each fortnightly. Non-delivery on stated commitments degrades AHM's design-contributor positioning credibility.
 
 First noted: Apr 29 2026
+
+### Standards-track milestones
+
+- **May 2 2026 — ThoughtProof PLV verification of Job #3 completed publicly on EthMag ERC-8183 thread.** AHM provided the verdict-job3.json content with hash verification (keccak256(file) == 0xbe9c3ba2eca135824a330c89b78889dbe0588a365d217d966a929ed59bf50915). ThoughtProof ran their canonical PLV pass and posted: "Result: ALLOW. Cross-model review agreed. AHM's INSUFFICIENT flag was handled correctly as an evidence-boundary, not as an adverse behavioral signal. complete() was process-faithful; reject() would have acted on a verdict AHM itself marked as not defensible." Artifact SHA-256: 3599a5cc80408874a169d6dab7abc4ff36142131ee456bcda95a08cbd8daafa4. AHM acknowledgement reply posted same day with corrected lineage (Bakugo32's role framed as raising a neutral open question, not as position-holder; AHM owned the strategic call; PLV provided independent verification after the fact). Composition pattern (AHM = signal + boundary, PLV = process audit, ERC-8183 = binary primitive at protocol layer) now operationalised with worked example. First external peer-evaluator endorsement of AHM's confidence-boundary methodology. Strategic significance: positions AHM credibility for future investor pitches, design partner conversations, and standards-track engagement.
 
 ---
 
