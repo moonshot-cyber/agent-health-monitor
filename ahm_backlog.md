@@ -21,6 +21,10 @@
 
 ## P1 — Active / In-Flight
 
+### Daemon Resume — Step 7 Manual Test (gating)
+
+- [ ] **Step 7 — manual test of new daemon code before resume** — Daemon currently PAUSED on Railway following ahm-staking PR #6 (daemon evidence persistence fix, May 2 2026). Highest-priority outstanding technical task. Resume requires: (1) a real test job on Arc testnet — either created manually or by Bakugo32; (2) run daemon against that one job in controlled mode; (3) verify JSON file lands at expected path `/data/verdicts/verdict-job-{id}.json`; (4) verify `keccak256(file) == on-chain reason` for that job; (5) verify `/verdicts/{id}` HTTP endpoint serves the file; (6) then resume normal daemon operation. Do NOT restart the daemon without completing Step 7 — the failsafe ordering in `submitDecision()` protects against bad on-chain submissions, but only an end-to-end test confirms the new pattern works as designed. Gated on external state (a real test job existing). First noted: May 2 2026 (handoff doc)
+
 ### Homepage D4 Framing Fix (pre-Don visibility priority)
 
 - [ ] **static/index.html D4 formula correction** — Homepage currently shows D4 as part of the AHS composite formula but production scoring code (`monitor.py:2972-2976`) only uses D1/D2/D3. Need to fix homepage to match production reality. AHM Verify stays as a separate product surface (not a fourth AHS dimension). Priority: fix before May 6 Nevermined call — Don should not see mismatched framing if he visits the site. First noted: May 2 2026
@@ -84,6 +88,10 @@ ERC-8004 deployed on Ethereum mainnet Jan 29 2026. Identity + reputation standar
 ERC-8210 verification schema names AHM as a reference implementation. AHS D1/D2/D3 will be cited as a concrete composition example in the spec's multi-hop reference scenarios.
 
 - [ ] **cmayorga (Carlos Mayorga, ETH Magicians)** — CTO at DeFiRe.finance, Madrid. ERC-8210 contributor, active in ERC-8183 thread. Has named AHM as a reference implementation in ERC-8210 verification schema (assessor type: `ahs-d1-d2-d3`). AHM will be included as a concrete composition example in ERC-8210 multi-hop reference scenarios. **Note:** defire.finance flagged as phishing site by NordVPN — verify before any direct coordination. Keep engagement on public forum only for now
+
+### ERC-8183 v2 Composed-Evaluator Reference Artefact
+
+- [ ] **ERC-8183 v2 composed-evaluator reference artefact — co-authored with ThoughtProof, reviewed by Bakugo32** — May 4 2026 EthMag coordination produced a concrete v2 deliverable: a worked example showing how AHS (behavioural assessment) + PLV (reasoning-trace audit) wire against the ERC-8183 binary primitive. Bakugo32 confirmed it as informative-not-normative content for v2 spec docs and will facilitate review. ThoughtProof opened a separate coordination thread (ethereum-magicians.org/t/re-erc-8183-agentic-commerce/28428) and is bringing: PLV verdict schema (5-tier → binary mapping), Job #2/#3 trace re-run with confidence + PLV under the new 80/20 split, n=3 reproducibility data, IRiskHook sketch from PLV's verification surface. AHM bringing: AHS scoring methodology against Job #3 including the confidence-band reasoning that established "limited evidence ≠ adverse evidence" as the boundary call, the composition logic (AHS upstream as behavioural assessment, PLV as reasoning-trace verification, both composing against ERC-8183's binary primitive), IRiskHook sketch from the intelligence-layer side. PR target: erc8183 / erc8183-reference (existence to be confirmed; new repo if needed). Timeline committed publicly: first draft within a week (~May 11), reconciliation within another (~May 18). AHM holding the pen on first draft. Driver: ThoughtProof PLV ALLOW endorsement of Job #3 (May 2) created the natural worked-example slot. First noted: May 4 2026 (EthMag coordination thread)
 
 ---
 
@@ -174,6 +182,7 @@ ERC-8210 verification schema names AHM as a reference implementation. AHS D1/D2/
 - [ ] **USDC sweep automation** — Auto-sweep revenue wallet to cold storage/burner on a schedule. Nice-to-have operational hygiene. No priority until x402 revenue volume justifies the build.
 - [x] **Evaluator daemon evidence persistence** — COMPLETED May 2 2026 (ahm-staking PR #6). See cross-reference under Arc Mainnet Migration — Evaluator Readiness for full details. Content-addressable JSON hashing now replaces template-string hashing; verdict files persist to /data/verdicts/ on Railway volume; /verdicts/:jobId endpoint serves JSON for external verification. First noted: May 2 2026
 - [ ] **AHM Unlimited pricing decision** — Decide whether the $99/mo Unlimited tier should include D4 (AHM Verify) verdicts or keep them separately priced. Currently zero Stripe conversions across all tiers, so decision is not urgent but should be made before any pricing refresh. Source: chat history
+- [ ] **Evaluate splitting engagement state out of backlog into separate tracker** — `ahm_backlog.md` currently mixes three categories with different update cadences and decay rates: (a) build/feature work, (b) strategic decisions, (c) ongoing engagement / conversation state (EthMag exchanges, design partner state, individual relationships). Category (c) creates the most reconciliation overhead — every standards-thread exchange produces 2-3 edits that are conversation-state tracking, not build work. Likely future split: separate `ahm_engagement_log.md` (or similar) for conversation/relationship state, keeping `ahm_backlog.md` for build work and strategic decisions only. Cross-references between them. Not actioning yet — the backlog-update skill was just built (PR #151) for the current structure and needs to be stress-tested across several reconciliations before restructuring. Revisit after ~3-4 reconciliation cycles using the skill. First noted: May 4 2026 (during May 2 reconciliation session)
 
 ---
 
@@ -256,13 +265,14 @@ A live public dashboard showing aggregate health stats across all agent wallets 
 - Triggered by ERC-8239 coordination with bransdotcom; natural convergence point between AHM's existing storage scheme and the registry's addressable identity format
 - First noted: May 1 2026
 
-#### ERC-8239 Public Reply — Drafted, Held Pending Verification
+#### ERC-8239 Public Reply — Verification Complete, Posting Decision Pending
 - Three-question response drafted covering: (1) confidence format — string enum HIGH/MED/LOW/INSUFFICIENT plus 0-100 numeric score; (2) aggregation — weighted multi-dimensional + EMA-based temporal scoring, single-evaluator architecture; (3) subjectId — raw lowercased addresses, chain ambient per deployment, willing to converge on keccak256 translation layer
 - Closing position: async preferred, subjectId as smallest-decision-first convergence point
 - Held pending Patrick / ALIA verification (see below)
+- Verification complete May 2 2026 (see Patrick / Nicopat / ALIA entry above). Hold lifted. Re-evaluate whether to post given verification findings — leaning toward post-as-drafted since the reply doesn't contradict Patrick, just confirms AHM's verification posture worked. No urgency. Lower priority / opportunistic.
 - First noted: May 1 2026
 
-#### Patrick / Nicopat / ALIA Collaboration Proposal — HOLD Pending Verification
+#### Patrick / Nicopat / ALIA Collaboration Proposal — Verification Complete, Per-Axis Engagement Decisions
 - Patrick (Nicopat on EthMag) sent private DM May 1 with five-axis collaboration proposal:
   1. Cross-evaluator calibration framework co-spec
   2. Confidence propagation in multi-evaluator systems co-research
@@ -275,10 +285,13 @@ A live public dashboard showing aggregate health stats across all agent wallets 
   - Significant concerning findings: oracle.alia.network (claimed live ALIA dashboard) redirects to expired domain parking page — directly contradicts Patrick's infrastructure claim; Emmanuel Hubert / SCOR board membership claim cannot be substantiated through public sources; Patrick Nicolas Badoui LinkedIn returns 404; no corporate registry records accessible for Avvatar Labs.
   - Net assessment: consistent with "early-stage operating entity with one strong real asset (racing team) and significant gap between marketing claims and verifiable infrastructure." Not consistent with elaborate fabrication; not consistent with established institutional player.
 - **Engagement decisions per axis:**
-  - Axis 1 (calibration framework on EthMag): PROCEED when Patrick posts. Public-thread, low-risk.
+  - Axis 1 (calibration framework on EthMag): PROCEED when Patrick posts. Public-thread engagement, downside cost near zero. Don't reference verification work in any reply.
+  - Axis 2 (confidence propagation co-research): folded into Axis 1 — both public-thread research topics.
   - Axis 3 (bidirectional data exchange under MoU): RETRACTED by Patrick himself May 2 — verification posture worked as designed.
   - Axis 4 (end-of-May/early-June industry report co-publication): PROVISIONALLY ACCEPT subject to seeing structural draft before AHM's section is written. Reply if/when Patrick raises it: "Happy to consider. Before drafting AHM's section I'd find it useful to see the report's structural framing — how the three implementations are introduced, what the report says about ALIA's current production status, and the intended distribution. Editorial control on AHM's section is already understood."
   - Axis 5 (ZK1 privacy-preserving evaluator): Long-term, no immediate action.
+- Don't re-engage Patrick proactively — wait for his next move (calibration thread post or report draft).
+- Don't reference the verification audit findings publicly to Patrick — audit is internal context, not engagement material.
 - Audit saved at prompts/alia-patrick-verification-audit.md (gitignored, local only).
 - Standing rule validation: Patrick's response to AHM's verification-before-engagement holding posture was to retract the most contentious axis, accept the call decline, and provide concrete entity detail. That's the desired counterparty behaviour. Treat as evidence the verification rule produces correct outcomes.
 - **Hard constraints:**
@@ -662,7 +675,7 @@ Full ecosystem scan of 402index.io service directory. 15,658 indexed services, b
   - Apr 15 2026 (post-call): 3-month complimentary access offered (coupon TEST-ELITE), enterprise partner API key issued (ahm_live_8bc21d3b..., partner_id "nevermined", expires Jul 15 2026)
   - Apr 28 2026: Bump email drafted (sending Apr 29) including AHM Getting Started guide as additional context
   - May 1 2026: `AHM-Nevermined-Integration-Walkthrough.pdf` shipped with corrected D4 framing. Email reframed as "Design partnership — follow-up ahead of next call"
-  - ~May 6 2026: Follow-up call — awaiting Wednesday 5pm GMT confirmation for May 6. Pre-call prep needed: D1 Chainalysis enrichment live, AHM Verify e2e tested
+  - ~May 6 2026: Follow-up call — IMMINENT, awaiting Wednesday 5pm GMT confirmation. Pre-call prep checklist: (1) D1 Chainalysis enrichment live; (2) AHM Verify e2e tested against a real verdict pipeline; (3) decisions ready for the three open questions (instant_settle threshold, confidence-based routing, escrow handling); (4) soft nudge by Monday May 5 if no Don reply within 48hrs of the bump email. Walkthrough deck shipped May 1 2026 — call is the conversion inflection point; failure forces fundamental B2B angle rethink
 
 - Two endpoints positioned as primary value:
   - POST /ahs/{address} — pre-payment trust scoring (the trust gate)
@@ -761,9 +774,10 @@ Public commitments made in ETH Magicians threads, X exchanges, and design partne
 
 - Confidence-based routing build — committed in abstain() architectural reply on ERC-8183 thread. Foundation: extend PR #112 routing policy with confidence_overrides schema. Driver: Job #3 INSUFFICIENT verdict surfaced the gap.
 - Per-registry metric label + cross-registry overlap stat on intelligence page — committed to Oak / @tannedoaksprout in 4-tweet thread. Two specific changes to ship: (a) explicit metric definition ("wallets with this registry membership"); (b) overlap stat surfaced on the page with footnote on Olas → ERC-8004 syndication.
-- INTERFACES.md review — committed to Bakugo32 in Treasury thread reply. Bakugo is drafting the diff; AHM committed to review before he finalises implementation.
+- INTERFACES.md review — committed to Bakugo32 in Treasury thread reply. Bakugo posted the diff May 4 2026 on EthMag (Treasury changes: EVALUATOR_SHARE_BPS = 8_000, Treasury replacing FeeRecipient, FeeDistributed event on both complete()/reject(), BuybackQueued slab with reserved BuybackExecuted signature). Review now actionable.
+- ERC-8183 v2 composed-evaluator reference artefact — committed in coordination thread May 4 2026 (ethereum-magicians.org/t/re-erc-8183-agentic-commerce/28428). Co-authored with ThoughtProof, reviewed by Bakugo32. AHM holding pen on first draft. Timeline: first draft ~May 11, reconciliation ~May 18. See new P1 entry under ERC-8183 v2 Composed-Evaluator Reference Artefact.
 - ERC-8240 alignment dig — committed to Nicopat in ERC-8239 thread reply. Substantive engagement on skill-to-quality link, evidenceHash → evaluator input mapping. Picked up wherever Nicopat directs (8239 or 8240 thread).
-- May 6 walkthrough/onboarding deck for Don Gossen (Nevermined) — committed in Apr 15 post-call email.
+- May 6 walkthrough/onboarding deck for Don Gossen (Nevermined) — committed in Apr 15 post-call email. SHIPPED May 1 2026 (AHM-Nevermined-Integration-Walkthrough.pdf); call confirmation pending for May 6.
 
 Track status of each fortnightly. Non-delivery on stated commitments degrades AHM's design-contributor positioning credibility.
 
@@ -920,8 +934,16 @@ Revisit if a specific commercial use case emerges.
 
 ### Completed Apr 27 2026
 
-- [x] **Job #3 cycle** — first live ERC-8183 evaluator action — ThoughtProof scored 58/D with INSUFFICIENT confidence; AHM called complete() with verdict JSON hashed on-chain (verdict hash 0xbe9c3ba2..., tx 0x2a33b40e...). Public transparency post on ETH Magicians ERC-8183 thread explaining INSUFFICIENT confidence reasoning. Followed up with abstain() architectural argument (5-point defence of binary terminal states + middleware approach) and Treasury.sol fee design observations (3 concrete points on charging on reject(), 80/20 split, MIN_BUDGET dynamic pegging). Bakugo32 cited Job #3 reasoning as design input for Treasury.sol fee structure. AHM positioning shifting from "evaluator running on the protocol" to "design contributor whose decisions shape the protocol"
+- [x] **Job #3 cycle** — first live ERC-8183 evaluator action — ThoughtProof scored 58/D with INSUFFICIENT confidence; AHM called complete() with verdict JSON hashed on-chain (verdict hash 0xbe9c3ba2..., tx 0x2a33b40e...). Public transparency post on ETH Magicians ERC-8183 thread explaining INSUFFICIENT confidence reasoning. Followed up with abstain() architectural argument (5-point defence of binary terminal states + middleware approach) and Treasury.sol fee design observations (3 concrete points on charging on reject(), 80/20 split, MIN_BUDGET dynamic pegging). Bakugo32 cited Job #3 reasoning as design input for Treasury.sol fee structure. AHM positioning shifting from "evaluator running on the protocol" to "design contributor whose decisions shape the protocol". May 2 2026: ThoughtProof ran independent PLV pass on the verdict — result ALLOW with cross-model agreement. First external peer-evaluator endorsement of AHM's confidence-boundary methodology (see new entry under Completed May 2 2026).
 - [x] **AHM Intelligence dashboard + Taxonomy v1 publication** — taxonomy POC complete (754 agents classified, 6 anchored categories: Financial, Intelligence & Analytics, Research, Verification, Orchestration, Identity & Trust; 1 latent: Creative; 3 pending: Infrastructure, Commerce, Physical World). Live page at intelligence.agenthealthmonitor.xyz/taxonomy with ANCHORED/LATENT/PENDING badges, methodology disclosure, link to POC summary. Stats footer per category. PRs #137, #138, #139, #141 (taxonomy POC), #142 (backlog evaluator key rotation), and ahm-intelligence PR #1 (live page update) all merged
+
+### Completed May 2 2026
+
+- [x] **ThoughtProof PLV ALLOW endorsement of Job #3** (completed May 2) — first external peer-evaluator endorsement of AHM's confidence-boundary methodology. After AHM provided verdict-job3.json content on the EthMag ERC-8183 thread (with hash verification keccak256 == 0xbe9c3ba2...), ThoughtProof ran their canonical PLV pass and posted the result publicly: "Result: ALLOW. Cross-model review agreed. PLV's read: AHM's INSUFFICIENT flag was handled correctly as an evidence-boundary, not as an adverse behavioral signal." Artifact SHA-256 3599a5cc80408874a169d6dab7abc4ff36142131ee456bcda95a08cbd8daafa4. Multi-model agreement, content-addressable artefact. The "evidence-boundary, not adverse behavioral signal" phrasing has since been adopted as standard language across implementations. Strategic significance: validates the Job #1-3 methodology shift (reject zero-history wallets → treat INSUFFICIENT confidence as evidence-boundary). Important historical note: lineage is Bakugo32 raised an open question (neutral protocol-author posture); AHM made the strategic call and committed publicly; ThoughtProof PLV came after AHM's commitment and validated correct execution. Source: EthMag ERC-8183 thread, May 2 2026
+
+- [x] **Daemon evidence persistence — P0 fix (ahm-staking PR #6)** (completed May 2) — Pre-fix problem: ERC-8183 evaluator daemon submitted on-chain reason hashes computed from a template string `keccak256("ahm-job-{id}-{grade}-{action}")`, not from actual verdict content. Job #3 (manually completed) had content-addressable evidence; future daemon-processed jobs would not have. ThoughtProof's PLV verification of Job #3 made this a publicly visible gap if any Job #4+ followed the old pattern. Fix shipped: new `buildVerdictJson()` produces 6-field verdicts matching Job #3 reference structure (job, verdict, score, grade, confidence, note); new `writeVerdict()` persists to `/data/verdicts/verdict-job-{id}.json` on Railway volume; `submitDecision()` rewritten with strict failsafe ordering (build → write → hash → submit, no on-chain tx if write fails); `AHSData` and `Decision` interfaces extended with `confidence` field; `/verdicts/:jobId` HTTP endpoint added (returns 404 with EthMag pointer for Job #3 manual one-off); 20 tests passing including critical Job #3 reference hash assertion. 4 tier-based note templates (instant/borderline/fail-safe/reject), max 200 chars each, no methodology-specific language. Daemon currently PAUSED on Railway pending Step 7 (manual test job before resume — see new P1 entry). Driver: ThoughtProof PLV verification surfaced the gap
+
+- [x] **EthMag v3-final reply to ThoughtProof on Job #3 PLV result — posted** (completed May 2) — Three-paragraph reply acknowledging "evidence-boundary, not adverse behavioral signal" framing, explaining lineage correctly (AHM's call after Bakugo32's open question, PLV concurrence confirming operational soundness), offering to draft middleware-layer evidence verification section for v2 spec docs. Reply iteration history (internal context, not for re-publication): v1 rejected for over-claiming AHM solo authorship; v2 rejected for misattributing "reconsideration" to Bakugo32; v3 rejected for unforced disclosure of unshipped confidence-based routing schedule. v3-final posted with correct lineage, no schedule disclosure. Subsequent thread response: ThoughtProof agreed standard language ("limited evidence ≠ adverse behavioral signal"); Bakugo32 confirmed as informative-not-normative v2 content and welcomed it as v2 contribution. Public loop closed; coordination shifted to separate composed-evaluator reference artefact thread (see new P1 entry). Source: EthMag ERC-8183 thread, May 2 2026
 
 ### Completed Mar 17 2026
 
