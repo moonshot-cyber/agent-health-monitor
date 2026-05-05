@@ -1,0 +1,170 @@
+{
+  "generated_at": "2026-05-05T22:29:33.159177+00:00",
+  "total_buyers_observed": 27,
+  "registered_count": 2,
+  "unregistered_count": 25,
+  "candidates": [
+    {
+      "wallet": "0x01440cd9c0ea48fce2f8781ffef0bf853efe9fb9",
+      "total_spend_usd": 920000.0,
+      "tx_count": 2,
+      "first_seen": "2026-04-03T19:49:47+00:00",
+      "last_seen": "2026-04-03T19:50:47+00:00",
+      "distinct_services": 1,
+      "service_addresses": [
+        "0x8808029ec8b32d38c061ac1876a080c03f112db8"
+      ],
+      "cadence": "sporadic",
+      "inferred_purpose": "light consumer (insufficient data)",
+      "confidence": "ambiguous",
+      "wallet_type": "eoa",
+      "on_chain_name": null
+    },
+    {
+      "wallet": "0x9e753c5c0051277c2a9600fcdf14e28eafd7a7db",
+      "total_spend_usd": 12718.23,
+      "tx_count": 84,
+      "first_seen": "2026-03-18T22:14:49+00:00",
+      "last_seen": "2026-03-19T18:22:37+00:00",
+      "distinct_services": 1,
+      "service_addresses": [
+        "0x402c1246842f2cdbc8e0b98a67d7a59aae22b394"
+      ],
+      "cadence": "bursty",
+      "inferred_purpose": "single-service consumer (dedicated integration)",
+      "confidence": "likely_autonomous",
+      "wallet_type": "eoa",
+      "on_chain_name": null
+    },
+    {
+      "wallet": "0x9dc7a139db0176c9ac6fe64dcdf78398149e2f58",
+      "total_spend_usd": 7190.2,
+      "tx_count": 54,
+      "first_seen": "2026-04-11T14:06:45+00:00",
+      "last_seen": "2026-04-18T11:27:21+00:00",
+      "distinct_services": 2,
+      "service_addresses": [
+        "0x4ec4a3e5b6a442c86c7bc6313ebeac2393abf933",
+        "0x166bf3f45b5b40738e243b68d20862dc15925be0"
+      ],
+      "cadence": "bursty",
+      "inferred_purpose": "dual-service consumer",
+      "confidence": "clearly_autonomous",
+      "wallet_type": "eoa",
+      "on_chain_name": null
+    },
+    {
+      "wallet": "0xc2cc8d45e0e5690e103b098cad72f4475938d212",
+      "total_spend_usd": 3000.0,
+      "tx_count": 3,
+      "first_seen": "2026-04-15T12:37:45+00:00",
+      "last_seen": "2026-04-15T13:11:19+00:00",
+      "distinct_services": 1,
+      "service_addresses": [
+        "0x4ec4a3e5b6a442c86c7bc6313ebeac2393abf933"
+      ],
+      "cadence": "sporadic",
+      "inferred_purpose": "light consumer (insufficient data)",
+      "confidence": "ambiguous",
+      "wallet_type": "eoa",
+      "on_chain_name": null
+    },
+    {
+      "wallet": "0x89856fa8b52c63f5db6ef6e7cfa8994c8575d18b",
+      "total_spend_usd": 1018.1,
+      "tx_count": 96,
+      "first_seen": "2026-03-29T15:47:09+00:00",
+      "last_seen": "2026-04-07T09:09:57+00:00",
+      "distinct_services": 1,
+      "service_addresses": [
+        "0x166bf3f45b5b40738e243b68d20862dc15925be0"
+      ],
+      "cadence": "bursty",
+      "inferred_purpose": "single-service consumer (dedicated integration)",
+      "confidence": "likely_autonomous",
+      "wallet_type": "eoa",
+      "on_chain_name": null
+    },
+    {
+      "wallet": "0xc87763f4e1fe8a8fae04963d1122d2e1fac1d669",
+      "total_spend_usd": 59.4,
+      "tx_count": 11,
+      "first_seen": "2026-03-27T19:12:51+00:00",
+      "last_seen": "2026-03-27T19:14:51+00:00",
+      "distinct_services": 1,
+      "service_addresses": [
+        "0x8b29dabd6fbb5a09dacbc7978eaed66a8540721d"
+      ],
+      "cadence": "bursty",
+      "inferred_purpose": "single-service consumer (dedicated integration)",
+      "confidence": "likely_autonomous",
+      "wallet_type": "eoa",
+      "on_chain_name": null
+    },
+    {
+      "wallet": "0x9b837573e9ceb4a4e6309ffa2040b2c3d2978b35",
+      "total_spend_usd": 8.57,
+      "tx_count": 857,
+      "first_seen": "2026-04-20T11:38:33+00:00",
+      "last_seen": "2026-04-23T05:01:25+00:00",
+      "distinct_services": 1,
+      "service_addresses": [
+        "0x158e90dd58fbe897ed8c244f472febee37283d00"
+      ],
+      "cadence": "bursty",
+      "inferred_purpose": "single-service consumer (dedicated integration)",
+      "confidence": "likely_autonomous",
+      "wallet_type": "contract",
+      "on_chain_name": null
+    },
+    {
+      "wallet": "0xf9d9d8a1ac99f9498878f1126b1d2ec3add9da69",
+      "total_spend_usd": 3.0,
+      "tx_count": 1,
+      "first_seen": "2026-05-05T14:54:23+00:00",
+      "last_seen": "2026-05-05T14:54:23+00:00",
+      "distinct_services": 1,
+      "service_addresses": [
+        "0xd2abb4834f33fffd5586ca50dab478faddfd2965"
+      ],
+      "cadence": "single_tx",
+      "inferred_purpose": "light consumer (insufficient data)",
+      "confidence": "ambiguous",
+      "wallet_type": "contract",
+      "on_chain_name": null
+    },
+    {
+      "wallet": "0x28fb95d0cd49fe387ae9791758cc6aff208841d7",
+      "total_spend_usd": 3.0,
+      "tx_count": 3,
+      "first_seen": "2026-03-08T15:55:55+00:00",
+      "last_seen": "2026-03-08T16:02:05+00:00",
+      "distinct_services": 1,
+      "service_addresses": [
+        "0xc7e38c5dec3deebe6b643d332db89a27c6df204d"
+      ],
+      "cadence": "sporadic",
+      "inferred_purpose": "light consumer (insufficient data)",
+      "confidence": "ambiguous",
+      "wallet_type": "eoa",
+      "on_chain_name": null
+    },
+    {
+      "wallet": "0x68ed8b810427521a13bef83d455c2a5c2d8c63bc",
+      "total_spend_usd": 2.1,
+      "tx_count": 6,
+      "first_seen": "2026-03-20T07:03:33+00:00",
+      "last_seen": "2026-03-20T09:15:35+00:00",
+      "distinct_services": 2,
+      "service_addresses": [
+        "0x2cd2a06b47bcd9bafdd0ec8c0f312d4bdf2df7dd",
+        "0x3d54426879099855d2ae4bf5f81297454244ff98"
+      ],
+      "cadence": "sporadic",
+      "inferred_purpose": "dual-service consumer",
+      "confidence": "likely_autonomous",
+      "wallet_type": "eoa",
+      "on_chain_name": null
+    }
+  ]
+}
