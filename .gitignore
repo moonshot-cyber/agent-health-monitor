@@ -32,6 +32,8 @@ claude-exports/
 # Prompts directory — local-only working files by default; commit only allowlisted files
 prompts/*
 !prompts/ahm_chat_history_extract_2026-05.md
+!prompts/spikes/
+!prompts/spikes/**
 
 # Chat archive (review before committing)
 prompts/ahm_chat_archive/
