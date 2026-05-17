@@ -611,6 +611,8 @@ def get_ecosystem_dashboard_stats() -> dict:
                 data_sources["ERC-8004"] = data_sources.get("ERC-8004", 0) + r["cnt"]
             elif key and "arc" in key.lower():
                 data_sources["Arc"] = data_sources.get("Arc", 0) + r["cnt"]
+            elif key and "cardzero" in key.lower():
+                data_sources["CardZero"] = data_sources.get("CardZero", 0) + r["cnt"]
             else:
                 data_sources["API"] = data_sources.get("API", 0) + r["cnt"]
 
@@ -635,6 +637,8 @@ def get_ecosystem_dashboard_stats() -> dict:
                 name = "ERC-8004"
             elif key and "arc" in key.lower():
                 name = "Arc"
+            elif key and "cardzero" in key.lower():
+                name = "CardZero"
             else:
                 name = "API"
             if name not in _src_map:
