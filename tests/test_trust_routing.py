@@ -98,6 +98,121 @@ class TestTrustRoutingWithPolicy:
         from api import _trust_routing_with_policy
         assert _trust_routing_with_policy("F", None, is_allowlisted=True) == "instant_settle"
 
+    # ── Confidence override unit tests ────────────────────────────────────
+
+    def test_confidence_override_promotes_grade(self):
+        """Grade C (normally escrow) + HIGH confidence → instant_settle."""
+        from api import _trust_routing_with_policy
+        policy = {
+            "instant_grades": "A,B",
+            "escrow_grades": "C",
+            "reject_grades": "D,E,F",
+            "confidence_overrides": {"C": {"HIGH": "instant_settle"}},
+        }
+        assert _trust_routing_with_policy("C", policy, confidence="HIGH") == "instant_settle"
+
+    def test_confidence_override_demotes_grade(self):
+        """Grade B (normally instant) + LOW confidence → escrow."""
+        from api import _trust_routing_with_policy
+        policy = {
+            "instant_grades": "A,B",
+            "escrow_grades": "C",
+            "reject_grades": "D,E,F",
+            "confidence_overrides": {"B": {"LOW": "escrow"}},
+        }
+        assert _trust_routing_with_policy("B", policy, confidence="LOW") == "escrow"
+
+    def test_confidence_override_to_reject(self):
+        """Grade C + INSUFFICIENT → reject."""
+        from api import _trust_routing_with_policy
+        policy = {
+            "instant_grades": "A,B",
+            "escrow_grades": "C",
+            "reject_grades": "D,E,F",
+            "confidence_overrides": {"C": {"INSUFFICIENT": "reject"}},
+        }
+        assert _trust_routing_with_policy("C", policy, confidence="INSUFFICIENT") == "reject"
+
+    def test_confidence_override_no_match_uses_default(self):
+        """Override exists for C+HIGH, query is C+MEDIUM → grade-based default."""
+        from api import _trust_routing_with_policy
+        policy = {
+            "instant_grades": "A,B",
+            "escrow_grades": "C",
+            "reject_grades": "D,E,F",
+            "confidence_overrides": {"C": {"HIGH": "instant_settle"}},
+        }
+        assert _trust_routing_with_policy("C", policy, confidence="MEDIUM") == "escrow"
+
+    def test_confidence_override_empty_dict_no_effect(self):
+        """Empty overrides → same as no overrides."""
+        from api import _trust_routing_with_policy
+        policy = {
+            "instant_grades": "A,B",
+            "escrow_grades": "C",
+            "reject_grades": "D,E,F",
+            "confidence_overrides": {},
+        }
+        assert _trust_routing_with_policy("C", policy, confidence="HIGH") == "escrow"
+
+    def test_confidence_override_null_no_effect(self):
+        """None overrides → same as no overrides."""
+        from api import _trust_routing_with_policy
+        policy = {
+            "instant_grades": "A,B",
+            "escrow_grades": "C",
+            "reject_grades": "D,E,F",
+            "confidence_overrides": None,
+        }
+        assert _trust_routing_with_policy("C", policy, confidence="HIGH") == "escrow"
+
+    def test_confidence_override_case_insensitive(self):
+        """Lowercase 'high' matches 'HIGH' entry via normalisation."""
+        from api import _trust_routing_with_policy
+        policy = {
+            "instant_grades": "A,B",
+            "escrow_grades": "C",
+            "reject_grades": "D,E,F",
+            "confidence_overrides": {"C": {"HIGH": "instant_settle"}},
+        }
+        assert _trust_routing_with_policy("C", policy, confidence="high") == "instant_settle"
+
+    def test_confidence_override_unknown_confidence_ignored(self):
+        """'unknown' confidence → no override applied."""
+        from api import _trust_routing_with_policy
+        policy = {
+            "instant_grades": "A,B",
+            "escrow_grades": "C",
+            "reject_grades": "D,E,F",
+            "confidence_overrides": {"C": {"HIGH": "instant_settle"}},
+        }
+        assert _trust_routing_with_policy("C", policy, confidence="unknown") == "escrow"
+
+    def test_confidence_override_with_escrow_disabled_guard(self):
+        """Override maps to escrow + escrow_disabled → downgraded to reject."""
+        from api import _trust_routing_with_policy
+        policy = {
+            "instant_grades": "A,B",
+            "escrow_grades": "",
+            "reject_grades": "C,D,E,F",
+            "escrow_disabled": True,
+            "confidence_overrides": {"C": {"HIGH": "escrow"}},
+        }
+        assert _trust_routing_with_policy("C", policy, confidence="HIGH") == "reject"
+
+    def test_confidence_override_allowlist_takes_precedence(self):
+        """Allowlisted address ignores all overrides → instant_settle."""
+        from api import _trust_routing_with_policy
+        policy = {
+            "instant_grades": "A,B",
+            "escrow_grades": "C",
+            "reject_grades": "D,E,F",
+            "confidence_overrides": {"C": {"HIGH": "reject"}},
+        }
+        assert _trust_routing_with_policy(
+            "C", policy, is_allowlisted=True, confidence="HIGH",
+        ) == "instant_settle"
+
 
 # ── Integration tests for GET /ahs/route/{address} ──────────────────────
 
@@ -325,6 +440,92 @@ class TestRoutingPolicyValidation:
         body = self._make_body(allowlist=[addr])
         _validate_routing_policy(body, None)  # should not raise
 
+    # ── Confidence overrides validation tests ─────────────────────────────
+
+    def test_confidence_overrides_valid(self):
+        """Valid overrides accepted (no error raised)."""
+        from api import _validate_routing_policy
+        body = self._make_body(
+            confidence_overrides={"C": {"HIGH": "instant_settle"}, "D": {"HIGH": "escrow"}},
+        )
+        _validate_routing_policy(body, None)  # should not raise
+
+    def test_confidence_overrides_invalid_confidence_key(self):
+        """Key 'SUPER_HIGH' → 400."""
+        from api import _validate_routing_policy
+        body = self._make_body(
+            confidence_overrides={"C": {"SUPER_HIGH": "instant_settle"}},
+        )
+        with pytest.raises(Exception) as exc_info:
+            _validate_routing_policy(body, None)
+        assert "Invalid confidence level" in str(exc_info.value.detail)
+
+    def test_confidence_overrides_invalid_action_value(self):
+        """Value 'hold' → 400."""
+        from api import _validate_routing_policy
+        body = self._make_body(
+            confidence_overrides={"C": {"HIGH": "hold"}},
+        )
+        with pytest.raises(Exception) as exc_info:
+            _validate_routing_policy(body, None)
+        assert "Invalid routing action" in str(exc_info.value.detail)
+
+    def test_confidence_overrides_invalid_grade_key(self):
+        """Outer key 'X' → 400."""
+        from api import _validate_routing_policy
+        body = self._make_body(
+            confidence_overrides={"X": {"HIGH": "instant_settle"}},
+        )
+        with pytest.raises(Exception) as exc_info:
+            _validate_routing_policy(body, None)
+        assert "Invalid grade" in str(exc_info.value.detail)
+
+    def test_confidence_overrides_escrow_action_with_escrow_disabled(self):
+        """Override maps to 'escrow' + escrow_disabled=true → 400."""
+        from api import _validate_routing_policy
+        body = self._make_body(
+            escrow_disabled=True,
+            escrow_grades=[],
+            reject_grades=["C", "D", "E", "F"],
+            confidence_overrides={"C": {"HIGH": "escrow"}},
+        )
+        with pytest.raises(Exception) as exc_info:
+            _validate_routing_policy(body, None)
+        assert "escrow_disabled" in str(exc_info.value.detail)
+
+    def test_confidence_overrides_empty_dict_accepted(self):
+        """{} is valid (no-op)."""
+        from api import _validate_routing_policy
+        body = self._make_body(confidence_overrides={})
+        _validate_routing_policy(body, None)  # should not raise
+
+    def test_confidence_overrides_null_accepted(self):
+        """null / omitted is valid."""
+        from api import _validate_routing_policy
+        body = self._make_body(confidence_overrides=None)
+        _validate_routing_policy(body, None)  # should not raise
+
+    def test_confidence_overrides_insufficient_accepted(self):
+        """INSUFFICIENT is a valid confidence-level key."""
+        from api import _validate_routing_policy
+        body = self._make_body(
+            confidence_overrides={"C": {"INSUFFICIENT": "reject"}},
+        )
+        _validate_routing_policy(body, None)  # should not raise
+
+    def test_confidence_overrides_case_normalised_on_input(self):
+        """Lowercase confidence keys are normalised to uppercase by the model."""
+        from api import RoutingPolicyRequest
+        body = RoutingPolicyRequest(
+            instant_grades=["A", "B"],
+            escrow_grades=["C"],
+            reject_grades=["D", "E", "F"],
+            confidence_overrides={"C": {"high": "instant_settle"}},
+        )
+        # The field_validator should have uppercased 'high' → 'HIGH'
+        assert "HIGH" in body.confidence_overrides["C"]
+        assert "high" not in body.confidence_overrides["C"]
+
 
 # ── Routing policy endpoint tests ────────────────────────────────────────
 
@@ -480,6 +681,88 @@ class TestRoutingPolicyEndpoints:
         assert data["routing_recommendation"] == "escrow"
         assert data["policy_applied"] is False
         assert data["allowlisted"] is False
+
+    # ── Confidence overrides persistence & integration tests ──────────────
+
+    def test_put_with_confidence_overrides_roundtrip(self, client):
+        """PUT with overrides → GET returns them in the response."""
+        headers, _ = self._api_key_headers()
+        overrides = {"C": {"HIGH": "instant_settle"}, "D": {"HIGH": "escrow"}}
+        put_body = {
+            "instant_grades": ["A", "B"],
+            "escrow_grades": ["C"],
+            "reject_grades": ["D", "E", "F"],
+            "escrow_disabled": False,
+            "confidence_overrides": overrides,
+        }
+        resp = client.put("/ahs/route/policy", json=put_body, headers=headers)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["confidence_overrides"] == overrides
+
+        # GET should return the same
+        resp2 = client.get("/ahs/route/policy", headers=headers)
+        assert resp2.status_code == 200
+        data2 = resp2.json()
+        assert data2["confidence_overrides"] == overrides
+
+    def test_put_without_confidence_overrides_backward_compat(self, client):
+        """PUT without the field → GET returns null (existing tests still pass)."""
+        headers, _ = self._api_key_headers()
+        put_body = {
+            "instant_grades": ["A", "B"],
+            "escrow_grades": ["C"],
+            "reject_grades": ["D", "E", "F"],
+            "escrow_disabled": False,
+        }
+        resp = client.put("/ahs/route/policy", json=put_body, headers=headers)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["confidence_overrides"] is None
+
+        resp2 = client.get("/ahs/route/policy", headers=headers)
+        assert resp2.status_code == 200
+        assert resp2.json()["confidence_overrides"] is None
+
+    @patch("db.get_latest_ahs_for_address")
+    def test_route_applies_confidence_override(self, mock_db, client):
+        """PUT policy with C+HIGH→instant, then route Grade C address with high confidence."""
+        headers, _ = self._api_key_headers()
+        put_body = {
+            "instant_grades": ["A", "B"],
+            "escrow_grades": ["C"],
+            "reject_grades": ["D", "E", "F"],
+            "escrow_disabled": False,
+            "confidence_overrides": {"C": {"HIGH": "instant_settle"}},
+        }
+        client.put("/ahs/route/policy", json=put_body, headers=headers)
+
+        mock_db.return_value = _mock_record(grade="C", ahs=65, confidence="HIGH")
+        resp = client.get(f"/ahs/route/{VALID_ADDR}", headers=headers)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["routing_recommendation"] == "instant_settle"
+        assert data["policy_applied"] is True
+
+    @patch("db.get_latest_ahs_for_address")
+    def test_route_no_confidence_override_match(self, mock_db, client):
+        """PUT policy with C+HIGH→instant, but address has medium confidence → default escrow."""
+        headers, _ = self._api_key_headers()
+        put_body = {
+            "instant_grades": ["A", "B"],
+            "escrow_grades": ["C"],
+            "reject_grades": ["D", "E", "F"],
+            "escrow_disabled": False,
+            "confidence_overrides": {"C": {"HIGH": "instant_settle"}},
+        }
+        client.put("/ahs/route/policy", json=put_body, headers=headers)
+
+        mock_db.return_value = _mock_record(grade="C", ahs=65, confidence="MEDIUM")
+        resp = client.get(f"/ahs/route/{VALID_ADDR}", headers=headers)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["routing_recommendation"] == "escrow"
+        assert data["policy_applied"] is True
 
 
 # ── Routing policy DB CRUD tests ─────────────────────────────────────────
