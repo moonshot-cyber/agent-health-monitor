@@ -21,6 +21,7 @@ docs/*
 !docs/taxonomy-poc-summary.md
 !docs/d1-chainalysis-phase1-plan.md
 !docs/taxonomy-poc-report-*.txt
+!docs/confidence-overrides-spec.md
 *_checkpoint.json
 
 # Claude.ai exports — never commit raw exports
