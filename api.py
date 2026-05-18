@@ -511,11 +511,14 @@ def _trust_routing_with_policy(
     grade_letter: str,
     policy: dict | None = None,
     is_allowlisted: bool = False,
+    confidence: str | None = None,
 ) -> str:
     """Map AHS grade to routing recommendation using an integrator's custom policy.
 
     If is_allowlisted is True, always returns 'instant_settle' (bypass).
     If policy is None, falls back to the default hardcoded behavior.
+    When confidence_overrides are set in the policy, they can override the
+    grade-based decision for specific grade+confidence combinations.
     """
     if is_allowlisted:
         return "instant_settle"
@@ -525,11 +528,27 @@ def _trust_routing_with_policy(
     instant = set(g.strip() for g in policy.get("instant_grades", "A,B").split(",") if g.strip())
     escrow = set(g.strip() for g in policy.get("escrow_grades", "C").split(",") if g.strip())
 
+    # Step 3: Grade-based default
     if grade_letter in instant:
-        return "instant_settle"
-    if not policy.get("escrow_disabled") and grade_letter in escrow:
-        return "escrow"
-    return "reject"
+        base = "instant_settle"
+    elif not policy.get("escrow_disabled") and grade_letter in escrow:
+        base = "escrow"
+    else:
+        base = "reject"
+
+    # Step 4: Apply confidence override
+    overrides = policy.get("confidence_overrides")
+    if overrides and grade_letter in overrides:
+        conf_upper = (confidence or "").upper()
+        grade_overrides = overrides[grade_letter]
+        if conf_upper in grade_overrides:
+            base = grade_overrides[conf_upper]
+
+    # Step 5: Enforce escrow_disabled guard
+    if base == "escrow" and policy.get("escrow_disabled"):
+        base = "reject"
+
+    return base
 
 
 def _get_x402_payer(request: Request) -> str | None:
@@ -4516,6 +4535,7 @@ async def get_trust_route(address: WalletAddress, request: Request):
         grade=record["latest_grade"],
         routing_recommendation=_trust_routing_with_policy(
             grade_letter, routing_policy, is_allowlisted,
+            confidence=record.get("confidence"),
         ),
         confidence=record.get("confidence") or "unknown",
         scored_at=scored_at,
