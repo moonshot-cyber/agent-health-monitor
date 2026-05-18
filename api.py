@@ -4404,6 +4404,7 @@ async def get_routing_policy(request: Request):
         reject_grades=[g.strip() for g in policy["reject_grades"].split(",") if g.strip()],
         escrow_disabled=bool(policy["escrow_disabled"]),
         allowlist_count=len(allowlist),
+        confidence_overrides=policy.get("confidence_overrides"),
         updated_at=policy["updated_at"],
     )
 
@@ -4435,6 +4436,7 @@ async def put_routing_policy(body: RoutingPolicyRequest, request: Request):
         None,
         scan_db.upsert_routing_policy,
         owner_id, instant_str, escrow_str, reject_str, body.escrow_disabled,
+        body.confidence_overrides,
     )
 
     allowlist_count = 0
@@ -4454,6 +4456,7 @@ async def put_routing_policy(body: RoutingPolicyRequest, request: Request):
         reject_grades=body.reject_grades,
         escrow_disabled=body.escrow_disabled,
         allowlist_count=allowlist_count,
+        confidence_overrides=body.confidence_overrides,
         updated_at=policy["updated_at"],
     )
 
