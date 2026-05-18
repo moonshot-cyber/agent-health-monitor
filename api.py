@@ -59,7 +59,7 @@ from fastapi import FastAPI, HTTPException, Path, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -511,11 +511,14 @@ def _trust_routing_with_policy(
     grade_letter: str,
     policy: dict | None = None,
     is_allowlisted: bool = False,
+    confidence: str | None = None,
 ) -> str:
     """Map AHS grade to routing recommendation using an integrator's custom policy.
 
     If is_allowlisted is True, always returns 'instant_settle' (bypass).
     If policy is None, falls back to the default hardcoded behavior.
+    When confidence_overrides are set in the policy, they can override the
+    grade-based decision for specific grade+confidence combinations.
     """
     if is_allowlisted:
         return "instant_settle"
@@ -525,11 +528,27 @@ def _trust_routing_with_policy(
     instant = set(g.strip() for g in policy.get("instant_grades", "A,B").split(",") if g.strip())
     escrow = set(g.strip() for g in policy.get("escrow_grades", "C").split(",") if g.strip())
 
+    # Step 3: Grade-based default
     if grade_letter in instant:
-        return "instant_settle"
-    if not policy.get("escrow_disabled") and grade_letter in escrow:
-        return "escrow"
-    return "reject"
+        base = "instant_settle"
+    elif not policy.get("escrow_disabled") and grade_letter in escrow:
+        base = "escrow"
+    else:
+        base = "reject"
+
+    # Step 4: Apply confidence override
+    overrides = policy.get("confidence_overrides")
+    if overrides and grade_letter in overrides:
+        conf_upper = (confidence or "").upper()
+        grade_overrides = overrides[grade_letter]
+        if conf_upper in grade_overrides:
+            base = grade_overrides[conf_upper]
+
+    # Step 5: Enforce escrow_disabled guard
+    if base == "escrow" and policy.get("escrow_disabled"):
+        base = "reject"
+
+    return base
 
 
 def _get_x402_payer(request: Request) -> str | None:
@@ -617,6 +636,21 @@ def _validate_routing_policy(
                     400,
                     f"Address {addr} has Grade {grade_letter}. Only Grade C or above can be allowlisted.",
                 )
+
+    # Confidence overrides validation
+    _VALID_CONFIDENCE_LEVELS = {"HIGH", "MEDIUM", "LOW", "INSUFFICIENT"}
+    _VALID_ACTIONS = {"instant_settle", "escrow", "reject"}
+    if body.confidence_overrides:
+        for grade_key, conf_map in body.confidence_overrides.items():
+            if grade_key not in _VALID_GRADES:
+                raise HTTPException(400, f"Invalid grade '{grade_key}' in confidence_overrides")
+            for conf_key, action in conf_map.items():
+                if conf_key not in _VALID_CONFIDENCE_LEVELS:
+                    raise HTTPException(400, f"Invalid confidence level '{conf_key}'")
+                if action not in _VALID_ACTIONS:
+                    raise HTTPException(400, f"Invalid routing action '{action}'")
+            if body.escrow_disabled and "escrow" in conf_map.values():
+                raise HTTPException(400, "confidence_overrides maps to 'escrow' but escrow_disabled=true")
 
 
 # -- AHS Models --------------------------------------------------------------
@@ -713,6 +747,26 @@ class RoutingPolicyRequest(BaseModel):
     reject_grades: list[str] = Field(description="Grades that map to reject", examples=[["D", "E", "F"]])
     escrow_disabled: bool = Field(default=False, description="If true, escrow grades fall through to reject (binary mode)")
     allowlist: Optional[list[str]] = Field(default=None, description="Wallet addresses to bypass routing (always instant_settle). Max 1000.")
+    confidence_overrides: Optional[dict[str, dict[str, str]]] = Field(
+        default=None,
+        description=(
+            "Per-grade confidence-level overrides. Outer keys are grades (A-F), "
+            "inner keys are confidence levels (HIGH, MEDIUM, LOW, INSUFFICIENT), "
+            "values are routing actions (instant_settle, escrow, reject)."
+        ),
+        examples=[{"C": {"HIGH": "instant_settle"}, "D": {"HIGH": "escrow"}}],
+    )
+
+    @field_validator("confidence_overrides", mode="before")
+    @classmethod
+    def _normalise_confidence_keys(cls, v):
+        """Uppercase all confidence-level keys on input so the DB stores canonical form."""
+        if v is None:
+            return v
+        return {
+            grade: {conf_key.upper(): action for conf_key, action in confs.items()}
+            for grade, confs in v.items()
+        }
 
 
 class RoutingPolicyResponse(BaseModel):
@@ -721,6 +775,10 @@ class RoutingPolicyResponse(BaseModel):
     reject_grades: list[str] = Field(description="Grades that map to reject")
     escrow_disabled: bool = Field(description="Binary mode — no escrow tier")
     allowlist_count: int = Field(description="Number of addresses in the allowlist")
+    confidence_overrides: Optional[dict[str, dict[str, str]]] = Field(
+        default=None,
+        description="Active confidence-level overrides (null if none configured)",
+    )
     updated_at: str = Field(description="ISO 8601 timestamp of last policy update")
 
 
@@ -4346,6 +4404,7 @@ async def get_routing_policy(request: Request):
         reject_grades=[g.strip() for g in policy["reject_grades"].split(",") if g.strip()],
         escrow_disabled=bool(policy["escrow_disabled"]),
         allowlist_count=len(allowlist),
+        confidence_overrides=policy.get("confidence_overrides"),
         updated_at=policy["updated_at"],
     )
 
@@ -4377,6 +4436,7 @@ async def put_routing_policy(body: RoutingPolicyRequest, request: Request):
         None,
         scan_db.upsert_routing_policy,
         owner_id, instant_str, escrow_str, reject_str, body.escrow_disabled,
+        body.confidence_overrides,
     )
 
     allowlist_count = 0
@@ -4396,6 +4456,7 @@ async def put_routing_policy(body: RoutingPolicyRequest, request: Request):
         reject_grades=body.reject_grades,
         escrow_disabled=body.escrow_disabled,
         allowlist_count=allowlist_count,
+        confidence_overrides=body.confidence_overrides,
         updated_at=policy["updated_at"],
     )
 
@@ -4477,6 +4538,7 @@ async def get_trust_route(address: WalletAddress, request: Request):
         grade=record["latest_grade"],
         routing_recommendation=_trust_routing_with_policy(
             grade_letter, routing_policy, is_allowlisted,
+            confidence=record.get("confidence"),
         ),
         confidence=record.get("confidence") or "unknown",
         scored_at=scored_at,

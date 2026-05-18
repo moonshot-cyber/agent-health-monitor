@@ -17,7 +17,7 @@ logger = logging.getLogger("ahm.db")
 
 DB_PATH = os.getenv("DB_PATH", "./ahm_history.db")
 
-_SCHEMA_VERSION = 9
+_SCHEMA_VERSION = 10
 
 _SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS scans (
@@ -260,6 +260,17 @@ def init_db():
         # v9: Add routing_policies and routing_allowlist tables for
         # per-integrator configurable trust routing thresholds.
         # No ALTER needed — tables are created by CREATE TABLE IF NOT EXISTS.
+
+        # v10: Add confidence_overrides column for per-grade confidence-based
+        # routing overrides.
+        if current < 10:
+            try:
+                conn.execute(
+                    "ALTER TABLE routing_policies "
+                    "ADD COLUMN confidence_overrides TEXT DEFAULT NULL"
+                )
+            except sqlite3.OperationalError:
+                pass  # Column already exists
 
         if current < _SCHEMA_VERSION:
             conn.execute("INSERT INTO schema_version (version) VALUES (?)", (_SCHEMA_VERSION,))
@@ -1151,7 +1162,16 @@ def get_routing_policy(owner_id: str) -> dict | None:
             "SELECT * FROM routing_policies WHERE owner_id = ?",
             (owner_id,),
         ).fetchone()
-        return dict(row) if row else None
+        if row is None:
+            return None
+        policy = dict(row)
+        # Deserialise confidence_overrides from JSON text
+        raw = policy.get("confidence_overrides")
+        if raw:
+            policy["confidence_overrides"] = json.loads(raw)
+        else:
+            policy["confidence_overrides"] = None
+        return policy
     finally:
         conn.close()
 
@@ -1162,24 +1182,27 @@ def upsert_routing_policy(
     escrow_grades: str = "C",
     reject_grades: str = "D,E,F",
     escrow_disabled: bool = False,
+    confidence_overrides: dict | None = None,
 ) -> dict:
     """Create or update the routing policy for an owner. Returns the policy dict."""
     now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    overrides_json = json.dumps(confidence_overrides) if confidence_overrides else None
     conn = get_connection()
     try:
         conn.execute(
             """INSERT INTO routing_policies
                (owner_id, instant_grades, escrow_grades, reject_grades,
-                escrow_disabled, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?)
+                escrow_disabled, confidence_overrides, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                ON CONFLICT(owner_id) DO UPDATE SET
                    instant_grades = excluded.instant_grades,
                    escrow_grades = excluded.escrow_grades,
                    reject_grades = excluded.reject_grades,
                    escrow_disabled = excluded.escrow_disabled,
+                   confidence_overrides = excluded.confidence_overrides,
                    updated_at = excluded.updated_at""",
             (owner_id, instant_grades, escrow_grades, reject_grades,
-             int(escrow_disabled), now_iso, now_iso),
+             int(escrow_disabled), overrides_json, now_iso, now_iso),
         )
         conn.commit()
         row = conn.execute(
