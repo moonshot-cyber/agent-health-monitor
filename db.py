@@ -17,7 +17,7 @@ logger = logging.getLogger("ahm.db")
 
 DB_PATH = os.getenv("DB_PATH", "./ahm_history.db")
 
-_SCHEMA_VERSION = 10
+_SCHEMA_VERSION = 11
 
 _SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS scans (
@@ -272,6 +272,24 @@ def init_db():
             except sqlite3.OperationalError:
                 pass  # Column already exists
 
+        # v11: Add agent_name column to known_wallets for clean leaderboard queries.
+        # Backfill from the composite label column for ACP / ERC-8004 rows where
+        # names are embedded after " — " (space + em-dash U+2014 + space, 3 chars).
+        if current < 11:
+            try:
+                conn.execute(
+                    "ALTER TABLE known_wallets ADD COLUMN agent_name TEXT"
+                )
+            except sqlite3.OperationalError:
+                pass  # Column already exists
+            conn.execute(
+                "UPDATE known_wallets "
+                "SET agent_name = TRIM(SUBSTR(label, INSTR(label, ' \u2014 ') + 3)) "
+                "WHERE agent_name IS NULL "
+                "AND label LIKE '% \u2014 %' "
+                "AND TRIM(SUBSTR(label, INSTR(label, ' \u2014 ') + 3)) != ''"
+            )
+
         if current < _SCHEMA_VERSION:
             conn.execute("INSERT INTO schema_version (version) VALUES (?)", (_SCHEMA_VERSION,))
             conn.commit()
@@ -303,6 +321,7 @@ def log_scan(
     history_days: int | None = None,
     label: str | None = None,
     shadow_signals: dict | None = None,
+    agent_name: str | None = None,
 ):
     """Insert a scan record and any detected patterns. Thread-safe.
 
@@ -361,14 +380,16 @@ def log_scan(
 
         conn.execute(
             """INSERT INTO known_wallets (address, label, source, first_seen_at, last_scanned_at,
-                scan_count, latest_ahs, latest_grade, rescan_interval_hours, registries)
-            VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?)
+                scan_count, latest_ahs, latest_grade, rescan_interval_hours, registries,
+                agent_name)
+            VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)
             ON CONFLICT(address) DO UPDATE SET
                 last_scanned_at = excluded.last_scanned_at,
                 scan_count = known_wallets.scan_count + 1,
                 latest_ahs = COALESCE(excluded.latest_ahs, known_wallets.latest_ahs),
                 latest_grade = COALESCE(excluded.latest_grade, known_wallets.latest_grade),
                 label = COALESCE(excluded.label, known_wallets.label),
+                agent_name = COALESCE(excluded.agent_name, known_wallets.agent_name),
                 rescan_interval_hours = excluded.rescan_interval_hours,
                 registries = CASE
                     WHEN known_wallets.registries IS NULL OR known_wallets.registries = ''
@@ -377,7 +398,8 @@ def log_scan(
                         THEN known_wallets.registries
                     ELSE known_wallets.registries || ',' || excluded.registries
                 END""",
-            (addr, label, source, now_iso, now_iso, ahs_score, grade, rescan_interval, registry),
+            (addr, label, source, now_iso, now_iso, ahs_score, grade, rescan_interval, registry,
+             agent_name),
         )
 
         conn.commit()

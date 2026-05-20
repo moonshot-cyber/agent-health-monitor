@@ -290,10 +290,11 @@ def _ingest_discovered_wallets_to_db(agents: list[ACPAgent]) -> int:
                 label += f" \u2014 {agent.name}"
             cur = conn.execute(
                 """INSERT OR IGNORE INTO known_wallets
-                       (address, label, source, first_seen_at, scan_count, registries)
-                   VALUES (?, ?, ?, ?, 0, ?)""",
+                       (address, label, source, first_seen_at, scan_count, registries,
+                        agent_name)
+                   VALUES (?, ?, ?, ?, 0, ?, ?)""",
                 (agent.wallet_address, label, "acp_proactive_scan",
-                 now_iso, "acp_proactive_scan"),
+                 now_iso, "acp_proactive_scan", agent.name or None),
             )
             if cur.rowcount:
                 inserted += 1
@@ -493,6 +494,7 @@ def scan_wallets(agents: list[ACPAgent], max_scans: int = 500) -> dict:
                         ("shadow_patterns", []),
                     ]
                 },
+                agent_name=agent_name or None,
             )
 
             result = {
