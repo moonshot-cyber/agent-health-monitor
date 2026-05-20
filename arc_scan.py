@@ -384,6 +384,11 @@ def scan_arc_agents(max_scans: int = 200) -> list[dict]:
                 sum(1 for w in wallets if w["source"] == "arc_agent_wallet"),
                 sum(1 for w in wallets if w["source"] == "arc_owner"))
 
+    # Phase 1.5: Resolve agent names from agentURI documents.
+    # Uses the shared URI resolution helpers factored out of erc8004_scan.
+    from uri_utils import resolve_agent_names
+    resolve_agent_names(wallets, log=logger)
+
     # Phase 2: Dedup against already-scanned
     already_scanned = get_already_scanned_arc_addresses()
     new_wallets = [w for w in wallets if w["address"] not in already_scanned]
@@ -477,6 +482,7 @@ def scan_arc_agents(max_scans: int = 200) -> list[dict]:
                         ("shadow_patterns", []),
                     ]
                 },
+                agent_name=meta.get("agent_name") or None,
             )
 
             scan_results.append({
