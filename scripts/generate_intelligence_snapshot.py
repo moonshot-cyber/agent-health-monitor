@@ -144,11 +144,56 @@ def generate_snapshot(db_path: str) -> dict:
             for r in daily_rows
         ]
 
+        # --- Leaderboard: named agents ranked by AHS ---
+        leaderboard_rows = conn.execute(
+            """SELECT address, agent_name, latest_ahs, latest_grade, source, registries
+            FROM known_wallets
+            WHERE latest_ahs IS NOT NULL
+              AND agent_name IS NOT NULL
+              AND TRIM(agent_name) != ''
+            ORDER BY latest_ahs DESC,
+                     CASE WHEN last_scanned_at IS NULL THEN 1 ELSE 0 END,
+                     last_scanned_at DESC
+            LIMIT 500"""
+        ).fetchall()
+
+        healthiest = []
+        for i, r in enumerate(leaderboard_rows, 1):
+            healthiest.append({
+                "rank": i,
+                "address": r["address"],
+                "agent_name": r["agent_name"],
+                "ahs": r["latest_ahs"],
+                "grade": r["latest_grade"],
+                "source": r["source"] or "",
+                "registries": r["registries"] or "",
+            })
+
+        count_row = conn.execute(
+            """SELECT
+                SUM(CASE WHEN agent_name IS NOT NULL AND TRIM(agent_name) != '' THEN 1 ELSE 0 END) as named_scored,
+                SUM(CASE WHEN agent_name IS NULL OR TRIM(agent_name) = '' THEN 1 ELSE 0 END) as unnamed_scored,
+                COUNT(*) as total_scored
+            FROM known_wallets
+            WHERE latest_ahs IS NOT NULL"""
+        ).fetchone()
+
+        leaderboard = {
+            "healthiest": healthiest,
+            "counts": {
+                "named_scored": count_row["named_scored"] or 0,
+                "unnamed_scored": count_row["unnamed_scored"] or 0,
+                "total_scored": count_row["total_scored"] or 0,
+            },
+            "generated_at": now_iso,
+        }
+
         return {
             "generated_at": now_iso,
             "ecosystem": ecosystem,
             "registries": registries,
             "daily_stats": daily_stats,
+            "leaderboard": leaderboard,
         }
     finally:
         conn.close()
