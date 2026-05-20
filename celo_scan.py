@@ -448,11 +448,13 @@ def _ingest_discovered_wallets_to_db(wallets: list[dict]) -> int:
             source = w["source"]
             label_type = "Wallet" if source == "celo_agent_wallet" else "Owner"
             label = f"Celo Agent #{meta.get('agent_id', '?')} ({label_type})"
+            agent_name = meta.get("agent_name") or None
             cur = conn.execute(
                 """INSERT OR IGNORE INTO known_wallets
-                       (address, label, source, first_seen_at, scan_count, registries)
-                   VALUES (?, ?, ?, ?, 0, ?)""",
-                (w["address"], label, source, now_iso, source),
+                       (address, label, source, first_seen_at, scan_count, registries,
+                        agent_name)
+                   VALUES (?, ?, ?, ?, 0, ?, ?)""",
+                (w["address"], label, source, now_iso, source, agent_name),
             )
             if cur.rowcount:
                 inserted += 1
@@ -539,6 +541,11 @@ def scan_celo_agents(max_scans: int = 200) -> list[dict]:
                 len(discovered),
                 sum(1 for w in discovered if w["source"] == "celo_agent_wallet"),
                 sum(1 for w in discovered if w["source"] == "celo_owner"))
+
+    # Phase 1.5: Resolve agent names from agentURI documents.
+    # Uses the shared URI resolution helpers factored out of erc8004_scan.
+    from uri_utils import resolve_agent_names
+    resolve_agent_names(discovered, log=logger)
 
     # Phase 2: Persist discoveries so they survive checkpoint advancement.
     # Existing rows are NOT updated — this is INSERT OR IGNORE. The
@@ -666,6 +673,7 @@ def scan_celo_agents(max_scans: int = 200) -> list[dict]:
                         ("shadow_patterns", []),
                     ]
                 },
+                agent_name=meta.get("agent_name") or None,
             )
 
             scan_results.append({

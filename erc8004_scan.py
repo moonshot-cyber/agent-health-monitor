@@ -13,7 +13,6 @@ Usage:
 """
 
 import argparse
-import base64
 import csv
 import json
 import logging
@@ -28,6 +27,8 @@ from pathlib import Path
 import requests
 from web3 import Web3
 
+from uri_utils import resolve_uri, extract_name_from_json
+
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
@@ -41,10 +42,6 @@ AHM_AGENT_ID = 32328  # Our own agentId — known lower bound
 RPC_DELAY = 0.1         # RPC calls (free endpoint, minimal delay)
 BLOCKSCOUT_DELAY = 2.0  # Blockscout API (strict rate limits)
 URI_FETCH_DELAY = 0.5   # HTTP fetches for agentURI docs
-URI_FETCH_TIMEOUT = 10  # seconds
-
-# IPFS gateway
-IPFS_GATEWAY = "https://ipfs.io/ipfs/"
 
 # Output
 CSV_PATH = "erc8004_scan_results.csv"
@@ -297,51 +294,6 @@ def enumerate_agents(registry, max_agents=200, start_id=1) -> list[AgentRecord]:
 # Phase 3: URI Resolution
 # ---------------------------------------------------------------------------
 
-def _resolve_one_uri(uri: str) -> tuple[dict | None, str]:
-    """Fetch a single URI and return (json_data, error_string)."""
-    if not uri or not uri.strip():
-        return None, "empty"
-
-    url = uri.strip()
-
-    # data: URI (base64 JSON, common in NFTs)
-    if url.startswith("data:"):
-        try:
-            _, encoded = url.split(",", 1)
-            decoded = base64.b64decode(encoded).decode("utf-8")
-            return json.loads(decoded), ""
-        except Exception as e:
-            return None, f"data_uri_error: {str(e)[:60]}"
-
-    # IPFS
-    if url.startswith("ipfs://"):
-        cid = url[7:]
-        url = f"{IPFS_GATEWAY}{cid}"
-
-    # Must be HTTP(S) at this point
-    if not url.startswith("http"):
-        return None, f"unsupported_scheme: {url[:40]}"
-
-    try:
-        resp = requests.get(
-            url,
-            timeout=URI_FETCH_TIMEOUT,
-            headers={"Accept": "application/json", "User-Agent": "AHM-ERC8004-Scanner/1.0"},
-        )
-        resp.raise_for_status()
-        return resp.json(), ""
-    except requests.Timeout:
-        return None, "timeout"
-    except requests.HTTPError as e:
-        return None, f"http_{e.response.status_code}"
-    except requests.ConnectionError:
-        return None, "connection_error"
-    except json.JSONDecodeError:
-        return None, "invalid_json"
-    except Exception as e:
-        return None, str(e)[:60]
-
-
 def _extract_wallets_from_json(data: dict) -> list[str]:
     """Recursively search JSON for Ethereum addresses."""
     wallets = set()
@@ -366,15 +318,6 @@ def _extract_wallets_from_json(data: dict) -> list[str]:
     return list(wallets)
 
 
-def _extract_name_from_json(data: dict) -> str:
-    """Pull agent name from registration JSON."""
-    for key in ("name", "title", "agent_name", "agentName"):
-        val = data.get(key)
-        if isinstance(val, str) and val.strip():
-            return val.strip()[:80]
-    return ""
-
-
 def resolve_uris(agents: list[AgentRecord]) -> None:
     """Fetch and parse agentURI registration documents."""
     print("\n" + "=" * 60)
@@ -393,7 +336,7 @@ def resolve_uris(agents: list[AgentRecord]) -> None:
             errors_by_type["no_uri"] = errors_by_type.get("no_uri", 0) + 1
             continue
 
-        data, err = _resolve_one_uri(agent.token_uri)
+        data, err = resolve_uri(agent.token_uri)
 
         if err:
             agent.uri_error = err
@@ -401,7 +344,7 @@ def resolve_uris(agents: list[AgentRecord]) -> None:
         else:
             agent.uri_resolved = True
             agent.registration_json = data
-            agent.agent_name = _extract_name_from_json(data)
+            agent.agent_name = extract_name_from_json(data)
             agent.extracted_wallets = _extract_wallets_from_json(data)
             resolved += 1
 
