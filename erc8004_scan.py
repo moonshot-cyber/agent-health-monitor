@@ -544,6 +544,7 @@ def scan_wallets(agents: list[AgentRecord], max_scans=100) -> dict:
                         ("shadow_patterns", []),
                     ]
                 },
+                agent_name=agent_name or None,
             )
 
             result = {
