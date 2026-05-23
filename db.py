@@ -18,7 +18,7 @@ logger = logging.getLogger("ahm.db")
 
 DB_PATH = os.getenv("DB_PATH", "./ahm_history.db")
 
-_SCHEMA_VERSION = 11
+_SCHEMA_VERSION = 12
 
 _SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS scans (
@@ -291,6 +291,31 @@ def init_db():
                 "AND TRIM(SUBSTR(label, INSTR(label, ' \u2014 ') + 3)) != ''"
             )
 
+        # v12: Add per-dimension score columns to known_wallets so the
+        # leaderboard can rank on D1 (Wallet Hygiene) and D2 (Behavioural
+        # Consistency) independently.  Backfill from the most recent AHS scan.
+        if current < 12:
+            try:
+                conn.execute(
+                    "ALTER TABLE known_wallets ADD COLUMN latest_d1 INTEGER"
+                )
+            except sqlite3.OperationalError:
+                pass  # Column already exists
+            try:
+                conn.execute(
+                    "ALTER TABLE known_wallets ADD COLUMN latest_d2 INTEGER"
+                )
+            except sqlite3.OperationalError:
+                pass  # Column already exists
+            conn.execute(
+                """UPDATE known_wallets SET latest_d1 = s.d1_score, latest_d2 = s.d2_score
+                FROM (SELECT address, d1_score, d2_score,
+                      ROW_NUMBER() OVER (PARTITION BY address
+                                         ORDER BY scan_timestamp DESC) AS rn
+                      FROM scans WHERE endpoint = 'ahs' AND d1_score IS NOT NULL) s
+                WHERE s.rn = 1 AND known_wallets.address = s.address"""
+            )
+
         if current < _SCHEMA_VERSION:
             conn.execute("INSERT INTO schema_version (version) VALUES (?)", (_SCHEMA_VERSION,))
             conn.commit()
@@ -382,13 +407,15 @@ def log_scan(
         conn.execute(
             """INSERT INTO known_wallets (address, label, source, first_seen_at, last_scanned_at,
                 scan_count, latest_ahs, latest_grade, rescan_interval_hours, registries,
-                agent_name)
-            VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)
+                agent_name, latest_d1, latest_d2)
+            VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(address) DO UPDATE SET
                 last_scanned_at = excluded.last_scanned_at,
                 scan_count = known_wallets.scan_count + 1,
                 latest_ahs = COALESCE(excluded.latest_ahs, known_wallets.latest_ahs),
                 latest_grade = COALESCE(excluded.latest_grade, known_wallets.latest_grade),
+                latest_d1 = COALESCE(excluded.latest_d1, known_wallets.latest_d1),
+                latest_d2 = COALESCE(excluded.latest_d2, known_wallets.latest_d2),
                 label = COALESCE(excluded.label, known_wallets.label),
                 agent_name = COALESCE(excluded.agent_name, known_wallets.agent_name),
                 rescan_interval_hours = excluded.rescan_interval_hours,
@@ -400,7 +427,7 @@ def log_scan(
                     ELSE known_wallets.registries || ',' || excluded.registries
                 END""",
             (addr, label, source, now_iso, now_iso, ahs_score, grade, rescan_interval, registry,
-             agent_name),
+             agent_name, d1_score, d2_score),
         )
 
         conn.commit()
@@ -805,8 +832,73 @@ def is_handle_spam(name: str) -> bool:
     return count >= 2
 
 
+def _build_board(
+    conn: sqlite3.Connection,
+    score_col: str,
+    extra_fields: dict[str, str] | None = None,
+) -> list[dict]:
+    """Shared builder for a single leaderboard board.
+
+    *score_col* is the ``known_wallets`` column to rank on (e.g.
+    ``"latest_ahs"``).  *extra_fields* maps output key names to column
+    names that should be added to each row (e.g. ``{"d1": "latest_d1"}``).
+
+    Returns at most 500 entries, ranked 1..N, after applying all junk-data
+    filters.
+    """
+    if extra_fields is None:
+        extra_fields = {}
+
+    rows = conn.execute(
+        f"""SELECT address, agent_name, latest_ahs, latest_grade,
+                   latest_d1, latest_d2, source, registries
+        FROM known_wallets
+        WHERE {score_col} IS NOT NULL
+          AND agent_name IS NOT NULL
+          AND TRIM(agent_name) != ''
+        ORDER BY {score_col} DESC,
+                 CASE WHEN last_scanned_at IS NULL THEN 1 ELSE 0 END,
+                 last_scanned_at DESC"""
+    ).fetchall()
+
+    filtered: list = []
+    for r in rows:
+        addr = r["address"] or ""
+        name = r["agent_name"] or ""
+        if addr.lower() in BURN_ADDRESSES:
+            continue
+        if is_mash_name(name):
+            continue
+        if has_banned_keyword(name):
+            continue
+        if is_handle_spam(name):
+            continue
+        filtered.append(r)
+
+    board: list[dict] = []
+    for i, r in enumerate(filtered[:500], 1):
+        entry = {
+            "rank": i,
+            "address": r["address"],
+            "agent_name": r["agent_name"],
+            "ahs": r["latest_ahs"],
+            "grade": r["latest_grade"],
+            "source": r["source"] or "",
+            "registries": r["registries"] or "",
+        }
+        for key, col in extra_fields.items():
+            entry[key] = r[col]
+        board.append(entry)
+    return board
+
+
 def get_leaderboard_data(conn: sqlite3.Connection | None = None) -> dict:
-    """Build the leaderboard payload: top 500 named agents by AHS, plus counts.
+    """Build the leaderboard payload: three ranked boards plus counts.
+
+    Boards:
+      - **healthiest** — ranked by composite AHS score
+      - **cleanest**   — ranked by D1 (Wallet Hygiene & Solvency)
+      - **consistent** — ranked by D2 (Behavioural Consistency & Patterns)
 
     If *conn* is provided the caller owns its lifecycle (connection is NOT
     closed here).  When called from the API endpoint, pass no argument and a
@@ -816,52 +908,9 @@ def get_leaderboard_data(conn: sqlite3.Connection | None = None) -> dict:
     if own_conn:
         conn = get_connection()
     try:
-        # Fetch all named+scored rows (no LIMIT) so we can filter in Python
-        # before capping at 500.  The filter removes junk entries so the
-        # board fills with 500 *clean* entries.
-        rows = conn.execute(
-            """SELECT address, agent_name, latest_ahs, latest_grade, source, registries
-            FROM known_wallets
-            WHERE latest_ahs IS NOT NULL
-              AND agent_name IS NOT NULL
-              AND TRIM(agent_name) != ''
-            ORDER BY latest_ahs DESC,
-                     CASE WHEN last_scanned_at IS NULL THEN 1 ELSE 0 END,
-                     last_scanned_at DESC"""
-        ).fetchall()
-
-        # Apply junk-data filters
-        burn_lower = BURN_ADDRESSES  # already lower-cased
-        filtered: list = []
-        for r in rows:
-            addr = r["address"] or ""
-            name = r["agent_name"] or ""
-            # 1. Burn / null address exclusion
-            if addr.lower() in burn_lower:
-                continue
-            # 2. Keyboard-mash name exclusion
-            if is_mash_name(name):
-                continue
-            # 3. Banned keyword exclusion
-            if has_banned_keyword(name):
-                continue
-            # 4. Handle / hashtag spam
-            if is_handle_spam(name):
-                continue
-            filtered.append(r)
-
-        # Cap at 500 and assign contiguous ranks
-        healthiest = []
-        for i, r in enumerate(filtered[:500], 1):
-            healthiest.append({
-                "rank": i,
-                "address": r["address"],
-                "agent_name": r["agent_name"],
-                "ahs": r["latest_ahs"],
-                "grade": r["latest_grade"],
-                "source": r["source"] or "",
-                "registries": r["registries"] or "",
-            })
+        healthiest = _build_board(conn, "latest_ahs")
+        cleanest = _build_board(conn, "latest_d1", {"d1": "latest_d1"})
+        consistent = _build_board(conn, "latest_d2", {"d2": "latest_d2"})
 
         count_row = conn.execute(
             """SELECT
@@ -876,6 +925,8 @@ def get_leaderboard_data(conn: sqlite3.Connection | None = None) -> dict:
 
         return {
             "healthiest": healthiest,
+            "cleanest": cleanest,
+            "consistent": consistent,
             "counts": {
                 "named_scored": count_row["named_scored"] or 0,
                 "unnamed_scored": count_row["unnamed_scored"] or 0,

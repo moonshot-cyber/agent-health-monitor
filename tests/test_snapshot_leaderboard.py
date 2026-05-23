@@ -59,7 +59,9 @@ def _seed_db(db_path: str, wallets: list[dict], scans: list[dict] | None = None)
             rescan_enabled        INTEGER NOT NULL DEFAULT 1,
             rescan_interval_hours INTEGER NOT NULL DEFAULT 168,
             registries            TEXT DEFAULT '',
-            agent_name            TEXT
+            agent_name            TEXT,
+            latest_d1             INTEGER,
+            latest_d2             INTEGER
         );
         CREATE TABLE IF NOT EXISTS scans (
             id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -68,7 +70,9 @@ def _seed_db(db_path: str, wallets: list[dict], scans: list[dict] | None = None)
             scan_timestamp  TEXT,
             ahs_score       INTEGER,
             grade           TEXT,
-            response_data   TEXT
+            response_data   TEXT,
+            d1_score        INTEGER,
+            d2_score        INTEGER
         );
     """)
 
@@ -77,8 +81,9 @@ def _seed_db(db_path: str, wallets: list[dict], scans: list[dict] | None = None)
         conn.execute(
             """INSERT INTO known_wallets
                (address, label, source, first_seen_at, last_scanned_at,
-                scan_count, latest_ahs, latest_grade, registries, agent_name)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                scan_count, latest_ahs, latest_grade, registries, agent_name,
+                latest_d1, latest_d2)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 w["address"],
                 w.get("label", ""),
@@ -90,6 +95,8 @@ def _seed_db(db_path: str, wallets: list[dict], scans: list[dict] | None = None)
                 w.get("latest_grade"),
                 w.get("registries", ""),
                 w.get("agent_name"),
+                w.get("latest_d1"),
+                w.get("latest_d2"),
             ),
         )
 
@@ -122,19 +129,23 @@ def _seed_db(db_path: str, wallets: list[dict], scans: list[dict] | None = None)
 # ---------------------------------------------------------------------------
 
 _WALLETS = [
-    # Named + scored — should appear on leaderboard
+    # Named + scored — should appear on leaderboard.
+    # D1/D2 values chosen so the three boards produce different orderings.
+    #   AHS order:  Alpha(92) > Bravo(85) > Charlie(72) > Delta(55)
+    #   D1 order:   Charlie(95) > Delta(90) > Alpha(70) > Bravo(60)
+    #   D2 order:   Bravo(88) > Alpha(80) > Delta(65) > Charlie(50)
     {"address": "0x" + "a1" * 20, "agent_name": "AlphaBot", "latest_ahs": 92,
      "latest_grade": "A", "source": "acp_proactive_scan", "registries": "acp",
-     "last_scanned_at": "2026-05-20T10:00:00Z"},
+     "last_scanned_at": "2026-05-20T10:00:00Z", "latest_d1": 70, "latest_d2": 80},
     {"address": "0x" + "b2" * 20, "agent_name": "BravoAgent", "latest_ahs": 85,
      "latest_grade": "B", "source": "erc8004_scan", "registries": "erc8004",
-     "last_scanned_at": "2026-05-19T10:00:00Z"},
+     "last_scanned_at": "2026-05-19T10:00:00Z", "latest_d1": 60, "latest_d2": 88},
     {"address": "0x" + "c3" * 20, "agent_name": "CharlieBot", "latest_ahs": 72,
      "latest_grade": "C", "source": "celo_agent_wallet", "registries": "celo",
-     "last_scanned_at": "2026-05-18T10:00:00Z"},
+     "last_scanned_at": "2026-05-18T10:00:00Z", "latest_d1": 95, "latest_d2": 50},
     {"address": "0x" + "d4" * 20, "agent_name": "DeltaService", "latest_ahs": 55,
      "latest_grade": "D", "source": "arc_agent_wallet", "registries": "arc",
-     "last_scanned_at": "2026-05-17T10:00:00Z"},
+     "last_scanned_at": "2026-05-17T10:00:00Z", "latest_d1": 90, "latest_d2": 65},
 
     # Unnamed + scored — should NOT appear on leaderboard, but count as unnamed_scored
     {"address": "0x" + "e5" * 20, "agent_name": None, "latest_ahs": 88,
@@ -288,7 +299,7 @@ class TestSnapshotLeaderboard:
         assert "generated_at" in snapshot["leaderboard"]
 
     def test_no_methodology_internals(self, tmp_path):
-        """Leaderboard records must not expose D1/D2/weights/patterns."""
+        """Healthiest records must not expose weights/patterns/internals."""
         db = str(tmp_path / "test_fields.db")
         _seed_db(db, _WALLETS)
         snapshot = generate_snapshot(db)
@@ -784,3 +795,301 @@ class TestLeaderboardJunkFilter:
         names = {r["agent_name"] for r in lb["healthiest"]}
         assert "BurnBot" not in names
         assert "6w4r4y567y563745678" not in names
+
+
+# ---------------------------------------------------------------------------
+# D1/D2 dimension boards — schema, write-back, backfill, and boards
+# ---------------------------------------------------------------------------
+
+class TestSchemaD1D2:
+    """Schema: known_wallets has latest_d1 and latest_d2 after migration."""
+
+    def test_latest_d1_d2_columns_exist(self, tmp_path, monkeypatch):
+        import db as db_module
+        db_path = str(tmp_path / "schema_test.db")
+        monkeypatch.setattr(db_module, "DB_PATH", db_path)
+        db_module.init_db()
+        conn = sqlite3.connect(db_path)
+        try:
+            cols = {row[1] for row in conn.execute(
+                "PRAGMA table_info(known_wallets)"
+            ).fetchall()}
+            assert "latest_d1" in cols, "latest_d1 column missing from known_wallets"
+            assert "latest_d2" in cols, "latest_d2 column missing from known_wallets"
+        finally:
+            conn.close()
+
+
+class TestWriteBackD1D2:
+    """Write-back: a logged scan with d1/d2 propagates them to known_wallets."""
+
+    def test_log_scan_propagates_d1_d2(self, tmp_path, monkeypatch):
+        import db as db_module
+        db_path = str(tmp_path / "writeback_test.db")
+        monkeypatch.setattr(db_module, "DB_PATH", db_path)
+        db_module.init_db()
+
+        db_module.log_scan(
+            address="0x" + "ab" * 20,
+            endpoint="ahs",
+            scan_timestamp="2026-05-20T10:00:00Z",
+            ahs_score=85,
+            grade="B",
+            d1_score=70,
+            d2_score=60,
+            agent_name="WriteBackBot",
+            source="api",
+        )
+
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        try:
+            row = conn.execute(
+                "SELECT latest_d1, latest_d2 FROM known_wallets WHERE address = ?",
+                ("0x" + "ab" * 20,),
+            ).fetchone()
+            assert row is not None
+            assert row["latest_d1"] == 70
+            assert row["latest_d2"] == 60
+        finally:
+            conn.close()
+
+
+class TestBackfillD1D2:
+    """Backfill: pre-existing wallet with scans gets latest_d1/d2 populated
+    from its most recent scan during the v12 migration."""
+
+    def test_backfill_populates_from_scans(self, tmp_path, monkeypatch):
+        import db as db_module
+        db_path = str(tmp_path / "backfill_test.db")
+        monkeypatch.setattr(db_module, "DB_PATH", db_path)
+
+        # Create a v11-level DB (no latest_d1/d2 columns)
+        conn = sqlite3.connect(db_path, timeout=10)
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA foreign_keys=ON")
+        conn.executescript(db_module._SCHEMA_SQL)
+        # Add columns from earlier migrations (v2 + v11)
+        for stmt in [
+            "ALTER TABLE known_wallets ADD COLUMN registries TEXT DEFAULT ''",
+            "ALTER TABLE known_wallets ADD COLUMN agent_name TEXT",
+        ]:
+            try:
+                conn.execute(stmt)
+            except sqlite3.OperationalError:
+                pass
+        # Mark as v11
+        conn.execute("INSERT INTO schema_version (version) VALUES (11)")
+
+        # Insert a wallet (no latest_d1/d2 columns yet)
+        addr = "0x" + "ab" * 20
+        conn.execute(
+            """INSERT INTO known_wallets
+               (address, source, first_seen_at, latest_ahs, latest_grade, agent_name)
+            VALUES (?, ?, ?, ?, ?, ?)""",
+            (addr, "api", "2026-05-01T00:00:00Z", 80, "B", "BackfillBot"),
+        )
+        # Insert scans: older and newer, both with d1/d2
+        conn.execute(
+            """INSERT INTO scans
+               (address, endpoint, scan_timestamp, ahs_score, grade,
+                d1_score, d2_score, source)
+            VALUES (?, 'ahs', '2026-05-10T10:00:00Z', 75, 'B', 60, 55, 'api')""",
+            (addr,),
+        )
+        conn.execute(
+            """INSERT INTO scans
+               (address, endpoint, scan_timestamp, ahs_score, grade,
+                d1_score, d2_score, source)
+            VALUES (?, 'ahs', '2026-05-20T10:00:00Z', 80, 'B', 70, 65, 'api')""",
+            (addr,),
+        )
+        conn.commit()
+        conn.close()
+
+        # Run init_db → detects v11, applies v12 migration (add cols + backfill)
+        db_module.init_db()
+
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        try:
+            row = conn.execute(
+                "SELECT latest_d1, latest_d2 FROM known_wallets WHERE address = ?",
+                (addr,),
+            ).fetchone()
+            assert row is not None
+            assert row["latest_d1"] == 70, f"Expected d1=70 (most recent), got {row['latest_d1']}"
+            assert row["latest_d2"] == 65, f"Expected d2=65 (most recent), got {row['latest_d2']}"
+        finally:
+            conn.close()
+
+
+class TestLeaderboardD1D2Boards:
+    """Leaderboard returns cleanest (D1) and consistent (D2) boards with
+    correct ordering, contiguous ranks, dimension fields, junk filters,
+    identical counts, and no rising key."""
+
+    def test_cleanest_ordered_by_d1(self, tmp_path):
+        db = str(tmp_path / "test.db")
+        _seed_db(db, _WALLETS)
+        snapshot = generate_snapshot(db)
+        scores = [r["d1"] for r in snapshot["leaderboard"]["cleanest"]]
+        assert scores == sorted(scores, reverse=True), (
+            f"cleanest not sorted by d1 desc: {scores}"
+        )
+
+    def test_consistent_ordered_by_d2(self, tmp_path):
+        db = str(tmp_path / "test.db")
+        _seed_db(db, _WALLETS)
+        snapshot = generate_snapshot(db)
+        scores = [r["d2"] for r in snapshot["leaderboard"]["consistent"]]
+        assert scores == sorted(scores, reverse=True), (
+            f"consistent not sorted by d2 desc: {scores}"
+        )
+
+    def test_cleanest_ranks_contiguous(self, tmp_path):
+        db = str(tmp_path / "test.db")
+        _seed_db(db, _WALLETS)
+        snapshot = generate_snapshot(db)
+        ranks = [r["rank"] for r in snapshot["leaderboard"]["cleanest"]]
+        assert ranks == list(range(1, len(ranks) + 1))
+
+    def test_consistent_ranks_contiguous(self, tmp_path):
+        db = str(tmp_path / "test.db")
+        _seed_db(db, _WALLETS)
+        snapshot = generate_snapshot(db)
+        ranks = [r["rank"] for r in snapshot["leaderboard"]["consistent"]]
+        assert ranks == list(range(1, len(ranks) + 1))
+
+    def test_cleanest_has_d1_field(self, tmp_path):
+        db = str(tmp_path / "test.db")
+        _seed_db(db, _WALLETS)
+        snapshot = generate_snapshot(db)
+        for r in snapshot["leaderboard"]["cleanest"]:
+            assert "d1" in r, f"cleanest entry missing 'd1' key: {r}"
+
+    def test_consistent_has_d2_field(self, tmp_path):
+        db = str(tmp_path / "test.db")
+        _seed_db(db, _WALLETS)
+        snapshot = generate_snapshot(db)
+        for r in snapshot["leaderboard"]["consistent"]:
+            assert "d2" in r, f"consistent entry missing 'd2' key: {r}"
+
+    def test_junk_filters_apply_to_all_boards(self, tmp_path):
+        """Burn addresses, mash names, banned keywords, and handle spam
+        are excluded from cleanest and consistent boards."""
+        db = str(tmp_path / "junk.db")
+        wallets = [
+            # Legit
+            {"address": "0x" + "a1" * 20, "agent_name": "AlphaBot",
+             "latest_ahs": 92, "latest_grade": "A", "source": "acp",
+             "registries": "acp", "latest_d1": 70, "latest_d2": 80},
+            # Burn address
+            {"address": "0x000000000000000000000000000000000000dead",
+             "agent_name": "BurnBot", "latest_ahs": 99, "latest_grade": "A",
+             "source": "api", "registries": "", "latest_d1": 99, "latest_d2": 99},
+            # Mash name
+            {"address": "0x" + "d4" * 20, "agent_name": "6w4r4y567y563745678",
+             "latest_ahs": 90, "latest_grade": "A", "source": "api",
+             "registries": "", "latest_d1": 95, "latest_d2": 95},
+            # Banned keyword
+            {"address": "0x" + "e5" * 20, "agent_name": "Test Client",
+             "latest_ahs": 88, "latest_grade": "B", "source": "api",
+             "registries": "", "latest_d1": 88, "latest_d2": 88},
+            # Handle spam
+            {"address": "0x" + "aa" * 20,
+             "agent_name": "@sortesfun @calo530G @Peko7g",
+             "latest_ahs": 91, "latest_grade": "A", "source": "api",
+             "registries": "", "latest_d1": 91, "latest_d2": 91},
+        ]
+        _seed_db(db, wallets)
+        snapshot = generate_snapshot(db)
+        for board_name in ("cleanest", "consistent"):
+            addrs = {r["address"] for r in snapshot["leaderboard"][board_name]}
+            assert "0x000000000000000000000000000000000000dead" not in addrs, (
+                f"burn address in {board_name}"
+            )
+            names = {r["agent_name"] for r in snapshot["leaderboard"][board_name]}
+            assert "6w4r4y567y563745678" not in names, (
+                f"mash name in {board_name}"
+            )
+            assert "Test Client" not in names, f"banned keyword in {board_name}"
+            assert "@sortesfun @calo530G @Peko7g" not in names, (
+                f"handle spam in {board_name}"
+            )
+
+    def test_counts_identical_across_boards(self, tmp_path):
+        db = str(tmp_path / "test.db")
+        _seed_db(db, _WALLETS)
+        snapshot = generate_snapshot(db)
+        counts = snapshot["leaderboard"]["counts"]
+        # Named + scored: AlphaBot, BravoAgent, CharlieBot, DeltaService = 4
+        assert counts["named_scored"] == 4
+        # Unnamed + scored: e5 (None), f6 (""), 08 ("   ") = 3
+        assert counts["unnamed_scored"] == 3
+        assert counts["total_scored"] == 7
+
+    def test_no_rising_key(self, tmp_path):
+        db = str(tmp_path / "test.db")
+        _seed_db(db, _WALLETS)
+        snapshot = generate_snapshot(db)
+        assert "rising" not in snapshot["leaderboard"]
+
+    def test_null_d1_d2_excluded_from_dimension_boards(self, tmp_path):
+        """A wallet with latest_ahs but NULL latest_d1/d2 (older scan
+        without dimension scores) appears on healthiest but is excluded
+        from cleanest and consistent.  Both dimension boards still have
+        contiguous 1..N ranks."""
+        db = str(tmp_path / "null_dims.db")
+        wallets = [
+            # Has AHS but no D1/D2 — older scan without dimension scores
+            {"address": "0x" + "01" * 20, "agent_name": "OldSchoolBot",
+             "latest_ahs": 90, "latest_grade": "A", "source": "api",
+             "registries": "", "latest_d1": None, "latest_d2": None},
+            # Has AHS + D1/D2
+            {"address": "0x" + "02" * 20, "agent_name": "ModernBot",
+             "latest_ahs": 80, "latest_grade": "B", "source": "api",
+             "registries": "", "latest_d1": 75, "latest_d2": 70},
+            {"address": "0x" + "03" * 20, "agent_name": "AnotherBot",
+             "latest_ahs": 70, "latest_grade": "C", "source": "api",
+             "registries": "", "latest_d1": 65, "latest_d2": 85},
+        ]
+        _seed_db(db, wallets)
+        snapshot = generate_snapshot(db)
+        lb = snapshot["leaderboard"]
+
+        # OldSchoolBot appears on healthiest
+        health_addrs = {r["address"] for r in lb["healthiest"]}
+        assert "0x" + "01" * 20 in health_addrs
+
+        # OldSchoolBot excluded from cleanest and consistent
+        clean_addrs = {r["address"] for r in lb["cleanest"]}
+        consist_addrs = {r["address"] for r in lb["consistent"]}
+        assert "0x" + "01" * 20 not in clean_addrs
+        assert "0x" + "01" * 20 not in consist_addrs
+
+        # Dimension boards still have contiguous 1..N ranks
+        clean_ranks = [r["rank"] for r in lb["cleanest"]]
+        assert clean_ranks == list(range(1, len(clean_ranks) + 1))
+        consist_ranks = [r["rank"] for r in lb["consistent"]]
+        assert consist_ranks == list(range(1, len(consist_ranks) + 1))
+
+
+class TestSnapshotD1D2:
+    """Snapshot includes cleanest and consistent boards, but not rising."""
+
+    def test_snapshot_includes_cleanest_consistent(self, tmp_path):
+        db = str(tmp_path / "test.db")
+        _seed_db(db, _WALLETS)
+        snapshot = generate_snapshot(db)
+        lb = snapshot["leaderboard"]
+        assert "cleanest" in lb, "cleanest missing from snapshot leaderboard"
+        assert "consistent" in lb, "consistent missing from snapshot leaderboard"
+        assert isinstance(lb["cleanest"], list)
+        assert isinstance(lb["consistent"], list)
+
+    def test_snapshot_no_rising(self, tmp_path):
+        db = str(tmp_path / "test.db")
+        _seed_db(db, _WALLETS)
+        snapshot = generate_snapshot(db)
+        assert "rising" not in snapshot["leaderboard"]
