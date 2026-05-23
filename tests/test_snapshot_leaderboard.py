@@ -12,7 +12,25 @@ from unittest.mock import patch
 
 import pytest
 
+import scripts.generate_intelligence_snapshot as snapshot_mod
 from scripts.generate_intelligence_snapshot import generate_snapshot, generate_snapshot_from_api
+
+
+# ---------------------------------------------------------------------------
+# Lazy db import — the module must not import get_leaderboard_data at load
+# ---------------------------------------------------------------------------
+
+class TestLazyDbImport:
+    """The script must not have a module-level dependency on db.py so
+    it can be fetched standalone and run in --api mode."""
+
+    def test_get_leaderboard_data_not_at_module_scope(self):
+        """get_leaderboard_data should NOT be in the module namespace —
+        it is imported lazily inside generate_snapshot()."""
+        assert not hasattr(snapshot_mod, "get_leaderboard_data"), (
+            "get_leaderboard_data is imported at module scope; "
+            "it should be a lazy import inside generate_snapshot()"
+        )
 
 
 # ---------------------------------------------------------------------------
