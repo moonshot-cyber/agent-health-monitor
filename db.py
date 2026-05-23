@@ -8,6 +8,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import secrets
 import sqlite3
 import time
@@ -711,6 +712,79 @@ def get_ecosystem_dashboard_stats() -> dict:
         conn.close()
 
 
+# ---------------------------------------------------------------------------
+# Leaderboard junk-data filters
+# ---------------------------------------------------------------------------
+
+# Burn / null addresses to exclude (lower-cased for case-insensitive match).
+BURN_ADDRESSES: set[str] = {
+    "0x000000000000000000000000000000000000dead",
+    "0x0000000000000000000000000000000000000000",
+}
+
+# Keywords that cause exclusion when they appear as a whole word in agent_name.
+BANNED_KEYWORDS: set[str] = {"test"}
+
+# Pre-compiled pattern for whole-word keyword matching.  Word boundaries are
+# defined as transitions to/from [A-Za-z0-9_]; hyphens therefore act as
+# boundaries (e.g. "ag-test-bot" matches "test").
+_BANNED_RE = re.compile(
+    r"\b(?:" + "|".join(re.escape(k) for k in BANNED_KEYWORDS) + r")\b",
+    re.IGNORECASE,
+)
+
+
+def is_mash_name(name: str) -> bool:
+    """Return True if *name* looks like keyboard-mash / random junk.
+
+    A name is considered junk when it is LONG (>= 12 characters) **and**
+    meets at least one of:
+      - After removing spaces, > 40 % of characters are digits.
+      - It contains no run of 3+ consecutive alphabetic characters.
+      - It contains digits **and** has no alpha run of 6+ characters.
+        (Digits interspersed among short alpha fragments — like
+        ``6w4rfg5eqr3gfdfg`` — are a strong mash signal even when the
+        overall digit ratio is below 40 %.)
+
+    Short names (< 12 chars) are never flagged — thin legitimate names
+    like "V", "kai", "006" must be kept.
+    """
+    if len(name) < 12:
+        return False
+
+    stripped = name.replace(" ", "")
+    if not stripped:
+        return False
+
+    # Check digit ratio
+    digit_count = sum(c.isdigit() for c in stripped)
+    if digit_count / len(stripped) > 0.4:
+        return True
+
+    # Check for at least one run of 3+ consecutive alpha characters
+    if not re.search(r"[A-Za-z]{3,}", stripped):
+        return True
+
+    # Digits interspersed among short alpha fragments: if the name
+    # contains any digit but no alpha run reaches 6 characters, the
+    # fragments are too short to be real words → mash.
+    if digit_count > 0 and not re.search(r"[A-Za-z]{6,}", stripped):
+        return True
+
+    return False
+
+
+def has_banned_keyword(name: str) -> bool:
+    r"""Return True if *name* contains a banned keyword as a whole word.
+
+    Matching is case-insensitive and uses ``\b`` word boundaries, so
+    hyphens, spaces, and punctuation all act as separators.  This means
+    "Test Client" and "ag-test-bot" match, but "Contest Tracker" does
+    not (``test`` is a substring of ``Contest``, not a standalone word).
+    """
+    return bool(_BANNED_RE.search(name))
+
+
 def get_leaderboard_data(conn: sqlite3.Connection | None = None) -> dict:
     """Build the leaderboard payload: top 500 named agents by AHS, plus counts.
 
@@ -722,6 +796,9 @@ def get_leaderboard_data(conn: sqlite3.Connection | None = None) -> dict:
     if own_conn:
         conn = get_connection()
     try:
+        # Fetch all named+scored rows (no LIMIT) so we can filter in Python
+        # before capping at 500.  The filter removes junk entries so the
+        # board fills with 500 *clean* entries.
         rows = conn.execute(
             """SELECT address, agent_name, latest_ahs, latest_grade, source, registries
             FROM known_wallets
@@ -730,12 +807,29 @@ def get_leaderboard_data(conn: sqlite3.Connection | None = None) -> dict:
               AND TRIM(agent_name) != ''
             ORDER BY latest_ahs DESC,
                      CASE WHEN last_scanned_at IS NULL THEN 1 ELSE 0 END,
-                     last_scanned_at DESC
-            LIMIT 500"""
+                     last_scanned_at DESC"""
         ).fetchall()
 
+        # Apply junk-data filters
+        burn_lower = BURN_ADDRESSES  # already lower-cased
+        filtered: list = []
+        for r in rows:
+            addr = r["address"] or ""
+            name = r["agent_name"] or ""
+            # 1. Burn / null address exclusion
+            if addr.lower() in burn_lower:
+                continue
+            # 2. Keyboard-mash name exclusion
+            if is_mash_name(name):
+                continue
+            # 3. Banned keyword exclusion
+            if has_banned_keyword(name):
+                continue
+            filtered.append(r)
+
+        # Cap at 500 and assign contiguous ranks
         healthiest = []
-        for i, r in enumerate(rows, 1):
+        for i, r in enumerate(filtered[:500], 1):
             healthiest.append({
                 "rank": i,
                 "address": r["address"],
