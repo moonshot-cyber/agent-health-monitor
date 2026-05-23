@@ -451,3 +451,231 @@ class TestApiPathLeaderboard:
 
         expected_keys = {"generated_at", "ecosystem", "registries", "daily_stats", "leaderboard"}
         assert set(api_snapshot.keys()) == expected_keys
+
+
+# ---------------------------------------------------------------------------
+# Junk-data filter unit tests
+# ---------------------------------------------------------------------------
+
+from db import is_mash_name, has_banned_keyword
+
+
+class TestIsMashName:
+    """Unit tests for the keyboard-mash heuristic."""
+
+    # --- MUST be excluded (junk) ---
+
+    def test_mash_digit_heavy(self):
+        assert is_mash_name("6w4r4y567y563745678") is True
+
+    def test_mash_no_alpha_run(self):
+        assert is_mash_name("6w4rfg5eqr3gfdfg") is True
+
+    def test_mash_with_spaces_digit_heavy(self):
+        assert is_mash_name("2344rht4232fs6d 426 7 y21") is True
+
+    def test_mash_long_random(self):
+        assert is_mash_name("tyju5763ju76758dfg52567") is True
+
+    # --- MUST be kept (legitimate) ---
+
+    def test_keep_zyfai(self):
+        assert is_mash_name("Zyfai Rebalancer Agent for 0x...") is False
+
+    def test_keep_uniagent(self):
+        assert is_mash_name("UniAgent ERC8004 Agent #738") is False
+
+    def test_keep_marcus(self):
+        assert is_mash_name("Marcus Aurelius") is False
+
+    def test_keep_agentracheel(self):
+        assert is_mash_name("agentracheel") is False
+
+    # --- Short names (rule 4) — always kept ---
+
+    def test_keep_short_V(self):
+        assert is_mash_name("V") is False
+
+    def test_keep_short_C(self):
+        assert is_mash_name("C") is False
+
+    def test_keep_short_Bb(self):
+        assert is_mash_name("Bb") is False
+
+    def test_keep_short_kai(self):
+        assert is_mash_name("kai") is False
+
+    def test_keep_short_006(self):
+        assert is_mash_name("006") is False
+
+    def test_keep_short_1024(self):
+        assert is_mash_name("1024") is False
+
+    def test_keep_short_3Jane(self):
+        assert is_mash_name("3Jane") is False
+
+    def test_keep_short_aa(self):
+        assert is_mash_name("aa") is False
+
+
+class TestHasBannedKeyword:
+    """Unit tests for whole-word banned-keyword matching."""
+
+    # --- Should be excluded (keyword match) ---
+
+    def test_test_client(self):
+        assert has_banned_keyword("Test Client") is True
+
+    def test_ag_test_bot(self):
+        assert has_banned_keyword("ag-test-bot") is True
+
+    def test_jarvis_ceo_test(self):
+        assert has_banned_keyword("JARVIS-CEO-Test") is True
+
+    # --- Should be kept (substring only, not whole word) ---
+
+    def test_contest_tracker(self):
+        assert has_banned_keyword("Contest Tracker") is False
+
+    def test_latest_signal(self):
+        assert has_banned_keyword("Latest Signal") is False
+
+    def test_attestation_agent(self):
+        assert has_banned_keyword("Attestation Agent") is False
+
+
+# ---------------------------------------------------------------------------
+# Integration: get_leaderboard_data with junk filtering
+# ---------------------------------------------------------------------------
+
+class TestLeaderboardJunkFilter:
+    """Integration tests: junk entries are excluded, legit entries kept,
+    counts unchanged, and ranks remain contiguous."""
+
+    _JUNK_WALLETS = [
+        # Legitimate — should appear on leaderboard
+        {"address": "0x" + "a1" * 20, "agent_name": "AlphaBot", "latest_ahs": 92,
+         "latest_grade": "A", "source": "acp", "registries": "acp",
+         "last_scanned_at": "2026-05-20T10:00:00Z"},
+        {"address": "0x" + "b2" * 20, "agent_name": "BravoAgent", "latest_ahs": 85,
+         "latest_grade": "B", "source": "erc8004", "registries": "erc8004",
+         "last_scanned_at": "2026-05-19T10:00:00Z"},
+        # Short legit name — must be kept
+        {"address": "0x" + "c3" * 20, "agent_name": "kai", "latest_ahs": 78,
+         "latest_grade": "B", "source": "api", "registries": "",
+         "last_scanned_at": "2026-05-18T10:00:00Z"},
+        # Burn address — must be excluded
+        {"address": "0x000000000000000000000000000000000000dead",
+         "agent_name": "DeadAddr", "latest_ahs": 99, "latest_grade": "A",
+         "source": "api", "registries": ""},
+        # All-zero address — must be excluded
+        {"address": "0x0000000000000000000000000000000000000000",
+         "agent_name": "NullAddr", "latest_ahs": 95, "latest_grade": "A",
+         "source": "api", "registries": ""},
+        # Keyboard-mash name — must be excluded
+        {"address": "0x" + "d4" * 20, "agent_name": "6w4r4y567y563745678",
+         "latest_ahs": 90, "latest_grade": "A", "source": "api", "registries": ""},
+        # Banned keyword — must be excluded
+        {"address": "0x" + "e5" * 20, "agent_name": "Test Client",
+         "latest_ahs": 88, "latest_grade": "B", "source": "api", "registries": ""},
+        # Substring "test" in "Contest" — must be KEPT
+        {"address": "0x" + "f6" * 20, "agent_name": "Contest Tracker",
+         "latest_ahs": 80, "latest_grade": "B", "source": "api", "registries": ""},
+        # Unnamed / unscored for count verification
+        {"address": "0x" + "07" * 20, "agent_name": None, "latest_ahs": 60,
+         "latest_grade": "C", "source": "api", "registries": ""},
+    ]
+
+    def test_excludes_burn_addresses(self, tmp_path):
+        db = str(tmp_path / "junk.db")
+        _seed_db(db, self._JUNK_WALLETS)
+        snapshot = generate_snapshot(db)
+        addrs = {r["address"] for r in snapshot["leaderboard"]["healthiest"]}
+        assert "0x000000000000000000000000000000000000dead" not in addrs
+        assert "0x0000000000000000000000000000000000000000" not in addrs
+
+    def test_excludes_mash_names(self, tmp_path):
+        db = str(tmp_path / "junk.db")
+        _seed_db(db, self._JUNK_WALLETS)
+        snapshot = generate_snapshot(db)
+        names = {r["agent_name"] for r in snapshot["leaderboard"]["healthiest"]}
+        assert "6w4r4y567y563745678" not in names
+
+    def test_excludes_banned_keyword(self, tmp_path):
+        db = str(tmp_path / "junk.db")
+        _seed_db(db, self._JUNK_WALLETS)
+        snapshot = generate_snapshot(db)
+        names = {r["agent_name"] for r in snapshot["leaderboard"]["healthiest"]}
+        assert "Test Client" not in names
+
+    def test_keeps_substring_keyword(self, tmp_path):
+        """'Contest Tracker' contains 'test' as substring only — must be kept."""
+        db = str(tmp_path / "junk.db")
+        _seed_db(db, self._JUNK_WALLETS)
+        snapshot = generate_snapshot(db)
+        names = {r["agent_name"] for r in snapshot["leaderboard"]["healthiest"]}
+        assert "Contest Tracker" in names
+
+    def test_keeps_short_names(self, tmp_path):
+        db = str(tmp_path / "junk.db")
+        _seed_db(db, self._JUNK_WALLETS)
+        snapshot = generate_snapshot(db)
+        names = {r["agent_name"] for r in snapshot["leaderboard"]["healthiest"]}
+        assert "kai" in names
+
+    def test_keeps_legit_entries(self, tmp_path):
+        db = str(tmp_path / "junk.db")
+        _seed_db(db, self._JUNK_WALLETS)
+        snapshot = generate_snapshot(db)
+        names = {r["agent_name"] for r in snapshot["leaderboard"]["healthiest"]}
+        assert "AlphaBot" in names
+        assert "BravoAgent" in names
+
+    def test_ranks_contiguous_after_filter(self, tmp_path):
+        db = str(tmp_path / "junk.db")
+        _seed_db(db, self._JUNK_WALLETS)
+        snapshot = generate_snapshot(db)
+        ranks = [r["rank"] for r in snapshot["leaderboard"]["healthiest"]]
+        assert ranks == list(range(1, len(ranks) + 1))
+
+    def test_counts_unaffected_by_filter(self, tmp_path):
+        """Counts must reflect the TRUE scored population, not the filtered board."""
+        db = str(tmp_path / "junk.db")
+        _seed_db(db, self._JUNK_WALLETS)
+        snapshot = generate_snapshot(db)
+        counts = snapshot["leaderboard"]["counts"]
+        # All wallets with latest_ahs != None: 8 total (a1,b2,c3,dead,null,d4,e5,f6,07 → 9 wallets, 07 has ahs=60 so 9 total? let's count)
+        # a1(92), b2(85), c3(78), dead(99), null-addr(95), d4(90), e5(88), f6(80), 07(60) = 9 scored
+        # Named+scored: a1,b2,c3,dead,null-addr,d4,e5,f6 = 8
+        # Unnamed+scored: 07 = 1
+        assert counts["total_scored"] == 9
+        assert counts["named_scored"] == 8
+        assert counts["unnamed_scored"] == 1
+
+    def test_filter_fills_500_with_clean(self, tmp_path):
+        """When there are >500 clean entries + junk, the board still caps at 500
+        with clean entries only."""
+        db = str(tmp_path / "fill.db")
+        wallets = [
+            {"address": f"0x{i:040x}", "agent_name": f"Agent{i}",
+             "latest_ahs": max(1, 100 - (i % 100)), "latest_grade": "C",
+             "source": "api", "registries": ""}
+            for i in range(510)
+        ]
+        # Add some junk that would have ranked high
+        wallets.append({
+            "address": "0x000000000000000000000000000000000000dead",
+            "agent_name": "BurnBot", "latest_ahs": 100, "latest_grade": "A",
+            "source": "api", "registries": "",
+        })
+        wallets.append({
+            "address": "0x" + "ff" * 20, "agent_name": "6w4r4y567y563745678",
+            "latest_ahs": 99, "latest_grade": "A", "source": "api", "registries": "",
+        })
+        _seed_db(db, wallets)
+        snapshot = generate_snapshot(db)
+        lb = snapshot["leaderboard"]
+        assert len(lb["healthiest"]) == 500
+        names = {r["agent_name"] for r in lb["healthiest"]}
+        assert "BurnBot" not in names
+        assert "6w4r4y567y563745678" not in names
