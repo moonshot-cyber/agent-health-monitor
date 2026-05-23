@@ -711,6 +711,66 @@ def get_ecosystem_dashboard_stats() -> dict:
         conn.close()
 
 
+def get_leaderboard_data(conn: sqlite3.Connection | None = None) -> dict:
+    """Build the leaderboard payload: top 500 named agents by AHS, plus counts.
+
+    If *conn* is provided the caller owns its lifecycle (connection is NOT
+    closed here).  When called from the API endpoint, pass no argument and a
+    fresh connection is opened and closed automatically.
+    """
+    own_conn = conn is None
+    if own_conn:
+        conn = get_connection()
+    try:
+        rows = conn.execute(
+            """SELECT address, agent_name, latest_ahs, latest_grade, source, registries
+            FROM known_wallets
+            WHERE latest_ahs IS NOT NULL
+              AND agent_name IS NOT NULL
+              AND TRIM(agent_name) != ''
+            ORDER BY latest_ahs DESC,
+                     CASE WHEN last_scanned_at IS NULL THEN 1 ELSE 0 END,
+                     last_scanned_at DESC
+            LIMIT 500"""
+        ).fetchall()
+
+        healthiest = []
+        for i, r in enumerate(rows, 1):
+            healthiest.append({
+                "rank": i,
+                "address": r["address"],
+                "agent_name": r["agent_name"],
+                "ahs": r["latest_ahs"],
+                "grade": r["latest_grade"],
+                "source": r["source"] or "",
+                "registries": r["registries"] or "",
+            })
+
+        count_row = conn.execute(
+            """SELECT
+                SUM(CASE WHEN agent_name IS NOT NULL AND TRIM(agent_name) != '' THEN 1 ELSE 0 END) as named_scored,
+                SUM(CASE WHEN agent_name IS NULL OR TRIM(agent_name) = '' THEN 1 ELSE 0 END) as unnamed_scored,
+                COUNT(*) as total_scored
+            FROM known_wallets
+            WHERE latest_ahs IS NOT NULL"""
+        ).fetchone()
+
+        now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        return {
+            "healthiest": healthiest,
+            "counts": {
+                "named_scored": count_row["named_scored"] or 0,
+                "unnamed_scored": count_row["unnamed_scored"] or 0,
+                "total_scored": count_row["total_scored"] or 0,
+            },
+            "generated_at": now_iso,
+        }
+    finally:
+        if own_conn:
+            conn.close()
+
+
 def backfill_zombie_patterns() -> int:
     """One-time backfill: add Zombie Agent patterns for scans with low D2 scores.
 

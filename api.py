@@ -3222,6 +3222,14 @@ async def ecosystem_stats():
     return stats
 
 
+@app.get("/api/leaderboard", tags=["Discovery & Info"])
+async def leaderboard():
+    """Public leaderboard: top 500 named agents by AHS score. No auth required."""
+    loop = asyncio.get_running_loop()
+    data = await loop.run_in_executor(None, scan_db.get_leaderboard_data)
+    return data
+
+
 @app.get("/scan/quality", tags=["Discovery & Info"])
 async def scan_quality():
     """Batch quality history for the last 30 days. No auth required."""

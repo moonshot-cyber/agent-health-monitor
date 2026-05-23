@@ -15,6 +15,11 @@ import sqlite3
 import sys
 import urllib.request
 from datetime import datetime, timezone
+from pathlib import Path
+
+# Allow importing db module from the repo root when running as a script.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from db import get_leaderboard_data  # noqa: E402
 
 
 def _display_name(key: str) -> str:
@@ -144,49 +149,8 @@ def generate_snapshot(db_path: str) -> dict:
             for r in daily_rows
         ]
 
-        # --- Leaderboard: named agents ranked by AHS ---
-        leaderboard_rows = conn.execute(
-            """SELECT address, agent_name, latest_ahs, latest_grade, source, registries
-            FROM known_wallets
-            WHERE latest_ahs IS NOT NULL
-              AND agent_name IS NOT NULL
-              AND TRIM(agent_name) != ''
-            ORDER BY latest_ahs DESC,
-                     CASE WHEN last_scanned_at IS NULL THEN 1 ELSE 0 END,
-                     last_scanned_at DESC
-            LIMIT 500"""
-        ).fetchall()
-
-        healthiest = []
-        for i, r in enumerate(leaderboard_rows, 1):
-            healthiest.append({
-                "rank": i,
-                "address": r["address"],
-                "agent_name": r["agent_name"],
-                "ahs": r["latest_ahs"],
-                "grade": r["latest_grade"],
-                "source": r["source"] or "",
-                "registries": r["registries"] or "",
-            })
-
-        count_row = conn.execute(
-            """SELECT
-                SUM(CASE WHEN agent_name IS NOT NULL AND TRIM(agent_name) != '' THEN 1 ELSE 0 END) as named_scored,
-                SUM(CASE WHEN agent_name IS NULL OR TRIM(agent_name) = '' THEN 1 ELSE 0 END) as unnamed_scored,
-                COUNT(*) as total_scored
-            FROM known_wallets
-            WHERE latest_ahs IS NOT NULL"""
-        ).fetchone()
-
-        leaderboard = {
-            "healthiest": healthiest,
-            "counts": {
-                "named_scored": count_row["named_scored"] or 0,
-                "unnamed_scored": count_row["unnamed_scored"] or 0,
-                "total_scored": count_row["total_scored"] or 0,
-            },
-            "generated_at": now_iso,
-        }
+        # --- Leaderboard: shared helper (single source of truth) ---
+        leaderboard = get_leaderboard_data(conn=conn)
 
         return {
             "generated_at": now_iso,
@@ -259,12 +223,22 @@ def generate_snapshot_from_api(base_url: str) -> dict:
         for day, d in sorted(daily_agg.items())
     ]
 
-    return {
+    # Leaderboard (optional — frontend handles missing key gracefully)
+    leaderboard = None
+    try:
+        leaderboard = _fetch_json(f"{base}/api/leaderboard")
+    except Exception as e:
+        print(f"Warning: failed to fetch /api/leaderboard: {e}", file=sys.stderr)
+
+    snapshot = {
         "generated_at": now_iso,
         "ecosystem": ecosystem,
         "registries": registries,
         "daily_stats": daily_stats,
     }
+    if leaderboard is not None:
+        snapshot["leaderboard"] = leaderboard
+    return snapshot
 
 
 def main():
