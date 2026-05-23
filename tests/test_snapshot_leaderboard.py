@@ -220,7 +220,7 @@ class TestSnapshotLeaderboard:
         """More than 500 named agents → leaderboard capped at 500."""
         db = str(tmp_path / "test_cap.db")
         wallets = [
-            {"address": f"0x{i:040x}", "agent_name": f"Agent{i}",
+            {"address": f"0x{i:040x}", "agent_name": f"Agent {i}",
              "latest_ahs": max(1, 100 - (i % 100)), "latest_grade": "C",
              "source": "api", "registries": ""}
             for i in range(600)
@@ -457,13 +457,51 @@ class TestApiPathLeaderboard:
 # Junk-data filter unit tests
 # ---------------------------------------------------------------------------
 
-from db import is_mash_name, has_banned_keyword
+from db import is_mash_name, has_banned_keyword, is_handle_spam
 
 
 class TestIsMashName:
     """Unit tests for the keyboard-mash heuristic."""
 
-    # --- MUST be excluded (junk) ---
+    # --- PROBLEM list: every one of these MUST be excluded ---
+
+    def test_mash_6w4r4y567hfddfrh(self):
+        assert is_mash_name("6w4r4y567hfddfrh") is True
+
+    def test_mash_6745jrythdfg(self):
+        assert is_mash_name("6745jrythdfg") is True
+
+    def test_mash_6745jrythdfg123gfdsg(self):
+        assert is_mash_name("6745jrythdfg123gfdsg") is True
+
+    def test_mash_6w4rhtdfgh_er(self):
+        assert is_mash_name("6w4rhtdfgh er") is True
+
+    def test_mash_6w4rhtrd_long(self):
+        assert is_mash_name("6w4rhtrd dfsh867dfs h345sdf6 7 y") is True
+
+    def test_mash_245ydgsf_fdsg_gfdsg(self):
+        assert is_mash_name("245ydgsf fdsg  gfdsg") is True
+
+    def test_mash_245y_gfdsg_hdfg(self):
+        assert is_mash_name("245y gfdsg  hdfg hdfg h") is True
+
+    def test_mash_245y_gfdsg(self):
+        assert is_mash_name("245y gfdsg") is True
+
+    def test_mash_rew6huj(self):
+        assert is_mash_name("rew6huj e56u jhtfg j") is True
+
+    def test_mash_dsaffghjfgg45ty(self):
+        assert is_mash_name("dsaffghjfgg45ty 345") is True
+
+    def test_mash_3452gydsfgsdf(self):
+        assert is_mash_name("3452gydsfgsdf") is True
+
+    def test_mash_rtg54343125(self):
+        assert is_mash_name("rtg54343125") is True
+
+    # --- Original PR #167 MUST-exclude (regression guard) ---
 
     def test_mash_digit_heavy(self):
         assert is_mash_name("6w4r4y567y563745678") is True
@@ -477,10 +515,12 @@ class TestIsMashName:
     def test_mash_long_random(self):
         assert is_mash_name("tyju5763ju76758dfg52567") is True
 
-    # --- MUST be kept (legitimate) ---
+    # --- MUST be kept (legitimate names) ---
 
     def test_keep_zyfai(self):
-        assert is_mash_name("Zyfai Rebalancer Agent for 0x...") is False
+        assert is_mash_name(
+            "Zyfai Rebalancer Agent for 0x16fA961bE546d7A46d7bD6D3506c57229072452E"
+        ) is False
 
     def test_keep_uniagent(self):
         assert is_mash_name("UniAgent ERC8004 Agent #738") is False
@@ -491,7 +531,7 @@ class TestIsMashName:
     def test_keep_agentracheel(self):
         assert is_mash_name("agentracheel") is False
 
-    # --- Short names (rule 4) — always kept ---
+    # --- Short names (≤5 chars) — always kept ---
 
     def test_keep_short_V(self):
         assert is_mash_name("V") is False
@@ -516,6 +556,41 @@ class TestIsMashName:
 
     def test_keep_short_aa(self):
         assert is_mash_name("aa") is False
+
+    def test_keep_short_MM4(self):
+        assert is_mash_name("MM4") is False
+
+    def test_keep_short_79x(self):
+        assert is_mash_name("79x") is False
+
+    # --- Short multi-token abbreviations (≤8 chars with space) ---
+
+    def test_keep_AGI_XBT(self):
+        assert is_mash_name("AGI XBT") is False
+
+    def test_keep_DIA_TXT(self):
+        assert is_mash_name("DIA TXT") is False
+
+    def test_keep_SX1_AI(self):
+        assert is_mash_name("SX1 AI") is False
+
+
+class TestIsHandleSpam:
+    """Unit tests for social-handle spam detection."""
+
+    def test_multi_handle_excluded(self):
+        assert is_handle_spam(
+            "@sortesfun @calo530G @Peko7g @aom1546  #GOOD #publicgoods #sortes"
+        ) is True
+
+    def test_single_hashtag_kept(self):
+        assert is_handle_spam("MyAgent #buildinpublic") is False
+
+    def test_single_at_kept(self):
+        assert is_handle_spam("Built by @alice") is False
+
+    def test_normal_name_kept(self):
+        assert is_handle_spam("AlphaBot") is False
 
 
 class TestHasBannedKeyword:
@@ -581,6 +656,10 @@ class TestLeaderboardJunkFilter:
         # Substring "test" in "Contest" — must be KEPT
         {"address": "0x" + "f6" * 20, "agent_name": "Contest Tracker",
          "latest_ahs": 80, "latest_grade": "B", "source": "api", "registries": ""},
+        # Handle spam — must be excluded
+        {"address": "0x" + "aa" * 20,
+         "agent_name": "@sortesfun @calo530G @Peko7g @aom1546  #GOOD #publicgoods #sortes",
+         "latest_ahs": 91, "latest_grade": "A", "source": "api", "registries": ""},
         # Unnamed / unscored for count verification
         {"address": "0x" + "07" * 20, "agent_name": None, "latest_ahs": 60,
          "latest_grade": "C", "source": "api", "registries": ""},
@@ -616,6 +695,13 @@ class TestLeaderboardJunkFilter:
         names = {r["agent_name"] for r in snapshot["leaderboard"]["healthiest"]}
         assert "Contest Tracker" in names
 
+    def test_excludes_handle_spam(self, tmp_path):
+        db = str(tmp_path / "junk.db")
+        _seed_db(db, self._JUNK_WALLETS)
+        snapshot = generate_snapshot(db)
+        names = {r["agent_name"] for r in snapshot["leaderboard"]["healthiest"]}
+        assert "@sortesfun @calo530G @Peko7g @aom1546  #GOOD #publicgoods #sortes" not in names
+
     def test_keeps_short_names(self, tmp_path):
         db = str(tmp_path / "junk.db")
         _seed_db(db, self._JUNK_WALLETS)
@@ -644,12 +730,13 @@ class TestLeaderboardJunkFilter:
         _seed_db(db, self._JUNK_WALLETS)
         snapshot = generate_snapshot(db)
         counts = snapshot["leaderboard"]["counts"]
-        # All wallets with latest_ahs != None: 8 total (a1,b2,c3,dead,null,d4,e5,f6,07 → 9 wallets, 07 has ahs=60 so 9 total? let's count)
-        # a1(92), b2(85), c3(78), dead(99), null-addr(95), d4(90), e5(88), f6(80), 07(60) = 9 scored
-        # Named+scored: a1,b2,c3,dead,null-addr,d4,e5,f6 = 8
+        # All wallets with latest_ahs != None:
+        # a1(92), b2(85), c3(78), dead(99), null-addr(95), d4(90), e5(88),
+        # f6(80), aa-handle-spam(91), 07(60) = 10 scored
+        # Named+scored: a1,b2,c3,dead,null-addr,d4,e5,f6,aa = 9
         # Unnamed+scored: 07 = 1
-        assert counts["total_scored"] == 9
-        assert counts["named_scored"] == 8
+        assert counts["total_scored"] == 10
+        assert counts["named_scored"] == 9
         assert counts["unnamed_scored"] == 1
 
     def test_filter_fills_500_with_clean(self, tmp_path):
@@ -657,7 +744,7 @@ class TestLeaderboardJunkFilter:
         with clean entries only."""
         db = str(tmp_path / "fill.db")
         wallets = [
-            {"address": f"0x{i:040x}", "agent_name": f"Agent{i}",
+            {"address": f"0x{i:040x}", "agent_name": f"Agent {i}",
              "latest_ahs": max(1, 100 - (i % 100)), "latest_grade": "C",
              "source": "api", "registries": ""}
             for i in range(510)

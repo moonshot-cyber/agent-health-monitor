@@ -734,44 +734,53 @@ _BANNED_RE = re.compile(
 )
 
 
+def _has_word_token(name: str) -> bool:
+    """Return True if *name* contains at least one plausible word token.
+
+    A whitespace-separated token "looks like a word" when it is:
+      - composed entirely of letters (no digits / punctuation),
+      - at least 4 characters long, **and**
+      - contains at least one vowel (a, e, i, o, u — case-insensitive).
+
+    Consonant-only fragments like ``gfdsg`` or ``hdfg`` fail the vowel
+    check and are not treated as words.
+    """
+    vowels = set("aeiouAEIOU")
+    for token in name.split():
+        if len(token) >= 4 and token.isalpha() and vowels & set(token):
+            return True
+    return False
+
+
 def is_mash_name(name: str) -> bool:
     """Return True if *name* looks like keyboard-mash / random junk.
 
-    A name is considered junk when it is LONG (>= 12 characters) **and**
-    meets at least one of:
-      - After removing spaces, > 40 % of characters are digits.
-      - It contains no run of 3+ consecutive alphabetic characters.
-      - It contains digits **and** has no alpha run of 6+ characters.
-        (Digits interspersed among short alpha fragments — like
-        ``6w4rfg5eqr3gfdfg`` — are a strong mash signal even when the
-        overall digit ratio is below 40 %.)
+    Exemptions (never flagged):
+      - Names of 5 or fewer characters (keeps "V", "kai", "006", etc.).
+      - Names of 8 or fewer characters that contain a space (short
+        multi-token abbreviations like "AGI XBT", "DIA TXT", "SX1 AI").
+      - Names containing at least one plausible word token (≥ 4 alpha
+        characters with a vowel).
 
-    Short names (< 12 chars) are never flagged — thin legitimate names
-    like "V", "kai", "006" must be kept.
+    A name is MASH if none of the above exemptions apply — i.e. it is
+    longer than the short-name thresholds and every whitespace-separated
+    token is either too short, contains non-letter characters, or is a
+    vowel-less consonant cluster.
     """
-    if len(name) < 12:
+    trimmed = name.strip()
+    if len(trimmed) <= 5:
+        return False
+    if len(trimmed) <= 8 and " " in trimmed:
         return False
 
-    stripped = name.replace(" ", "")
-    if not stripped:
+    if not trimmed.replace(" ", ""):
         return False
 
-    # Check digit ratio
-    digit_count = sum(c.isdigit() for c in stripped)
-    if digit_count / len(stripped) > 0.4:
-        return True
+    # If the name contains a plausible word token, it is not mash.
+    if _has_word_token(trimmed):
+        return False
 
-    # Check for at least one run of 3+ consecutive alpha characters
-    if not re.search(r"[A-Za-z]{3,}", stripped):
-        return True
-
-    # Digits interspersed among short alpha fragments: if the name
-    # contains any digit but no alpha run reaches 6 characters, the
-    # fragments are too short to be real words → mash.
-    if digit_count > 0 and not re.search(r"[A-Za-z]{6,}", stripped):
-        return True
-
-    return False
+    return True
 
 
 def has_banned_keyword(name: str) -> bool:
@@ -783,6 +792,17 @@ def has_banned_keyword(name: str) -> bool:
     not (``test`` is a substring of ``Contest``, not a standalone word).
     """
     return bool(_BANNED_RE.search(name))
+
+
+def is_handle_spam(name: str) -> bool:
+    """Return True if *name* is mostly social handles / hashtags.
+
+    A name is handle spam when it contains **2 or more** whitespace-
+    separated tokens that start with ``@`` or ``#``.  A single ``@``
+    or ``#`` token is fine (some real agents include one handle).
+    """
+    count = sum(1 for token in name.split() if token.startswith(("@", "#")))
+    return count >= 2
 
 
 def get_leaderboard_data(conn: sqlite3.Connection | None = None) -> dict:
@@ -824,6 +844,9 @@ def get_leaderboard_data(conn: sqlite3.Connection | None = None) -> dict:
                 continue
             # 3. Banned keyword exclusion
             if has_banned_keyword(name):
+                continue
+            # 4. Handle / hashtag spam
+            if is_handle_spam(name):
                 continue
             filtered.append(r)
 
