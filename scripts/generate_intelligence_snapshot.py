@@ -17,10 +17,6 @@ import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
-# Allow importing db module from the repo root when running as a script.
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from db import get_leaderboard_data  # noqa: E402
-
 
 def _display_name(key: str) -> str:
     """Map raw registry/source keys to clean display names."""
@@ -49,6 +45,11 @@ def _connect(db_path: str) -> sqlite3.Connection:
 
 
 def generate_snapshot(db_path: str) -> dict:
+    # Lazy import: db.py is only available when running from the full repo
+    # checkout (--db mode), not when the script is fetched standalone (--api).
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+    from db import get_leaderboard_data  # noqa: E402
+
     conn = _connect(db_path)
     try:
         now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
