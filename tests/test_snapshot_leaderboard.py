@@ -8,10 +8,11 @@ backward compatibility (existing snapshot keys preserved).
 import json
 import sqlite3
 from datetime import datetime, timezone
+from unittest.mock import patch
 
 import pytest
 
-from scripts.generate_intelligence_snapshot import generate_snapshot
+from scripts.generate_intelligence_snapshot import generate_snapshot, generate_snapshot_from_api
 
 
 # ---------------------------------------------------------------------------
@@ -279,3 +280,174 @@ class TestSnapshotLeaderboard:
         for r in snapshot["leaderboard"]["healthiest"]:
             leaked = forbidden & set(r.keys())
             assert not leaked, f"Methodology internals leaked: {leaked}"
+
+
+# ---------------------------------------------------------------------------
+# Shared helper parity tests — db.get_leaderboard_data vs generate_snapshot
+# ---------------------------------------------------------------------------
+
+class TestSharedHelperParity:
+    """The --db path and the endpoint helper must produce structurally
+    identical leaderboard output for the same DB state."""
+
+    def test_same_keys_and_order(self, tmp_path):
+        """Shared helper and --db snapshot produce the same leaderboard keys,
+        ranking order, and count values."""
+        import db as db_module
+
+        db_path = str(tmp_path / "parity.db")
+        _seed_db(db_path, _WALLETS)
+
+        # --db path via generate_snapshot
+        snapshot = generate_snapshot(db_path)
+        snapshot_lb = snapshot["leaderboard"]
+
+        # Shared helper with explicit connection (same path the script now uses)
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        try:
+            helper_lb = db_module.get_leaderboard_data(conn=conn)
+        finally:
+            conn.close()
+
+        # Same top-level keys
+        assert set(snapshot_lb.keys()) == set(helper_lb.keys())
+
+        # Same ranking order (addresses in same sequence)
+        snap_addrs = [r["address"] for r in snapshot_lb["healthiest"]]
+        help_addrs = [r["address"] for r in helper_lb["healthiest"]]
+        assert snap_addrs == help_addrs
+
+        # Same counts
+        assert snapshot_lb["counts"] == helper_lb["counts"]
+
+        # Same record fields
+        for s, h in zip(snapshot_lb["healthiest"], helper_lb["healthiest"]):
+            assert set(s.keys()) == set(h.keys())
+            assert s["rank"] == h["rank"]
+            assert s["ahs"] == h["ahs"]
+            assert s["grade"] == h["grade"]
+
+
+# ---------------------------------------------------------------------------
+# /api/leaderboard endpoint tests
+# ---------------------------------------------------------------------------
+
+class TestLeaderboardEndpoint:
+
+    def test_returns_200(self, client):
+        resp = client.get("/api/leaderboard")
+        assert resp.status_code == 200
+
+    def test_response_shape(self, client):
+        resp = client.get("/api/leaderboard")
+        data = resp.json()
+        assert "healthiest" in data
+        assert "counts" in data
+        assert "generated_at" in data
+        assert isinstance(data["healthiest"], list)
+        assert isinstance(data["counts"], dict)
+        for key in ("named_scored", "unnamed_scored", "total_scored"):
+            assert key in data["counts"]
+
+    def test_no_methodology_internals(self, client):
+        resp = client.get("/api/leaderboard")
+        data = resp.json()
+        forbidden = {"d1", "d2", "d1_score", "d2_score", "patterns", "weights",
+                     "confidence", "signals", "mode"}
+        for r in data["healthiest"]:
+            leaked = forbidden & set(r.keys())
+            assert not leaked, f"Methodology internals leaked: {leaked}"
+
+
+# ---------------------------------------------------------------------------
+# --api path tests (generate_snapshot_from_api with mocked HTTP)
+# ---------------------------------------------------------------------------
+
+_MOCK_ECOSYSTEM = {
+    "status": "ok",
+    "total_scanned": 100,
+    "avg_ahs": 60.0,
+    "grade_distribution": {"A": 5, "B": 20, "C": 30, "D": 35, "E": 8, "F": 2},
+    "data_sources": {"ACP": 60, "ERC-8004": 40},
+    "registry_stats": {
+        "ACP": {"avg_score": 55.0, "grade_distribution": {"C": 30, "D": 30}, "top_grade_pct": 0.0},
+        "ERC-8004": {"avg_score": 65.0, "grade_distribution": {"B": 20, "C": 20}, "top_grade_pct": 10.0},
+    },
+    "endpoint_count": 10,
+}
+
+_MOCK_QUALITY = {
+    "batches": [
+        {"batch_date": "2026-05-20T00:00:00Z", "wallets_scanned": 50, "average_ahs": 60.0},
+    ]
+}
+
+_MOCK_LEADERBOARD = {
+    "healthiest": [
+        {"rank": 1, "address": "0xaaa", "agent_name": "TestBot", "ahs": 90,
+         "grade": "A", "source": "ACP", "registries": "acp"},
+    ],
+    "counts": {"named_scored": 10, "unnamed_scored": 90, "total_scored": 100},
+    "generated_at": "2026-05-23T10:00:00Z",
+}
+
+
+class TestApiPathLeaderboard:
+
+    def _mock_fetch(self, responses: dict):
+        """Return a side_effect function that dispatches by URL pattern."""
+        def _fetch(url):
+            for pattern, data in responses.items():
+                if pattern in url:
+                    return data
+            raise Exception(f"Unmocked URL: {url}")
+        return _fetch
+
+    def test_includes_leaderboard_on_success(self):
+        responses = {
+            "/api/ecosystem-stats": _MOCK_ECOSYSTEM,
+            "/scan/quality": _MOCK_QUALITY,
+            "/api/leaderboard": _MOCK_LEADERBOARD,
+        }
+        with patch("scripts.generate_intelligence_snapshot._fetch_json",
+                    side_effect=self._mock_fetch(responses)):
+            snapshot = generate_snapshot_from_api("https://example.com")
+
+        assert "leaderboard" in snapshot
+        assert snapshot["leaderboard"]["healthiest"][0]["agent_name"] == "TestBot"
+        assert snapshot["leaderboard"]["counts"]["total_scored"] == 100
+
+    def test_omits_leaderboard_on_failure(self):
+        def _fetch_with_failure(url):
+            if "/api/leaderboard" in url:
+                raise Exception("Connection refused")
+            if "/api/ecosystem-stats" in url:
+                return _MOCK_ECOSYSTEM
+            if "/scan/quality" in url:
+                return _MOCK_QUALITY
+            raise Exception(f"Unmocked URL: {url}")
+
+        with patch("scripts.generate_intelligence_snapshot._fetch_json",
+                    side_effect=_fetch_with_failure):
+            snapshot = generate_snapshot_from_api("https://example.com")
+
+        assert "leaderboard" not in snapshot
+        # Other keys must still be present
+        for key in ("generated_at", "ecosystem", "registries", "daily_stats"):
+            assert key in snapshot, f"Key '{key}' missing after leaderboard failure"
+
+    def test_api_and_db_same_top_level_keys(self):
+        """When leaderboard fetch succeeds, --api and --db produce the same
+        set of top-level keys."""
+        responses = {
+            "/api/ecosystem-stats": _MOCK_ECOSYSTEM,
+            "/scan/quality": _MOCK_QUALITY,
+            "/api/leaderboard": _MOCK_LEADERBOARD,
+        }
+        with patch("scripts.generate_intelligence_snapshot._fetch_json",
+                    side_effect=self._mock_fetch(responses)):
+            api_snapshot = generate_snapshot_from_api("https://example.com")
+
+        expected_keys = {"generated_at", "ecosystem", "registries", "daily_stats", "leaderboard"}
+        assert set(api_snapshot.keys()) == expected_keys
