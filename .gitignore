@@ -38,3 +38,5 @@ prompts/*
 
 # Chat archive (review before committing)
 prompts/ahm_chat_archive/
+
+cc-prompt-*.txt
