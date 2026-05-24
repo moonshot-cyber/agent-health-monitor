@@ -1093,3 +1093,112 @@ class TestSnapshotD1D2:
         _seed_db(db, _WALLETS)
         snapshot = generate_snapshot(db)
         assert "rising" not in snapshot["leaderboard"]
+
+
+# ---------------------------------------------------------------------------
+# AHS tiebreak within tied score tiers
+# ---------------------------------------------------------------------------
+
+class TestAhsTiebreak:
+    """When several agents tie on the ranking score, the secondary sort
+    must be latest_ahs DESC so that stronger agents rank higher."""
+
+    def test_cleanest_tiebreak_by_ahs(self, tmp_path):
+        """Agents tied on D1 are ordered by AHS descending."""
+        db = str(tmp_path / "tie_d1.db")
+        wallets = [
+            {"address": "0x" + "a1" * 20, "agent_name": "LowAHS",
+             "latest_ahs": 40, "latest_grade": "D", "source": "api",
+             "registries": "", "latest_d1": 100, "latest_d2": 50,
+             "last_scanned_at": "2026-05-20T10:00:00Z"},
+            {"address": "0x" + "b2" * 20, "agent_name": "HighAHS",
+             "latest_ahs": 95, "latest_grade": "A", "source": "api",
+             "registries": "", "latest_d1": 100, "latest_d2": 80,
+             "last_scanned_at": "2026-05-18T10:00:00Z"},
+            {"address": "0x" + "c3" * 20, "agent_name": "MidAHS",
+             "latest_ahs": 70, "latest_grade": "C", "source": "api",
+             "registries": "", "latest_d1": 100, "latest_d2": 60,
+             "last_scanned_at": "2026-05-19T10:00:00Z"},
+        ]
+        _seed_db(db, wallets)
+        snapshot = generate_snapshot(db)
+
+        names = [r["agent_name"] for r in snapshot["leaderboard"]["cleanest"]]
+        assert names == ["HighAHS", "MidAHS", "LowAHS"], (
+            f"Cleanest tiebreak by AHS wrong: {names}"
+        )
+
+    def test_consistent_tiebreak_by_ahs(self, tmp_path):
+        """Agents tied on D2 are ordered by AHS descending."""
+        db = str(tmp_path / "tie_d2.db")
+        wallets = [
+            {"address": "0x" + "a1" * 20, "agent_name": "WeakAgent",
+             "latest_ahs": 30, "latest_grade": "D", "source": "api",
+             "registries": "", "latest_d1": 50, "latest_d2": 85,
+             "last_scanned_at": "2026-05-20T10:00:00Z"},
+            {"address": "0x" + "b2" * 20, "agent_name": "StrongAgent",
+             "latest_ahs": 99, "latest_grade": "A", "source": "api",
+             "registries": "", "latest_d1": 90, "latest_d2": 85,
+             "last_scanned_at": "2026-05-18T10:00:00Z"},
+        ]
+        _seed_db(db, wallets)
+        snapshot = generate_snapshot(db)
+
+        names = [r["agent_name"] for r in snapshot["leaderboard"]["consistent"]]
+        assert names == ["StrongAgent", "WeakAgent"], (
+            f"Consistent tiebreak by AHS wrong: {names}"
+        )
+
+    def test_healthiest_ahs_tiebreak_harmless(self, tmp_path):
+        """On healthiest, score_col IS latest_ahs so the secondary AHS key
+        only breaks exact ties — same behaviour as before, just explicit."""
+        db = str(tmp_path / "tie_ahs.db")
+        wallets = [
+            {"address": "0x" + "a1" * 20, "agent_name": "TiedOlder",
+             "latest_ahs": 80, "latest_grade": "B", "source": "api",
+             "registries": "", "latest_d1": 50, "latest_d2": 50,
+             "last_scanned_at": "2026-05-01T10:00:00Z"},
+            {"address": "0x" + "b2" * 20, "agent_name": "TiedNewer",
+             "latest_ahs": 80, "latest_grade": "B", "source": "api",
+             "registries": "", "latest_d1": 60, "latest_d2": 60,
+             "last_scanned_at": "2026-05-20T10:00:00Z"},
+        ]
+        _seed_db(db, wallets)
+        snapshot = generate_snapshot(db)
+
+        names = [r["agent_name"] for r in snapshot["leaderboard"]["healthiest"]]
+        # Both tied on AHS=80 so last_scanned_at breaks the tie
+        assert names == ["TiedNewer", "TiedOlder"], (
+            f"Healthiest AHS tiebreak wrong: {names}"
+        )
+
+    def test_all_boards_contiguous_ranks_after_tiebreak(self, tmp_path):
+        """All three boards still rank contiguous 1..N after the tiebreak change."""
+        db = str(tmp_path / "contiguous.db")
+        wallets = [
+            {"address": f"0x{i:040x}", "agent_name": f"Agent {i}",
+             "latest_ahs": 90 - i, "latest_grade": "A", "source": "api",
+             "registries": "", "latest_d1": 100, "latest_d2": 100,
+             "last_scanned_at": f"2026-05-{20-i:02d}T10:00:00Z"}
+            for i in range(10)
+        ]
+        _seed_db(db, wallets)
+        snapshot = generate_snapshot(db)
+
+        for board_name in ("healthiest", "cleanest", "consistent"):
+            board = snapshot["leaderboard"][board_name]
+            ranks = [r["rank"] for r in board]
+            assert ranks == list(range(1, len(ranks) + 1)), (
+                f"{board_name} ranks not contiguous: {ranks}"
+            )
+
+    def test_counts_unchanged_after_tiebreak(self, tmp_path):
+        """Counts reflect the true scored population regardless of ordering."""
+        db = str(tmp_path / "counts.db")
+        _seed_db(db, _WALLETS)
+        snapshot = generate_snapshot(db)
+
+        counts = snapshot["leaderboard"]["counts"]
+        assert counts["named_scored"] == 4
+        assert counts["unnamed_scored"] == 3
+        assert counts["total_scored"] == 7
