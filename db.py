@@ -18,7 +18,7 @@ logger = logging.getLogger("ahm.db")
 
 DB_PATH = os.getenv("DB_PATH", "./ahm_history.db")
 
-_SCHEMA_VERSION = 12
+_SCHEMA_VERSION = 13
 
 _SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS scans (
@@ -179,6 +179,16 @@ CREATE TABLE IF NOT EXISTS routing_allowlist (
 
 CREATE INDEX IF NOT EXISTS idx_routing_allowlist_owner ON routing_allowlist(owner_id);
 CREATE INDEX IF NOT EXISTS idx_routing_allowlist_addr ON routing_allowlist(address);
+
+CREATE TABLE IF NOT EXISTS pending_key_delivery (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    stripe_session_id TEXT UNIQUE NOT NULL,
+    plaintext_key     TEXT NOT NULL,
+    created_at        TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+    consumed          INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_pending_key_session ON pending_key_delivery(stripe_session_id);
 """
 
 
@@ -315,6 +325,9 @@ def init_db():
                       FROM scans WHERE endpoint = 'ahs' AND d1_score IS NOT NULL) s
                 WHERE s.rn = 1 AND known_wallets.address = s.address"""
             )
+
+        # v13: Add pending_key_delivery table (created via _SCHEMA_SQL above)
+        # No ALTER needed — table is created by CREATE TABLE IF NOT EXISTS.
 
         if current < _SCHEMA_VERSION:
             conn.execute("INSERT INTO schema_version (version) VALUES (?)", (_SCHEMA_VERSION,))
@@ -1130,6 +1143,90 @@ def create_api_key(
         return raw_key
     finally:
         conn.close()
+
+
+def store_pending_key(stripe_session_id: str, plaintext_key: str) -> None:
+    """Store a plaintext API key for one-time retrieval after Stripe checkout.
+
+    Uses INSERT OR IGNORE so duplicate webhook deliveries (Stripe at-least-once)
+    are a silent no-op rather than an IntegrityError on the UNIQUE constraint.
+    """
+    conn = get_connection()
+    try:
+        conn.execute(
+            "INSERT OR IGNORE INTO pending_key_delivery "
+            "(stripe_session_id, plaintext_key) VALUES (?, ?)",
+            (stripe_session_id, plaintext_key),
+        )
+        conn.commit()
+        logger.info("Pending key stored for session %s", stripe_session_id)
+    finally:
+        conn.close()
+
+
+def retrieve_pending_key(stripe_session_id: str, ttl_hours: int = 24) -> dict:
+    """Retrieve and consume a pending key delivery. Returns key at most once.
+
+    Consumption is atomic: UPDATE ... WHERE consumed = 0 with rowcount as
+    the gate, so concurrent requests cannot both receive the key.
+
+    Returns dict with 'status': 'ok' (+ 'key'), 'consumed', 'expired', or 'not_found'.
+    """
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT plaintext_key, consumed, created_at "
+            "FROM pending_key_delivery WHERE stripe_session_id = ?",
+            (stripe_session_id,),
+        ).fetchone()
+
+        if row is None:
+            return {"status": "not_found"}
+
+        if row["consumed"]:
+            return {"status": "consumed"}
+
+        created = datetime.fromisoformat(row["created_at"].replace("Z", "+00:00"))
+        if datetime.now(timezone.utc) - created > timedelta(hours=ttl_hours):
+            return {"status": "expired"}
+
+        # Atomic consume: only the winner (rowcount == 1) gets the key
+        cursor = conn.execute(
+            "UPDATE pending_key_delivery SET consumed = 1 "
+            "WHERE stripe_session_id = ? AND consumed = 0",
+            (stripe_session_id,),
+        )
+        conn.commit()
+
+        if cursor.rowcount == 0:
+            return {"status": "consumed"}
+
+        # Opportunistic cleanup of old rows
+        _cleanup_pending_keys(conn)
+
+        return {"status": "ok", "key": row["plaintext_key"]}
+    finally:
+        conn.close()
+
+
+def _cleanup_pending_keys(conn) -> int:
+    """Remove pending_key_delivery rows older than the 24-hour TTL.
+
+    Consumed rows within the TTL window are kept so subsequent retrieval
+    attempts can return 'consumed' rather than 'not_found'.
+    """
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
+    )
+    cursor = conn.execute(
+        "DELETE FROM pending_key_delivery WHERE created_at < ?",
+        (cutoff,),
+    )
+    conn.commit()
+    deleted = cursor.rowcount
+    if deleted:
+        logger.info("Cleaned up %d expired/consumed pending key rows", deleted)
+    return deleted
 
 
 def validate_api_key(raw_key: str) -> dict | None:
