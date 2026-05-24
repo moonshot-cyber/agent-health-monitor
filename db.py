@@ -857,6 +857,7 @@ def _build_board(
           AND agent_name IS NOT NULL
           AND TRIM(agent_name) != ''
         ORDER BY {score_col} DESC,
+                 latest_ahs DESC,
                  CASE WHEN last_scanned_at IS NULL THEN 1 ELSE 0 END,
                  last_scanned_at DESC"""
     ).fetchall()
