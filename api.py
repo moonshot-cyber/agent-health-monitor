@@ -57,7 +57,7 @@ import stripe
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Path, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 
@@ -5501,10 +5501,14 @@ async def stripe_webhook(request: Request):
             calls_total=calls,
         )
 
-        # Log prominently — email delivery not yet implemented
+        # Store plaintext for one-time retrieval on the success page
+        session_id = obj.get("id", "")
+        if session_id:
+            scan_db.store_pending_key(session_id, raw_key)
+
         logger.info(
-            "API KEY ISSUED: %s for %s (tier=%s, type=%s, calls=%d)",
-            raw_key, email, tier, key_type, calls,
+            "API KEY ISSUED for %s (tier=%s, type=%s, calls=%d, session=%s)",
+            email, tier, key_type, calls, session_id,
         )
         return {"status": "ok", "message": f"API key issued for {email}"}
 
@@ -5572,6 +5576,123 @@ async def stripe_webhook_test(req: TestWebhookRequest, request: Request):
         "type": req.key_type,
         "calls": req.calls,
     }
+
+
+# -- Key Delivery (post-checkout success page) --------------------------------
+
+
+@app.get("/stripe/key/{session_id}", tags=["Billing"])
+async def retrieve_key(session_id: str):
+    """One-time retrieval of an API key after Stripe checkout.
+
+    Returns the plaintext key exactly once. Subsequent calls return
+    ``{"status": "consumed"}``.  Expired (>24 h) or unknown session IDs
+    return the corresponding status.
+    """
+    result = scan_db.retrieve_pending_key(session_id)
+    if result["status"] == "not_found":
+        raise HTTPException(status_code=404, detail="not_found")
+    if result["status"] == "expired":
+        raise HTTPException(status_code=410, detail="expired")
+    return result
+
+
+_CHECKOUT_SUCCESS_HTML = """\
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AHM — Your API Key</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0a0a0a;color:#e0e0e0;font-family:'Courier New',monospace;
+     display:flex;align-items:center;justify-content:center;min-height:100vh;
+     padding:1rem}
+.card{background:#111;border:1px solid #222;border-radius:8px;padding:2rem;
+      max-width:560px;width:100%}
+h1{font-size:1.25rem;color:#00ffc8;margin-bottom:1rem}
+.key-box{background:#000;border:1px solid #333;border-radius:4px;padding:1rem;
+         word-break:break-all;font-size:.95rem;color:#fff;margin:1rem 0;
+         position:relative}
+.copy-btn{background:#00ffc8;color:#000;border:none;border-radius:4px;
+          padding:.5rem 1rem;cursor:pointer;font-family:inherit;font-weight:700;
+          font-size:.85rem;margin-top:.5rem}
+.copy-btn:hover{opacity:.85}
+.warn{color:#ff6b6b;font-size:.85rem;margin-top:1rem;line-height:1.5}
+.msg{color:#888;font-size:.9rem;margin-top:1rem}
+.loading{color:#00ffc8}
+.retry-note{color:#666;font-size:.8rem;margin-top:.5rem}
+</style>
+</head>
+<body>
+<div class="card">
+<h1>&#9889; Payment Received</h1>
+<div id="content"><p class="loading">Retrieving your API key&hellip;</p></div>
+</div>
+<script>
+(function(){
+  var params = new URLSearchParams(window.location.search);
+  var sid = params.get('session_id');
+  var el = document.getElementById('content');
+  if(!sid){
+    el.innerHTML='<p class="warn">Missing session ID. If you just completed checkout, '
+      +'please use the link from your Stripe receipt.</p>';
+    return;
+  }
+  var attempts=0, maxAttempts=10, delay=2000;
+  function fetchKey(){
+    attempts++;
+    fetch('/stripe/key/'+encodeURIComponent(sid))
+      .then(function(r){return r.json().then(function(d){return{status:r.status,data:d}})})
+      .then(function(res){
+        if(res.status===200 && res.data.status==='ok'){
+          el.innerHTML='<p>Your API key:</p>'
+            +'<div class="key-box" id="keyVal">'+escapeHtml(res.data.key)+'</div>'
+            +'<button class="copy-btn" onclick="copyKey()">Copy to clipboard</button>'
+            +'<p class="warn">&#9888; This key is shown only once. Copy and save it now '
+            +'&mdash; it cannot be retrieved again.</p>';
+        }else if(res.status===200 && res.data.status==='consumed'){
+          el.innerHTML='<p class="msg">This key has already been retrieved.</p>'
+            +'<p class="warn">API keys are shown only once at checkout. If you did not '
+            +'save yours, contact support for a replacement.</p>';
+        }else if(res.status===410){
+          el.innerHTML='<p class="msg">This link has expired (24-hour window).</p>'
+            +'<p class="warn">Contact support if you need a replacement key.</p>';
+        }else if(res.status===404 && attempts<maxAttempts){
+          el.innerHTML='<p class="loading">Waiting for payment confirmation&hellip;</p>'
+            +'<p class="retry-note">Attempt '+attempts+'/'+maxAttempts+'</p>';
+          setTimeout(fetchKey,delay);
+        }else{
+          el.innerHTML='<p class="msg">Could not retrieve your key. '
+            +'Please contact support with your Stripe receipt.</p>';
+        }
+      })
+      .catch(function(){
+        if(attempts<maxAttempts){setTimeout(fetchKey,delay);}
+        else{el.innerHTML='<p class="msg">Network error. Please refresh or contact support.</p>';}
+      });
+  }
+  fetchKey();
+  window.copyKey=function(){
+    var k=document.getElementById('keyVal');
+    if(k) navigator.clipboard.writeText(k.textContent).then(function(){
+      var btn=document.querySelector('.copy-btn');
+      if(btn){btn.textContent='Copied!';setTimeout(function(){btn.textContent='Copy to clipboard'},2000);}
+    });
+  };
+  function escapeHtml(s){var d=document.createElement('div');d.textContent=s;return d.innerHTML;}
+})();
+</script>
+</body>
+</html>
+"""
+
+
+@app.get("/checkout/success", tags=["Billing"])
+async def checkout_success_page():
+    """Post-checkout success page — retrieves and displays the API key once."""
+    return HTMLResponse(_CHECKOUT_SUCCESS_HTML)
 
 
 # -- Shield Subscription Endpoints -------------------------------------------
