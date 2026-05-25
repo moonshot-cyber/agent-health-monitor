@@ -5686,8 +5686,48 @@ async def retrieve_key(session_id: str):
     return the corresponding status.
     """
     result = scan_db.retrieve_pending_key(session_id)
+    # TEMPORARY DEBUG - revert. Diagnosing /stripe/key not_found.
     if result["status"] == "not_found":
-        raise HTTPException(status_code=404, detail="not_found")
+        conn = scan_db.get_connection()
+        try:
+            direct_exact = conn.execute(
+                "SELECT COUNT(*) AS cnt FROM pending_key_delivery "
+                "WHERE stripe_session_id = ?",
+                (session_id,),
+            ).fetchone()["cnt"]
+            direct_trim = conn.execute(
+                "SELECT COUNT(*) AS cnt FROM pending_key_delivery "
+                "WHERE stripe_session_id = ?",
+                (session_id.strip(),),
+            ).fetchone()["cnt"]
+            direct_unfiltered = conn.execute(
+                "SELECT COUNT(*) AS cnt FROM pending_key_delivery",
+            ).fetchone()["cnt"]
+            stored_rows = conn.execute(
+                "SELECT stripe_session_id FROM pending_key_delivery",
+            ).fetchall()
+            stored_ids = [
+                {
+                    "id": r["stripe_session_id"],
+                    "len": len(r["stripe_session_id"]),
+                    "hex": r["stripe_session_id"].encode("utf-8").hex(),
+                }
+                for r in stored_rows
+            ]
+        finally:
+            conn.close()
+        return {
+            "received_session_id": session_id,
+            "received_len": len(session_id),
+            "received_repr": repr(session_id),
+            "received_hex": session_id.encode("utf-8").hex(),
+            "direct_exact_count": direct_exact,
+            "direct_trim_count": direct_trim,
+            "direct_unfiltered_count": direct_unfiltered,
+            "stored_ids": stored_ids,
+            "retrieve_pending_key_result": result,
+        }
+    # END TEMPORARY DEBUG
     if result["status"] == "expired":
         raise HTTPException(status_code=410, detail="expired")
     return result
