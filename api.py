@@ -5582,18 +5582,93 @@ async def stripe_webhook_test(req: TestWebhookRequest, request: Request):
 # TEMPORARY DEBUG ENDPOINT - remove after diagnosing Stripe key delivery. See PR #176.
 @app.get("/debug/pending-keys", tags=["Debug"], include_in_schema=False)
 async def debug_pending_keys(token: str = ""):
-    """List pending_key_delivery rows for diagnosis. Token-gated, returns key length only."""
+    """List pending_key_delivery rows + query-contradiction diagnostics. Token-gated."""
     if not STRIPE_WEBHOOK_SECRET or token != STRIPE_WEBHOOK_SECRET:
         raise HTTPException(status_code=404)
+
+    target_sid = "cs_live_a1zkzlHmfbzrM6RQSKQzJ8DGDqaeQgMPsAiOtEzUxRUcOohdHx7Gw2UZhe"
+
     conn = scan_db.get_connection()
     try:
+        # Existing: list all rows
         rows = conn.execute(
             "SELECT stripe_session_id, consumed, created_at, LENGTH(plaintext_key) AS key_length "
             "FROM pending_key_delivery ORDER BY created_at DESC"
         ).fetchall()
+
+        # 1. db_path
+        db_list = conn.execute("PRAGMA database_list").fetchall()
+        db_file = db_list[0]["file"] if db_list else None
+        db_path_env = os.getenv("DB_PATH", "./ahm_history.db")
+
+        # 2. unfiltered_count
+        unfiltered_count = conn.execute(
+            "SELECT COUNT(*) AS cnt FROM pending_key_delivery"
+        ).fetchone()["cnt"]
+
+        # 3. filtered_query — exact query retrieve_pending_key uses
+        filtered_row = conn.execute(
+            "SELECT plaintext_key, consumed, created_at "
+            "FROM pending_key_delivery WHERE stripe_session_id = ?",
+            (target_sid,),
+        ).fetchone()
+        filtered_query = {
+            "found": filtered_row is not None,
+            "consumed": filtered_row["consumed"] if filtered_row else None,
+            "created_at": filtered_row["created_at"] if filtered_row else None,
+        }
+
+        # 4. all_session_ids with lengths
+        all_sids = conn.execute(
+            "SELECT stripe_session_id FROM pending_key_delivery"
+        ).fetchall()
+        all_session_ids = [
+            {"id": r["stripe_session_id"], "len": len(r["stripe_session_id"])}
+            for r in all_sids
+        ]
+
+        # 5. exact_match_probe
+        exact_count = conn.execute(
+            "SELECT COUNT(*) AS cnt FROM pending_key_delivery WHERE stripe_session_id = ?",
+            (target_sid,),
+        ).fetchone()["cnt"]
+        trim_count = conn.execute(
+            "SELECT COUNT(*) AS cnt FROM pending_key_delivery WHERE TRIM(stripe_session_id) = ?",
+            (target_sid,),
+        ).fetchone()["cnt"]
+
+        # 6. table_check
+        table_exists = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='pending_key_delivery'"
+        ).fetchone()
+        table_info = conn.execute(
+            "PRAGMA table_info(pending_key_delivery)"
+        ).fetchall()
+        col_names = [r["name"] for r in table_info]
+
         return {
             "count": len(rows),
             "rows": [dict(r) for r in rows],
+            "diagnostics": {
+                "db_path": {
+                    "pragma_file": db_file,
+                    "env_DB_PATH": db_path_env,
+                    "cwd": os.getcwd(),
+                },
+                "unfiltered_count": unfiltered_count,
+                "filtered_query": filtered_query,
+                "all_session_ids": all_session_ids,
+                "exact_match_probe": {
+                    "target": target_sid,
+                    "target_len": len(target_sid),
+                    "exact_count": exact_count,
+                    "trim_count": trim_count,
+                },
+                "table_check": {
+                    "exists": table_exists is not None,
+                    "columns": col_names,
+                },
+            },
         }
     finally:
         conn.close()
