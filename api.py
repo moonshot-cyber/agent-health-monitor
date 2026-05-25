@@ -5579,6 +5579,26 @@ async def stripe_webhook_test(req: TestWebhookRequest, request: Request):
     }
 
 
+# TEMPORARY DEBUG ENDPOINT - remove after diagnosing Stripe key delivery. See PR #176.
+@app.get("/debug/pending-keys", tags=["Debug"], include_in_schema=False)
+async def debug_pending_keys(token: str = ""):
+    """List pending_key_delivery rows for diagnosis. Token-gated, returns key length only."""
+    if not STRIPE_WEBHOOK_SECRET or token != STRIPE_WEBHOOK_SECRET:
+        raise HTTPException(status_code=404)
+    conn = scan_db.get_connection()
+    try:
+        rows = conn.execute(
+            "SELECT stripe_session_id, consumed, created_at, LENGTH(plaintext_key) AS key_length "
+            "FROM pending_key_delivery ORDER BY created_at DESC"
+        ).fetchall()
+        return {
+            "count": len(rows),
+            "rows": [dict(r) for r in rows],
+        }
+    finally:
+        conn.close()
+
+
 # -- Key Delivery (post-checkout success page) --------------------------------
 
 
