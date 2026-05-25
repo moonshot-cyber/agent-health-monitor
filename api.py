@@ -5579,157 +5579,32 @@ async def stripe_webhook_test(req: TestWebhookRequest, request: Request):
     }
 
 
-# TEMPORARY DEBUG ENDPOINT - remove after diagnosing Stripe key delivery. See PR #176.
-@app.get("/debug/pending-keys", tags=["Debug"], include_in_schema=False)
-async def debug_pending_keys(token: str = ""):
-    """List pending_key_delivery rows + query-contradiction diagnostics. Token-gated."""
-    if not STRIPE_WEBHOOK_SECRET or token != STRIPE_WEBHOOK_SECRET:
-        raise HTTPException(status_code=404)
-
-    target_sid = "cs_live_a1zkzlHmfbzrM6RQSKQzJ8DGDqaeQgMPsAiOtEzUxRUcOohdHx7Gw2UZhe"
-
-    conn = scan_db.get_connection()
-    try:
-        # Existing: list all rows
-        rows = conn.execute(
-            "SELECT stripe_session_id, consumed, created_at, LENGTH(plaintext_key) AS key_length "
-            "FROM pending_key_delivery ORDER BY created_at DESC"
-        ).fetchall()
-
-        # 1. db_path
-        db_list = conn.execute("PRAGMA database_list").fetchall()
-        db_file = db_list[0]["file"] if db_list else None
-        db_path_env = os.getenv("DB_PATH", "./ahm_history.db")
-
-        # 2. unfiltered_count
-        unfiltered_count = conn.execute(
-            "SELECT COUNT(*) AS cnt FROM pending_key_delivery"
-        ).fetchone()["cnt"]
-
-        # 3. filtered_query — exact query retrieve_pending_key uses
-        filtered_row = conn.execute(
-            "SELECT plaintext_key, consumed, created_at "
-            "FROM pending_key_delivery WHERE stripe_session_id = ?",
-            (target_sid,),
-        ).fetchone()
-        filtered_query = {
-            "found": filtered_row is not None,
-            "consumed": filtered_row["consumed"] if filtered_row else None,
-            "created_at": filtered_row["created_at"] if filtered_row else None,
-        }
-
-        # 4. all_session_ids with lengths
-        all_sids = conn.execute(
-            "SELECT stripe_session_id FROM pending_key_delivery"
-        ).fetchall()
-        all_session_ids = [
-            {"id": r["stripe_session_id"], "len": len(r["stripe_session_id"])}
-            for r in all_sids
-        ]
-
-        # 5. exact_match_probe
-        exact_count = conn.execute(
-            "SELECT COUNT(*) AS cnt FROM pending_key_delivery WHERE stripe_session_id = ?",
-            (target_sid,),
-        ).fetchone()["cnt"]
-        trim_count = conn.execute(
-            "SELECT COUNT(*) AS cnt FROM pending_key_delivery WHERE TRIM(stripe_session_id) = ?",
-            (target_sid,),
-        ).fetchone()["cnt"]
-
-        # 6. table_check
-        table_exists = conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='pending_key_delivery'"
-        ).fetchone()
-        table_info = conn.execute(
-            "PRAGMA table_info(pending_key_delivery)"
-        ).fetchall()
-        col_names = [r["name"] for r in table_info]
-
-        return {
-            "count": len(rows),
-            "rows": [dict(r) for r in rows],
-            "diagnostics": {
-                "db_path": {
-                    "pragma_file": db_file,
-                    "env_DB_PATH": db_path_env,
-                    "cwd": os.getcwd(),
-                },
-                "unfiltered_count": unfiltered_count,
-                "filtered_query": filtered_query,
-                "all_session_ids": all_session_ids,
-                "exact_match_probe": {
-                    "target": target_sid,
-                    "target_len": len(target_sid),
-                    "exact_count": exact_count,
-                    "trim_count": trim_count,
-                },
-                "table_check": {
-                    "exists": table_exists is not None,
-                    "columns": col_names,
-                },
-            },
-        }
-    finally:
-        conn.close()
-
-
 # -- Key Delivery (post-checkout success page) --------------------------------
+
+_NO_STORE_HEADERS = {
+    "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+    "Pragma": "no-cache",
+}
 
 
 @app.get("/stripe/key/{session_id}", tags=["Billing"])
-async def retrieve_key(session_id: str):
+async def retrieve_key(session_id: str, response: Response):
     """One-time retrieval of an API key after Stripe checkout.
 
     Returns the plaintext key exactly once. Subsequent calls return
     ``{"status": "consumed"}``.  Expired (>24 h) or unknown session IDs
     return the corresponding status.
     """
+    response.headers.update(_NO_STORE_HEADERS)
     result = scan_db.retrieve_pending_key(session_id)
-    # TEMPORARY DEBUG - revert. Diagnosing /stripe/key not_found.
     if result["status"] == "not_found":
-        conn = scan_db.get_connection()
-        try:
-            direct_exact = conn.execute(
-                "SELECT COUNT(*) AS cnt FROM pending_key_delivery "
-                "WHERE stripe_session_id = ?",
-                (session_id,),
-            ).fetchone()["cnt"]
-            direct_trim = conn.execute(
-                "SELECT COUNT(*) AS cnt FROM pending_key_delivery "
-                "WHERE stripe_session_id = ?",
-                (session_id.strip(),),
-            ).fetchone()["cnt"]
-            direct_unfiltered = conn.execute(
-                "SELECT COUNT(*) AS cnt FROM pending_key_delivery",
-            ).fetchone()["cnt"]
-            stored_rows = conn.execute(
-                "SELECT stripe_session_id FROM pending_key_delivery",
-            ).fetchall()
-            stored_ids = [
-                {
-                    "id": r["stripe_session_id"],
-                    "len": len(r["stripe_session_id"]),
-                    "hex": r["stripe_session_id"].encode("utf-8").hex(),
-                }
-                for r in stored_rows
-            ]
-        finally:
-            conn.close()
-        return {
-            "received_session_id": session_id,
-            "received_len": len(session_id),
-            "received_repr": repr(session_id),
-            "received_hex": session_id.encode("utf-8").hex(),
-            "direct_exact_count": direct_exact,
-            "direct_trim_count": direct_trim,
-            "direct_unfiltered_count": direct_unfiltered,
-            "stored_ids": stored_ids,
-            "retrieve_pending_key_result": result,
-        }
-    # END TEMPORARY DEBUG
+        raise HTTPException(
+            status_code=404, detail="not_found", headers=_NO_STORE_HEADERS,
+        )
     if result["status"] == "expired":
-        raise HTTPException(status_code=410, detail="expired")
+        raise HTTPException(
+            status_code=410, detail="expired", headers=_NO_STORE_HEADERS,
+        )
     return result
 
 
@@ -5828,7 +5703,7 @@ h1{font-size:1.25rem;color:#00ffc8;margin-bottom:1rem}
 @app.get("/checkout/success", tags=["Billing"])
 async def checkout_success_page():
     """Post-checkout success page — retrieves and displays the API key once."""
-    return HTMLResponse(_CHECKOUT_SUCCESS_HTML)
+    return HTMLResponse(_CHECKOUT_SUCCESS_HTML, headers=_NO_STORE_HEADERS)
 
 
 # -- Shield Subscription Endpoints -------------------------------------------
