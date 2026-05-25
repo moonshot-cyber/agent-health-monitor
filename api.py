@@ -5455,6 +5455,7 @@ async def stripe_webhook(request: Request):
 
     event_type = event["type"]
     obj = event["data"]["object"]
+    obj = obj.to_dict() if hasattr(obj, "to_dict") else obj
 
     # ── checkout.session.completed ──
     if event_type == "checkout.session.completed":
