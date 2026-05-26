@@ -416,18 +416,18 @@ class AgentPublicProfile(BaseModel):
     serialised.  Dimensional scores (d1, d2, …) are structurally excluded.
     """
     address: str
-    agent_name: str | None = None
-    registries: str | None = None
-    source: str | None = None
-    latest_ahs: int | None = None
-    latest_grade: str | None = None
-    rank: int | None = None
-    percentile_rank: float | None = None
-    first_seen_at: str | None = None
-    last_scanned_at: str | None = None
+    agent_name: Optional[str] = None
+    registries: Optional[str] = None
+    source: Optional[str] = None
+    latest_ahs: Optional[int] = None
+    latest_grade: Optional[str] = None
+    rank: Optional[int] = None
+    percentile_rank: Optional[float] = None
+    first_seen_at: Optional[str] = None
+    last_scanned_at: Optional[str] = None
     scan_count: int = 0
-    gap_to_next_rank: int | None = None
-    gap_to_next_tier: int | None = None
+    gap_to_next_rank: Optional[int] = None
+    gap_to_next_tier: Optional[int] = None
 
 
 # -- Risk Score Model --------------------------------------------------------
