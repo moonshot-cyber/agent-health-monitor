@@ -18,7 +18,15 @@ logger = logging.getLogger("ahm.db")
 
 DB_PATH = os.getenv("DB_PATH", "./ahm_history.db")
 
-_SCHEMA_VERSION = 13
+_SCHEMA_VERSION = 14
+
+# Grade tier boundaries: (label, lower_bound, upper_bound).
+# Single source of truth used by get_composite_stats() and
+# get_agent_public_profile() gap computation.
+GRADE_BOUNDARIES = [
+    ("A", 90, 100), ("B", 75, 89), ("C", 60, 74),
+    ("D", 40, 59), ("E", 20, 39), ("F", 0, 19),
+]
 
 _SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS scans (
@@ -329,9 +337,33 @@ def init_db():
         # v13: Add pending_key_delivery table (created via _SCHEMA_SQL above)
         # No ALTER needed — table is created by CREATE TABLE IF NOT EXISTS.
 
+        # v14: Add rank and percentile_rank to known_wallets for the profile
+        # page to read from a single row instead of computing per request.
+        if current < 14:
+            try:
+                conn.execute(
+                    "ALTER TABLE known_wallets ADD COLUMN rank INTEGER"
+                )
+            except sqlite3.OperationalError:
+                pass  # Column already exists
+            try:
+                conn.execute(
+                    "ALTER TABLE known_wallets ADD COLUMN percentile_rank REAL"
+                )
+            except sqlite3.OperationalError:
+                pass  # Column already exists
+
         if current < _SCHEMA_VERSION:
             conn.execute("INSERT INTO schema_version (version) VALUES (?)", (_SCHEMA_VERSION,))
             conn.commit()
+
+        # Initial backfill of rank/percentile on first v14 migration
+        if current < 14:
+            try:
+                refresh_ranks_and_percentiles(conn)
+            except Exception:
+                logger.exception("Initial rank/percentile backfill failed (non-fatal)")
+
         logger.info("Database initialized at %s (schema v%d)", DB_PATH, _SCHEMA_VERSION)
     finally:
         conn.close()
@@ -579,10 +611,8 @@ def get_trust_registry_stats() -> dict:
 
         # Grade boundary stats
         grade_boundaries = {}
-        boundaries = [("A", 90, 100), ("B", 75, 89), ("C", 60, 74),
-                      ("D", 40, 59), ("E", 20, 39), ("F", 0, 19)]
         total_graded = sum(grade_distribution.values()) if grade_distribution else 0
-        for g, lo, hi in boundaries:
+        for g, lo, hi in GRADE_BOUNDARIES:
             cnt = grade_distribution.get(g, 0)
             grade_boundaries[g] = {
                 "min": lo, "max": hi, "count": cnt,
@@ -610,6 +640,35 @@ def get_trust_registry_stats() -> dict:
         }
     finally:
         conn.close()
+
+
+def _report_card_percentile(score: int, percentiles: dict) -> float:
+    """Estimate percentile rank from p10/p25/p50/p75/p90 percentile dict.
+
+    Returns a fractional percentile (0-100).  The frontend can round for
+    display; the raw value is stored as REAL in known_wallets.percentile_rank.
+    """
+    if not percentiles:
+        return 50.0
+    checkpoints = [
+        (percentiles.get("p10", 0), 10),
+        (percentiles.get("p25", 0), 25),
+        (percentiles.get("p50", 0), 50),
+        (percentiles.get("p75", 0), 75),
+        (percentiles.get("p90", 0), 90),
+    ]
+    if score <= checkpoints[0][0]:
+        return max(1, 10 * score / max(checkpoints[0][0], 1))
+    if score >= checkpoints[-1][0]:
+        return min(99, 90 + 10 * (score - checkpoints[-1][0]) / max(100 - checkpoints[-1][0], 1))
+    for i in range(len(checkpoints) - 1):
+        s1, p1 = checkpoints[i]
+        s2, p2 = checkpoints[i + 1]
+        if s1 <= score <= s2:
+            if s2 == s1:
+                return float(p1)
+            return p1 + (p2 - p1) * (score - s1) / (s2 - s1)
+    return 50.0
 
 
 def get_ecosystem_dashboard_stats() -> dict:
@@ -948,6 +1007,75 @@ def get_leaderboard_data(conn: sqlite3.Connection | None = None) -> dict:
             },
             "generated_at": now_iso,
         }
+    finally:
+        if own_conn:
+            conn.close()
+
+
+def refresh_ranks_and_percentiles(conn: sqlite3.Connection | None = None) -> dict:
+    """Recompute rank and percentile_rank on known_wallets.
+
+    rank = position in the healthiest board (named agents, score DESC,
+    top 500, after junk filters).  NULL for agents outside that set.
+
+    percentile_rank = ecosystem percentile (0-100, fractional) for any
+    agent with a non-null latest_ahs.
+
+    Returns a summary dict with counts for logging.
+    """
+    own_conn = conn is None
+    if own_conn:
+        conn = get_connection()
+    try:
+        # 1. Clear all ranks and percentiles
+        conn.execute("UPDATE known_wallets SET rank = NULL, percentile_rank = NULL")
+
+        # 2. Build the healthiest board (reuses existing rank logic)
+        healthiest = _build_board(conn, "latest_ahs")
+        ranked_count = 0
+        for entry in healthiest:
+            conn.execute(
+                "UPDATE known_wallets SET rank = ? WHERE address = ?",
+                (entry["rank"], entry["address"]),
+            )
+            ranked_count += 1
+
+        # 3. Compute percentile checkpoints (same query as get_composite_stats)
+        scores = conn.execute(
+            """SELECT ahs_score FROM (
+                SELECT address, ahs_score,
+                    ROW_NUMBER() OVER (PARTITION BY address ORDER BY scan_timestamp DESC) as rn
+                FROM scans WHERE endpoint = 'ahs' AND ahs_score IS NOT NULL
+            ) WHERE rn = 1 ORDER BY ahs_score"""
+        ).fetchall()
+        score_list = [r[0] for r in scores]
+        percentiles = {}
+        if score_list:
+            n = len(score_list)
+            for p in (10, 25, 50, 75, 90):
+                idx = min(int(n * p / 100), n - 1)
+                percentiles[f"p{p}"] = score_list[idx]
+
+        # 4. Populate percentile_rank for every scored agent
+        pct_count = 0
+        if percentiles:
+            scored_rows = conn.execute(
+                "SELECT address, latest_ahs FROM known_wallets WHERE latest_ahs IS NOT NULL"
+            ).fetchall()
+            for row in scored_rows:
+                pct = _report_card_percentile(row["latest_ahs"], percentiles)
+                conn.execute(
+                    "UPDATE known_wallets SET percentile_rank = ? WHERE address = ?",
+                    (pct, row["address"]),
+                )
+                pct_count += 1
+
+        conn.commit()
+        logger.info(
+            "Rank/percentile refresh complete: %d ranked, %d percentiled",
+            ranked_count, pct_count,
+        )
+        return {"ranked": ranked_count, "percentiled": pct_count}
     finally:
         if own_conn:
             conn.close()
@@ -1671,6 +1799,64 @@ def get_agent_profile(address: str) -> dict | None:
             "last_scanned": row["scan_timestamp"],
             "source": row["source"],
         }
+    finally:
+        conn.close()
+
+
+def get_agent_public_profile(address: str) -> dict | None:
+    """Return the free-safe public profile for an agent address.
+
+    Reads **only** allowlisted columns from known_wallets — dimensional
+    scores (d1, d2, etc.) are never selected.  Returns None when the
+    address has never been scanned / is unknown.
+
+    Computes two gap fields:
+      - gap_to_next_rank: AHS points to the agent one rank above.
+      - gap_to_next_tier: AHS points to the next higher grade boundary.
+    """
+    addr = address.lower()
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            """SELECT address, agent_name, registries, source,
+                      latest_ahs, latest_grade, rank, percentile_rank,
+                      first_seen_at, last_scanned_at, scan_count
+               FROM known_wallets WHERE address = ?""",
+            (addr,),
+        ).fetchone()
+        if row is None:
+            return None
+
+        profile = dict(row)
+
+        # gap_to_next_rank
+        gap_rank = None
+        rank_val = profile.get("rank")
+        if rank_val is not None and rank_val > 1:
+            above = conn.execute(
+                "SELECT latest_ahs FROM known_wallets WHERE rank = ?",
+                (rank_val - 1,),
+            ).fetchone()
+            if above and above["latest_ahs"] is not None and profile["latest_ahs"] is not None:
+                gap_rank = above["latest_ahs"] - profile["latest_ahs"]
+        profile["gap_to_next_rank"] = gap_rank
+
+        # gap_to_next_tier — uses the module-level GRADE_BOUNDARIES
+        gap_tier = None
+        ahs = profile.get("latest_ahs")
+        grade = profile.get("latest_grade")
+        if ahs is not None and grade is not None:
+            # GRADE_BOUNDARIES is ordered A→F; find the grade above current
+            for i, (g, lo, _hi) in enumerate(GRADE_BOUNDARIES):
+                if g == grade and i > 0:
+                    # Next higher tier is the one at index i-1
+                    next_lo = GRADE_BOUNDARIES[i - 1][1]
+                    gap_tier = next_lo - ahs
+                    break
+            # grade A (i==0) → gap_tier stays None
+        profile["gap_to_next_tier"] = gap_tier
+
+        return profile
     finally:
         conn.close()
 

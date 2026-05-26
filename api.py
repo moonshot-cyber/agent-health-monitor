@@ -407,6 +407,29 @@ class ProtectionPreviewResponse(BaseModel):
     message: str
 
 
+# -- Agent Public Profile Model (free-safe allowlist gate) ------------------
+
+class AgentPublicProfile(BaseModel):
+    """Free-safe agent profile for the public profile page.
+
+    This model is the security gate: only explicitly listed fields can be
+    serialised.  Dimensional scores (d1, d2, …) are structurally excluded.
+    """
+    address: str
+    agent_name: str | None = None
+    registries: str | None = None
+    source: str | None = None
+    latest_ahs: int | None = None
+    latest_grade: str | None = None
+    rank: int | None = None
+    percentile_rank: float | None = None
+    first_seen_at: str | None = None
+    last_scanned_at: str | None = None
+    scan_count: int = 0
+    gap_to_next_rank: int | None = None
+    gap_to_next_tier: int | None = None
+
+
 # -- Risk Score Model --------------------------------------------------------
 
 class RiskResponse(BaseModel):
@@ -1600,10 +1623,19 @@ async def lifespan(app: FastAPI):
         misfire_grace_time=3600,
         max_instances=1,
     )
+    scheduler.add_job(
+        _run_rank_refresh,
+        trigger=CronTrigger(hour=4, minute=0, timezone="UTC"),
+        id="rank_percentile_refresh",
+        name="Rank & Percentile Refresh",
+        coalesce=True,
+        misfire_grace_time=3600,
+        max_instances=1,
+    )
     scheduler.start()
     app.state.scheduler = scheduler
 
-    bg_names = "alert_monitor, rescan_loop, acp_scheduler, olas_scheduler, celo_scheduler, arc_scheduler, erc8004_scheduler"
+    bg_names = "alert_monitor, rescan_loop, acp_scheduler, olas_scheduler, celo_scheduler, arc_scheduler, erc8004_scheduler, rank_refresh"
     if erc8183_task:
         bg_names += ", erc8183_worker"
     logger.info("Background tasks started: %s", bg_names)
@@ -3230,6 +3262,24 @@ async def leaderboard():
     return data
 
 
+@app.get("/api/agent/{address}", response_model=AgentPublicProfile,
+         tags=["Discovery & Info"])
+@limiter.limit("60/minute")
+async def get_agent_public(address: WalletAddress, request: Request):
+    """Public agent profile: free-safe data for the Intelligence profile page.
+
+    Returns composite score, grade, rank, percentile, and gap metrics.
+    Dimensional breakdown (D1/D2/…) is excluded — that is the paid product.
+    """
+    loop = asyncio.get_running_loop()
+    profile = await loop.run_in_executor(
+        None, lambda: scan_db.get_agent_public_profile(address)
+    )
+    if profile is None:
+        return JSONResponse(content={"address": address.lower(), "status": "unrated"})
+    return AgentPublicProfile(**profile)
+
+
 @app.get("/scan/quality", tags=["Discovery & Info"])
 async def scan_quality():
     """Batch quality history for the last 30 days. No auth required."""
@@ -4821,7 +4871,7 @@ async def get_report_card(address: WalletAddress, request: Request):
 
     # Calculate percentile rank
     percentiles = eco_stats.get("baseline_calibration", {}).get("score_percentiles", {})
-    pct_rank = _report_card_percentile(result.agent_health_score, percentiles)
+    pct_rank = scan_db._report_card_percentile(result.agent_health_score, percentiles)
 
     # Build share URL
     grade_full = f"{result.grade} — {result.grade_label}"
@@ -4890,31 +4940,6 @@ async def get_report_card(address: WalletAddress, request: Request):
     ))
 
     return ReportCardResponse(status="ok", report=report)
-
-
-def _report_card_percentile(score: int, percentiles: dict) -> int:
-    """Estimate percentile rank from p10/p25/p50/p75/p90 percentile dict."""
-    if not percentiles:
-        return 50
-    checkpoints = [
-        (percentiles.get("p10", 0), 10),
-        (percentiles.get("p25", 0), 25),
-        (percentiles.get("p50", 0), 50),
-        (percentiles.get("p75", 0), 75),
-        (percentiles.get("p90", 0), 90),
-    ]
-    if score <= checkpoints[0][0]:
-        return max(1, int(10 * score / max(checkpoints[0][0], 1)))
-    if score >= checkpoints[-1][0]:
-        return min(99, 90 + int(10 * (score - checkpoints[-1][0]) / max(100 - checkpoints[-1][0], 1)))
-    for i in range(len(checkpoints) - 1):
-        s1, p1 = checkpoints[i]
-        s2, p2 = checkpoints[i + 1]
-        if s1 <= score <= s2:
-            if s2 == s1:
-                return p1
-            return int(p1 + (p2 - p1) * (score - s1) / (s2 - s1))
-    return 50
 
 
 @app.get("/optimize/{address}", response_model=OptimizeResponse, tags=["Optimization"])
@@ -6170,6 +6195,23 @@ def _cleanup_acp_checkpoint():
 
 
 _acp_scan_lock = asyncio.Lock()
+
+
+async def _run_rank_refresh():
+    """Refresh rank and percentile_rank columns on known_wallets.
+
+    Scheduled at 04:00 UTC, after the nightly registry scans complete
+    (last scan at 03:15 UTC), so ranks reflect fresh data.
+    """
+    logger.info("Rank/percentile refresh — START")
+    loop = asyncio.get_running_loop()
+    try:
+        result = await loop.run_in_executor(
+            None, scan_db.refresh_ranks_and_percentiles
+        )
+        logger.info("Rank/percentile refresh — DONE: %s", result)
+    except Exception:
+        logger.exception("Rank/percentile refresh — FAILED")
 
 
 async def run_acp_scan():
