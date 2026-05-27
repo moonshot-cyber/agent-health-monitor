@@ -3297,6 +3297,15 @@ async def dashboard():
     raise HTTPException(status_code=404, detail="Dashboard not found")
 
 
+@app.get("/pay-by-card", tags=["Discovery & Info"])
+async def pay_by_card():
+    """Serve the card payment landing page."""
+    pay_file = STATIC_DIR / "pay.html"
+    if pay_file.is_file():
+        return FileResponse(pay_file)
+    raise HTTPException(status_code=404, detail="Payment page not found")
+
+
 # -- Endpoint Marketing Pages ------------------------------------------------
 
 ENDPOINT_PAGES = {
