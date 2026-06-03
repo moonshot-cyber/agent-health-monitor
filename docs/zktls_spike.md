@@ -37,10 +37,13 @@ Three paths evaluated, in order of preference:
 - **Key export:** `verify_proof(proof, config)` — async function that
   fetches attestor list from Reclaim backend, recovers signers, checks
   against attestor set.
-- **Verdict:** Not usable without build tools. The `safe-pysha3` dep is
-  used for keccak hashing but `web3.Web3.keccak()` provides the same
-  function. SDK is also async-only, which adds complexity for a sync
-  FastAPI codebase.
+- **Verdict:** Not chosen. The `safe-pysha3` install failure is specific
+  to the Windows dev box (no MSVC); Railway runs Linux and would likely
+  build it. The real reasons to avoid the SDK are: (1) it is async-only,
+  adding complexity to a sync FastAPI codebase; (2) it pulls 9
+  dependencies where we need only the signature-recovery path; (3) it
+  fetches the attestor list from Reclaim's backend at verify time,
+  adding a runtime network dependency that manual verification avoids.
 
 ### Path 2: Manual verification ← CHOSEN
 
@@ -192,20 +195,38 @@ set changes. Monitor for Reclaim moving to on-chain governance. In v1,
 this is acceptable — the attestor is an additional signal, not a
 replacement for on-chain D1-D4 scoring.
 
-### 4. Identifier recomputation
+### 4. Identifier recomputation — HARD REQUIREMENT
 
-The spike does NOT recompute the identifier from
-`provider|parameters|context` because RFC 8785 canonical JSON
-serialization must match the attestor's byte-level output exactly.
-The Reclaim SDK itself offers `dangerouslyDisableContentValidation`
-for this reason. Signature verification alone proves the attestor
-endorsed this exact claim data (the identifier is part of the signed
-message).
+The attestor signature covers only `identifier|owner|timestampS|epoch`.
+The context bytes (including `contextAddress`, `extractedParameters`,
+and `providerHash`) are bound to the signature **only via the identifier
+hash** — `keccak256(provider + "\n" + parameters + "\n" +
+canonicalJSON(context))`. Without hard identifier recomputation, a
+validly-signed proof can have its context swapped: an attacker takes
+a proof signed for wallet A, replaces `contextAddress` with wallet B,
+and the signature still verifies because the sign-data string uses
+the original identifier. This makes proof-to-wallet binding
+(production item 4) and provider registry mapping (production item 9)
+entirely bypassable without this check.
 
-**Recommendation:** For production, add identifier recomputation as a
-warning-level check (log mismatches for investigation) rather than a
-hard failure. This catches proof structural issues without false-
-rejecting valid proofs due to canonicalization mismatches.
+`_compute_identifier()` already exists in `zktls.py` (implemented
+during the spike but not wired into `verify_reclaim_proof()`).
+**Spike finding:** identifier recomputation works correctly against
+both real SDK test fixtures using `json-canonical` (RFC 8785). The
+earlier canonicalization mismatch was caused by corrupted test fixture
+data, not by a fundamental RFC 8785 incompatibility. Two passing tests
+(`test_compute_identifier_fixture_1`, `test_compute_identifier_fixture_2`)
+confirm this.
+
+**Requirement for production:** `verify_reclaim_proof()` must call
+`_compute_identifier()` and hard-fail on mismatch. Canonicalization
+edge cases are to be solved (match the attestor's byte-level RFC 8785
+output), not bypassed. The Reclaim SDK's
+`dangerouslyDisableContentValidation` flag exists for development
+convenience; AHM must not use it — our entire trust model for context
+fields depends on this check. Production items 4 (proof-to-wallet
+binding) and 9 (providerHash mapping) are security-dependent on this
+being a hard check.
 
 ---
 
@@ -218,7 +239,8 @@ rejecting valid proofs due to canonicalization mismatches.
    and an agent wallet address. Returns verification result.
 4. **Proof-to-wallet binding:** Validate that `contextAddress` matches
    the wallet being scored, or require a wallet signature over the
-   proof hash.
+   proof hash. **Depends on identifier recomputation (OQ4)** — without
+   it, `contextAddress` can be swapped on a validly-signed proof.
 5. **Freshness enforcement:** Reject proofs older than configurable
    max age (24h default for solvency claims).
 6. **Replay protection:** Store proof hashes in DB; reject duplicates.
@@ -233,7 +255,9 @@ rejecting valid proofs due to canonicalization mismatches.
 9. **Provider registry mapping:** Map `providerHash` values to
    human-readable claim types (binance_balance, coinbase_balance, etc.)
    so `apply_attestation_confidence()` can distinguish solvency
-   attestations from other proof types.
+   attestations from other proof types. **Depends on identifier
+   recomputation (OQ4)** — without it, `providerHash` in the context
+   can be swapped to impersonate a different provider type.
 
 ---
 

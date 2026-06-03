@@ -1,7 +1,17 @@
 """Tests for zkTLS proof verification (Reclaim Protocol).
 
-Uses real test fixture proofs from the Reclaim Python SDK test suite.
-Signature recovery and attestor matching verified against known data.
+Fixtures are verbatim copies from reclaimprotocol/reclaim-python-sdk
+tests/conftest.py (fetched from main branch 2026-06-03). Parameters and context are
+kept as raw SDK strings (not json.dumps) to preserve byte-level fidelity
+for identifier recomputation.
+
+NOTE: context fields (contextAddress, extractedParameters, providerHash)
+are NOT independently covered by the attestor signature. They are bound
+only via the identifier hash — keccak256(provider|parameters|context).
+Without identifier recomputation (see OQ4 in docs/zktls_spike.md),
+swapping context on a validly-signed proof would go undetected. The
+_compute_identifier tests below confirm that recomputation works against
+these real fixtures.
 """
 
 import copy
@@ -22,7 +32,9 @@ from zktls import (
 
 
 # ---------------------------------------------------------------------------
-# Fixtures — real proofs from reclaimprotocol/reclaim-python-sdk conftest.py
+# Fixtures — verbatim from reclaimprotocol/reclaim-python-sdk conftest.py.
+# Parameters and context are raw strings (not json.dumps) to preserve the
+# exact bytes the attestor signed over.
 # ---------------------------------------------------------------------------
 
 FIXTURE_PROOF_1 = {
@@ -30,28 +42,14 @@ FIXTURE_PROOF_1 = {
     "claimData": {
         "identifier": "0xbb5c63656a650276728d3cb9ce3f90361223c7814fd94f6582b682dfc96e4ba8",
         "provider": "http",
-        "parameters": json.dumps({
-            "body": "",
-            "geoLocation": "in",
-            "method": "GET",
-            "paramValues": {"DYNAMIC_GEO": "IN", "username": "srivatsanqb"},
-            "responseMatches": [{"type": "contains", "value": "{{username}}"}],
-            "responseRedactions": [{"jsonPath": "$.username", "xPath": ""}],
-            "url": "https://www.kaggle.com/api/i/users.UserService/GetUser?username={{username}}",
-        }, separators=(",", ":")),
+        "parameters": '{"additionalClientOptions":{"popcornApiUrl":"https://popcorn-cluster-aws-us-east-2.popcorn.reclaimprotocol.org"},"body":"{\\"includeGroups\\":false,\\"includeLogins\\":false,\\"includeVerificationStatus\\":true}","geoLocation":"{{DYNAMIC_GEO}}","headers":{"Accept":"application/json","Accept-Language":"en-US,en;q=0.9","Sec-Ch-Ua":"\\"Not-A.Brand\\";v=\\"24\\", \\"Chromium\\";v=\\"146\\"","Sec-Ch-Ua-Mobile":"?0","Sec-Fetch-Mode":"same-origin","Sec-Fetch-Site":"same-origin","User-Agent":"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36"},"method":"POST","paramValues":{"DYNAMIC_GEO":"IN","username":"srivatsanqb"},"proxySessionId":"1ab031c2ef","responseMatches":[{"type":"contains","value":"\\"userName\\":\\"{{username}}\\""}],"responseRedactions":[{"jsonPath":"$.userName","regex":"\\"userName\\":\\"(.*)\\"","xPath":""}],"url":"https://www.kaggle.com/api/i/users.UsersService/GetCurrentUser"}',
         "owner": "0x9c3dcb81fe10f6e494bfaa0220ea0ba7bcf3ad94",
         "timestampS": 1774346626,
-        "context": json.dumps({
-            "contextAddress": "0x0",
-            "contextMessage": "for trust scoring",
-            "extractedParameters": {"DYNAMIC_GEO": "IN", "username": "srivatsanqb"},
-            "providerHash": "0xf908ede49tried2f85f8bb32a5fa57cd1968455d7ecddae7700e9bad37fc23ab4",
-        }, separators=(",", ":")),
+        "context": '{"attestationNonce":"0xdf1cd84efbeded8c07d0fcdccc4883e74ecf5ed65eaf023d2aa1aafd75611f6c04eb1f633396ecbcc4f6fe9fc11c25586a4dac3a99deb40c44ae5cf49cebae6d1b","attestationNonceData":{"applicationId":"0xd116D518eacea61C7af9760E5d8D1b720a0CE8D5","sessionId":"1ab031c2ef","timestamp":"1774346557104"},"contextAddress":"0x0","contextMessage":"sample context","extractedParameters":{"DYNAMIC_GEO":"IN","username":"srivatsanqb"},"providerHash":"0x4c20776ae89ab7eead49e4e393f4e07348a4d85e21869201aa6eea6e2bc07f5b","reclaimSessionId":"1ab031c2ef"}',
         "epoch": 1,
     },
     "signatures": [
-        "0x379b164165e005d75be4ec7854d745d68ad56d738a08da3a4c30eb071948bf5d"
-        "0c7262bb8c46189e0cadb583dbb00917b73fbdbf74b5914eb69774ce97196a911c"
+        "0x379b164165e005d75be4ec7854d745d68ad56d738a08da3a4c30eb071948bf5d0c7262bb8c46189e0cadb583dbb00917b73fbdbf74b5914eb69774ce97196a911c"
     ],
     "witnesses": [
         {
@@ -66,28 +64,14 @@ FIXTURE_PROOF_2 = {
     "claimData": {
         "identifier": "0x51c192777d45010e9318c0e1eb2fefc0bc5a444f59e3d3e5a11e9a3d1b98e10c",
         "provider": "http",
-        "parameters": json.dumps({
-            "body": "",
-            "geoLocation": "in",
-            "method": "GET",
-            "paramValues": {"DYNAMIC_GEO": "IN", "username": "mushaheedsyed"},
-            "responseMatches": [{"type": "contains", "value": "{{username}}"}],
-            "responseRedactions": [{"jsonPath": "$.username", "xPath": ""}],
-            "url": "https://www.kaggle.com/api/i/users.UserService/GetUser?username={{username}}",
-        }, separators=(",", ":")),
+        "parameters": '{"additionalClientOptions":{},"body":"{\\"includeGroups\\":false,\\"includeLogins\\":false,\\"includeVerificationStatus\\":true}","geoLocation":"{{DYNAMIC_GEO}}","headers":{"Accept":"application/json","Accept-Language":"en-US,en;q=0.9","Sec-Ch-Ua":"\\"Chromium\\";v=\\"145\\", \\"Not:A-Brand\\";v=\\"99\\"","Sec-Ch-Ua-Mobile":"?0","Sec-Fetch-Mode":"same-origin","Sec-Fetch-Site":"same-origin","User-Agent":"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36"},"method":"POST","paramValues":{"DYNAMIC_GEO":"IN","username":"mushaheedsyed"},"proxySessionId":"8e825912c9","responseMatches":[{"type":"contains","value":"\\"userName\\":\\"{{username}}\\""}],"responseRedactions":[{"jsonPath":"$.userName","regex":"\\"userName\\":\\"(.*)\\"","xPath":""}],"url":"https://www.kaggle.com/api/i/users.UsersService/GetCurrentUser"}',
         "owner": "0x2967c5e6b3c4f179699bcc6e45bbe13b2203818e",
         "timestampS": 1773163350,
-        "context": json.dumps({
-            "contextAddress": "0x0",
-            "contextMessage": "for verification",
-            "extractedParameters": {"DYNAMIC_GEO": "IN", "username": "mushaheedsyed"},
-            "providerHash": "0xf908ede49tried2f85f8bb32a5fa57cd1968455d7ecddae7700e9bad37fc23ab4",
-        }, separators=(",", ":")),
+        "context": '{"contextAddress":"0x0","contextMessage":"sample context","extractedParameters":{"DYNAMIC_GEO":"IN","username":"mushaheedsyed"},"providerHash":"0x4c20776ae89ab7eead49e4e393f4e07348a4d85e21869201aa6eea6e2bc07f5b"}',
         "epoch": 1,
     },
     "signatures": [
-        "0x561d209c999536ad0c6b5834bb5416963a3d61b3045e621d99ba5e0a07aa1a7b"
-        "0707a4e8f4a218c5dd13f9e470d3c7023b7ddeda5463069eb08c231dbb0ab63c1b"
+        "0x561d209c999536ad0c6b5834bb5416963a3d61b3045e621d99ba5e0a07aa1a7b0707a4e8f4a218c5dd13f9e470d3c7023b7ddeda5463069eb08c231dbb0ab63c1b"
     ],
     "witnesses": [
         {
@@ -358,3 +342,37 @@ class TestInternalHelpers:
         r1 = verify_reclaim_proof(FIXTURE_PROOF_1)
         r2 = verify_reclaim_proof(FIXTURE_PROOF_2)
         assert r1.proof_hash != r2.proof_hash
+
+    def test_compute_identifier_fixture_1(self):
+        """_compute_identifier reproduces the attestor-signed identifier.
+
+        This confirms that json-canonical (RFC 8785) canonicalization
+        matches the attestor's byte-level output for real SDK fixtures.
+        See OQ4 in docs/zktls_spike.md — this check is a hard
+        requirement for production.
+        """
+        cd = FIXTURE_PROOF_1["claimData"]
+        computed = _compute_identifier(cd["provider"], cd["parameters"], cd["context"])
+        assert computed == cd["identifier"]
+
+    def test_compute_identifier_fixture_2(self):
+        """_compute_identifier matches fixture 2 as well."""
+        cd = FIXTURE_PROOF_2["claimData"]
+        computed = _compute_identifier(cd["provider"], cd["parameters"], cd["context"])
+        assert computed == cd["identifier"]
+
+    def test_compute_identifier_detects_tampered_context(self):
+        """Swapping context changes the identifier — OQ4 hard check.
+
+        Without identifier recomputation, a validly-signed proof can
+        have its context replaced (e.g. contextAddress swapped to a
+        different wallet) and signature verification alone would not
+        catch it. This test confirms that _compute_identifier()
+        detects the tamper.
+        """
+        cd = copy.deepcopy(FIXTURE_PROOF_1["claimData"])
+        original_context = json.loads(cd["context"])
+        original_context["contextAddress"] = "0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
+        cd["context"] = json.dumps(original_context, separators=(",", ":"))
+        computed = _compute_identifier(cd["provider"], cd["parameters"], cd["context"])
+        assert computed != FIXTURE_PROOF_1["claimData"]["identifier"]
