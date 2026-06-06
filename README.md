@@ -1,6 +1,6 @@
 # Agent Health Monitor
 
-Trust and health verification for the autonomous agent economy. Before an agent delegates a task, routes a payment, or enters a contract — it needs to know: **is this counterparty solvent, reliable, and operational?** AHM answers that with 14 diagnostic endpoints, 4,500+ agents in the trust registry, and composite scoring across three dimensions.
+Trust and health verification for the autonomous agent economy. Before an agent delegates a task, routes a payment, or enters a contract — it needs to know: **is this counterparty solvent, reliable, and operational?** AHM answers that with 14 diagnostic endpoints, a nightly-updated trust registry spanning five agent discovery sources, and composite scoring across three dimensions. See [AHM_VALUE_PROPOSITIONS.md](AHM_VALUE_PROPOSITIONS.md) for live ecosystem stats.
 
 **Pay how you want:** [x402 protocol](https://x402.org) (USDC on Base, pay-per-call) or [Stripe](https://agenthealthmonitor.xyz) (fiat API key, no wallet required).
 
@@ -46,14 +46,14 @@ No wallet required. Purchase an API key at [agenthealthmonitor.xyz](https://agen
 
 ## Trust Registry
 
-4,500+ agent wallets scanned and tracked across 5 discovery sources:
+Agent wallets scanned and tracked across 5 discovery sources (live count in [AHM_VALUE_PROPOSITIONS.md](AHM_VALUE_PROPOSITIONS.md)):
 
 | Source | Description |
 |---|---|
 | **ACP (Virtuals)** | Automated nightly scans via `acpx.virtuals.io` API |
-| **ERC-8004** | On-chain agent registry on Base mainnet (32,700+ registered) |
+| **ERC-8004** | On-chain agent registry on Base mainnet (32,700+ registered as of May 2026) |
 | **Olas** | Olas protocol agent registry, nightly scans |
-| **Arc** | ERC-8004 IdentityRegistry on Arc testnet, nightly scans (1,200+ agents) |
+| **Arc** | ERC-8004 IdentityRegistry on Arc testnet, nightly scans (1,200+ agents as of May 2026) |
 | **API** | Wallets scanned via direct API calls |
 
 All scan results are stored in the trust registry database with grade distribution, trend tracking, and ecosystem-wide health statistics available at `/trust-registry` and `/dashboard`.

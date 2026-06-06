@@ -413,8 +413,8 @@ if __name__ == "__main__":
         ],
         recommendations=["Diversify counterparties", "Enable gas adaptation"],
         ecosystem={
-            "average_ahs": 59.3,
-            "summary": {"total_unique_addresses": 4552},
+            "average_ahs": 60.0,
+            "summary": {"total_unique_addresses": 12345},
             "baseline_calibration": {
                 "score_percentiles": {"p10": 18, "p25": 30, "p50": 45, "p75": 62, "p90": 78},
             },

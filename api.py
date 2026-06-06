@@ -2899,9 +2899,9 @@ x402_routes = {
                                     {"dimension": "D2: Behavioural Patterns", "score": 55, "weight": 0.70},
                                 ],
                                 "ecosystem_comparison": {
-                                    "average_ahs": 59.3,
+                                    "average_ahs": 60.0,
                                     "percentile_rank": 65,
-                                    "total_agents_scored": 4552,
+                                    "total_agents_scored": 12345,
                                 },
                                 "image_url": "/static/report-cards/0xd8da...6045.png",
                             },
