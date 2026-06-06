@@ -117,13 +117,7 @@ def center_text(draw, y, text, font, fill):
 
 
 def _fetch_ecosystem_stats() -> dict:
-    """Fetch live ecosystem stats from the DB, with sensible fallbacks."""
-    defaults = {
-        "total_scanned": 4552,
-        "avg_ahs": 59.3,
-        "grade_distribution": {},
-        "pattern_distribution": {},
-    }
+    """Fetch live ecosystem stats from the DB. Raises on failure."""
     try:
         import db
         stats = db.get_ecosystem_dashboard_stats()
@@ -131,14 +125,17 @@ def _fetch_ecosystem_stats() -> dict:
             return stats
     except Exception:
         traceback.print_exc()
-    return defaults
+    raise RuntimeError(
+        "Could not fetch live ecosystem stats from the database. "
+        "Report generation requires live data — refusing to use stale defaults."
+    )
 
 
 def main():
     # Fetch live stats for the stat cards
     eco = _fetch_ecosystem_stats()
-    total_agents = eco.get("total_scanned", 4552)
-    avg_ahs = eco.get("avg_ahs", 59.3)
+    total_agents = eco["total_scanned"]
+    avg_ahs = eco["avg_ahs"]
     grades = eco.get("grade_distribution", {})
     total_graded = sum(grades.values()) if grades else total_agents
     grade_a_count = grades.get("A", 0)
