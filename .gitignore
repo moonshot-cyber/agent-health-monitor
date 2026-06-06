@@ -36,6 +36,7 @@ prompts/*
 !prompts/ahm_chat_history_extract_2026-05.md
 !prompts/spikes/
 !prompts/spikes/**
+!prompts/composed-evaluators-grounding-pass-results.md
 
 # Chat archive (review before committing)
 prompts/ahm_chat_archive/
