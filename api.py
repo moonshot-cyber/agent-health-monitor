@@ -38,6 +38,8 @@ logging.basicConfig(
 )
 
 import db as scan_db
+import crawler_classifier
+import crawler_db
 import erc8183_worker
 from generate_report_card import generate_report_card
 from contextlib import asynccontextmanager
@@ -1552,6 +1554,7 @@ def generate_recommendations(health) -> list[Recommendation]:
 async def lifespan(app: FastAPI):
     import db as _db
     _db.init_db()
+    crawler_db.init_db()
 
     # Verify critical static assets exist at startup
     _log = logging.getLogger("ahm")
@@ -1568,6 +1571,7 @@ async def lifespan(app: FastAPI):
             logger.info("Backfilled %d Zombie Agent patterns on startup", filled)
     except Exception:
         logger.exception("Zombie pattern backfill failed (non-fatal)")
+    crawler_consumer_task = asyncio.create_task(crawler_db.run_consumer())
     alert_task = asyncio.create_task(alert_monitor_loop())
     rescan_task = asyncio.create_task(rescan_loop())
 
@@ -1635,7 +1639,7 @@ async def lifespan(app: FastAPI):
     scheduler.start()
     app.state.scheduler = scheduler
 
-    bg_names = "alert_monitor, rescan_loop, acp_scheduler, olas_scheduler, celo_scheduler, arc_scheduler, erc8004_scheduler, rank_refresh"
+    bg_names = "crawler_consumer, alert_monitor, rescan_loop, acp_scheduler, olas_scheduler, celo_scheduler, arc_scheduler, erc8004_scheduler, rank_refresh"
     if erc8183_task:
         bg_names += ", erc8183_worker"
     logger.info("Background tasks started: %s", bg_names)
@@ -1643,11 +1647,12 @@ async def lifespan(app: FastAPI):
 
     # -- Shutdown --
     scheduler.shutdown(wait=False)
+    crawler_consumer_task.cancel()
     alert_task.cancel()
     rescan_task.cancel()
     if erc8183_task:
         erc8183_task.cancel()
-    tasks_to_await = [alert_task, rescan_task]
+    tasks_to_await = [crawler_consumer_task, alert_task, rescan_task]
     if erc8183_task:
         tasks_to_await.append(erc8183_task)
     for t in tasks_to_await:
@@ -1655,6 +1660,8 @@ async def lifespan(app: FastAPI):
             await t
         except asyncio.CancelledError:
             pass
+    # Final flush — drain any rows the consumer didn't process.
+    await crawler_db.flush()
 
 
 app = FastAPI(
@@ -1980,6 +1987,70 @@ class SecurityMonitorMiddleware:
         stale_cd = [k for k, t in self._event_cooldown.items() if now - t > self._COOLDOWN]
         for k in stale_cd:
             del self._event_cooldown[k]
+
+
+class CrawlerObservatoryMiddleware:
+    """ASGI middleware that logs every request for crawler/indexer analysis.
+
+    Must be the outermost middleware (added last) so it observes all traffic
+    including health checks, CDN probes, and 404 discovery attempts.
+
+    Non-blocking: enqueues a row into a bounded asyncio.Queue; a single
+    background consumer batch-inserts to crawler_hits.db.  Never blocks
+    the response path.
+    """
+
+    def __init__(self, app):
+        self.app = app
+
+    @staticmethod
+    def _header(headers: list[tuple[bytes, bytes]], name: bytes) -> str:
+        for k, v in headers:
+            if k == name:
+                return v.decode(errors="replace")
+        return ""
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        status_code = 0
+
+        async def send_wrapper(message):
+            nonlocal status_code
+            if message["type"] == "http.response.start":
+                status_code = message.get("status", 0)
+            await send(message)
+
+        await self.app(scope, receive, send_wrapper)
+
+        # Build the log row after the response is sent.
+        headers = scope.get("headers", [])
+        path = scope.get("path", "")
+        method = scope.get("method", "")
+        host = self._header(headers, b"host")
+        user_agent = self._header(headers, b"user-agent")
+
+        # Client IP: prefer CF-Connecting-IP (Cloudflare proxy), then
+        # X-Forwarded-For, then ASGI socket.
+        client_ip = (
+            self._header(headers, b"cf-connecting-ip")
+            or self._header(headers, b"x-forwarded-for").split(",")[0].strip()
+            or (scope.get("client", ("",))[0])
+        )
+        country = self._header(headers, b"cf-ipcountry") or None
+
+        ua_class, indexer_name = crawler_classifier.classify(user_agent)
+        discovery = crawler_classifier.is_discovery_path(path)
+
+        ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        crawler_db.enqueue((
+            ts, host, path, method, status_code, user_agent,
+            client_ip, country, ua_class, indexer_name,
+            1 if discovery else 0,
+        ))
 
 
 class InternalKeyBypassMiddleware:
@@ -2999,9 +3070,13 @@ app.add_middleware(InternalKeyBypassMiddleware)
 # before x402 or internal key bypass can process them.
 app.add_middleware(AddressValidationMiddleware)
 
-# Security monitor: outermost — observes all response status codes and
+# Security monitor — observes all response status codes and
 # detects endpoint enumeration, high 4xx rates, and 402 without payment.
 app.add_middleware(SecurityMonitorMiddleware)
+
+# Crawler observatory: outermost — logs every request for indexer/bot analysis.
+# Last added = outermost in Starlette's middleware stack.
+app.add_middleware(CrawlerObservatoryMiddleware)
 
 # Rate limiter state (slowapi reads app.state.limiter for decorator checks)
 app.state.limiter = limiter
