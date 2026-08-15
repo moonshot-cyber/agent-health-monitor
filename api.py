@@ -24,6 +24,7 @@ Environment variables:
 
 import asyncio
 import hmac
+import html
 import logging
 import os
 import re
@@ -3370,13 +3371,156 @@ async def scan_quality():
     return {"batches": history}
 
 
+_GRADE_CSS = {"A": "grade-A", "B": "grade-B", "C": "grade-C",
+              "D": "grade-D", "E": "grade-E", "F": "grade-F"}
+_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+           "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
+
+def _bar_row(label: str, bar_pct: float, value_text: str,
+             css_class: str = "", inline_colour: str = "",
+             narrow_label: bool = False) -> str:
+    """One horizontal bar row, matching the markup the client script emits."""
+    label_style = (
+        ' style="width:auto; min-width:0; font-size:0.6rem; white-space:nowrap"'
+        if narrow_label else ""
+    )
+    fill_style = f"width:{bar_pct}%"
+    if inline_colour:
+        fill_style += f"; background:{inline_colour}"
+    return (
+        '<div class="bar-row">'
+        f'<div class="bar-label"{label_style}>{html.escape(label)}</div>'
+        f'<div class="bar-track"><div class="bar-fill {css_class}" style="{fill_style}"></div></div>'
+        f'<div class="bar-value">{value_text}</div>'
+        "</div>"
+    )
+
+
+def _render_dashboard_html(stats: dict) -> str:
+    """Render the dashboard server-side.
+
+    /dashboard is the single canonical home for figures that change. It must be
+    readable by crawlers, agents and curl — so every value is baked into the
+    markup here rather than left to client-side fetch. The client script still
+    runs and re-renders, which keeps the page fresh for human visitors.
+    """
+    tpl = (STATIC_DIR / "dashboard.html").read_text(encoding="utf-8")
+
+    grades = stats.get("grade_distribution") or {}
+    patterns = stats.get("pattern_distribution") or {}
+    sources = stats.get("data_sources") or {}
+    total = sum(grades.values())
+
+    # -- Metric cards --
+    zombie_count = patterns.get("Zombie Agent", 0)
+    zombie_pct = round(zombie_count / total * 100) if total else 0
+
+    updated = "—"
+    raw_updated = stats.get("last_updated")
+    if raw_updated:
+        try:
+            dt = datetime.strptime(raw_updated, "%Y-%m-%dT%H:%M:%SZ")
+            updated = f"{_MONTHS[dt.month - 1]} {dt.day}, {dt.year}"
+        except ValueError:
+            updated = raw_updated
+
+    unit = canonical.scanned_unit()
+    sub = (
+        f"Live data from {total:,} {unit} scanned on Base mainnet"
+        if total else "Live data from Base mainnet"
+    )
+
+    # -- Source chips --
+    order = canonical.registry_display_order()
+    ordered = [k for k in order if k in sources]
+    ordered += [k for k in sources if k not in order]
+    src_html = "".join(
+        f'<div class="source-chip" data-source="{html.escape(k)}">'
+        f"{html.escape(k)}: <strong>{sources[k]:,}</strong> {unit}</div>"
+        for k in ordered
+    )
+
+    # -- Grade distribution --
+    max_grade = max(grades.values()) if grades else 0
+    grade_html = ""
+    for letter in canonical.grade_letters():
+        cnt = grades.get(letter, 0)
+        pct = (cnt / total * 100) if total else 0
+        bar = (cnt / max_grade * 100) if max_grade else 0
+        grade_html += _bar_row(letter, bar, f"{cnt} ({pct:.1f}%)",
+                               css_class=_GRADE_CSS.get(letter, ""))
+
+    # -- Pattern breakdown --
+    # The CDP classifier only labels a minority of scanned wallets. Rendering
+    # only the matched patterns implied the classifier covered the population
+    # when it covers a fraction of it, so the unmatched remainder is shown
+    # explicitly and the column sums to 100%.
+    classified = sum(patterns.values())
+    unclassified = max(0, total - classified)
+    rows = sorted(patterns.items(), key=lambda kv: kv[1], reverse=True)[:6]
+    if unclassified:
+        rows.append(("Unclassified", unclassified))
+
+    max_pat = max((c for _, c in rows), default=0)
+    pattern_html = ""
+    for name, cnt in rows:
+        pct = (cnt / total * 100) if total else 0
+        bar = (cnt / max_pat * 100) if max_pat else 0
+        lowered = name.lower()
+        if "zombie" in lowered or "cascading" in lowered:
+            colour = "var(--red)"
+        elif "healthy" in lowered:
+            colour = "var(--green)"
+        elif name == "Unclassified":
+            colour = "var(--text-dim)"
+        else:
+            colour = "var(--amber)"
+        pattern_html += _bar_row(name, bar, f"{pct:.1f}%",
+                                 inline_colour=colour, narrow_label=True)
+    if not rows:
+        pattern_html = (
+            '<div style="font-family:var(--mono); font-size:0.7rem; '
+            'color:var(--text-dim); text-align:center; padding:1rem">'
+            "No pattern data available</div>"
+        )
+
+    return (
+        tpl.replace("{{SSR_SUB}}", html.escape(sub))
+        .replace("{{SSR_TOTAL}}", f"{total:,}")
+        .replace("{{SSR_AVG}}", str(stats.get("avg_ahs", "—")))
+        .replace("{{SSR_ZOMBIE}}", f"{zombie_pct}%")
+        .replace("{{SSR_UPDATED}}", html.escape(updated))
+        .replace("{{SSR_SOURCES}}", src_html)
+        .replace("{{SSR_GRADES}}", grade_html)
+        .replace("{{SSR_PATTERNS}}", pattern_html)
+        .replace("{{SSR_D1}}", str(stats.get("avg_d1", "—")))
+        .replace("{{SSR_D2}}", str(stats.get("avg_d2", "—")))
+    )
+
+
 @app.get("/dashboard", tags=["Discovery & Info"])
 async def dashboard():
-    """Serve the public ecosystem health dashboard."""
+    """Serve the public ecosystem health dashboard, server-rendered."""
     dash_file = STATIC_DIR / "dashboard.html"
-    if dash_file.is_file():
+    if not dash_file.is_file():
+        raise HTTPException(status_code=404, detail="Dashboard not found")
+
+    loop = asyncio.get_running_loop()
+    try:
+        stats = await loop.run_in_executor(
+            None, scan_db.get_ecosystem_dashboard_stats
+        )
+        rendered = await loop.run_in_executor(
+            None, partial(_render_dashboard_html, stats)
+        )
+    except Exception:
+        # Never blank the page on a stats failure — fall back to the template,
+        # which the client script will populate from /api/ecosystem-stats.
+        logging.exception("Dashboard server-render failed; serving template")
         return FileResponse(dash_file)
-    raise HTTPException(status_code=404, detail="Dashboard not found")
+
+    return HTMLResponse(rendered)
 
 
 @app.get("/pay-by-card", tags=["Discovery & Info"])
