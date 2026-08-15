@@ -213,6 +213,29 @@
     margin-top: 0.5rem;
   }
 
+  /* The hero used to print the live ecosystem average here. Changing figures
+     now live on /dashboard only, so this slot is a link to them instead —
+     same position and rhythm, nothing that can go stale. */
+  .hero-score-link {
+    display: block;
+    text-decoration: none;
+    position: relative;
+    z-index: 1;
+    padding: 2.5rem 0 1.5rem;
+    transition: transform 0.2s;
+  }
+  .hero-score-link:hover { transform: translateY(-2px); }
+  .hero-score-link .hero-score-label {
+    font-size: clamp(0.75rem, 1.8vw, 1rem);
+    color: var(--cyan);
+    text-shadow: 0 0 30px rgba(0,245,255,0.4);
+    margin-top: 0;
+  }
+  .hero-score-link:hover .hero-score-label { color: var(--text-bright); }
+
+  .stat-link { text-decoration: none; display: block; }
+  .stat-link:hover .stat-value { color: var(--text-bright); }
+
   .hero h1 {
     font-family: var(--display);
     font-size: clamp(1.2rem, 3vw, 2.2rem);
@@ -662,15 +685,16 @@
 <section class="hero">
   <div class="hero-status">
     <div class="status-dot"></div>
-    LIVE // 2,860+ AGENTS VERIFIED
+    LIVE // SCANNING NIGHTLY ACROSS FIVE REGISTRIES
   </div>
 
   <div class="hero-score-wrap">
     <svg class="heartbeat-svg" viewBox="0 0 500 120" preserveAspectRatio="none">
       <path class="heartbeat-line" d="M0,60 L120,60 L140,60 L160,20 L180,100 L200,40 L220,80 L240,60 L360,60 L380,60 L400,25 L420,95 L440,45 L460,75 L480,60 L500,60"/>
     </svg>
-    <div class="hero-score" id="hero-score">--</div>
-    <div class="hero-score-label">ECOSYSTEM AVERAGE AHS</div>
+    <a href="/dashboard" class="hero-score-link">
+      <div class="hero-score-label">ECOSYSTEM AVERAGE AHS &amp; LIVE FIGURES &rarr;</div>
+    </a>
   </div>
 
   <h1>The health layer for the agent economy</h1>
@@ -682,19 +706,23 @@
   </div>
 </section>
 
-<!-- STATS STRIP -->
+<!-- STATS STRIP
+     No counts, averages or rates here. Changing figures live on /dashboard
+     only — see config/canonical.json -> dynamic_figures. -->
 <div class="stats-strip">
   <div class="stat-item">
-    <div class="stat-value" id="stat-scanned">--</div>
-    <div class="stat-label">AGENTS SCANNED</div>
+    <div class="stat-value">5</div>
+    <div class="stat-label">REGISTRIES SCANNED</div>
   </div>
   <div class="stat-item">
-    <div class="stat-value" id="stat-zombie">--</div>
-    <div class="stat-label">ZOMBIE AGENT PATTERNS</div>
-  </div>
-  <div class="stat-item">
-    <div class="stat-value">DAILY</div>
+    <div class="stat-value">NIGHTLY</div>
     <div class="stat-label">UPDATED</div>
+  </div>
+  <div class="stat-item">
+    <a href="/dashboard" class="stat-link">
+      <div class="stat-value">LIVE &rarr;</div>
+      <div class="stat-label">ECOSYSTEM FIGURES</div>
+    </a>
   </div>
 </div>
 
@@ -751,26 +779,28 @@
   <div class="mechanic-grid">
     <div class="dim-card">
       <div class="dim-label">D1</div>
-      <div class="dim-title">Solvency &amp; Financial Health</div>
-      <div class="dim-desc">IS THE AGENT FINANCIALLY SOUND? TOKEN PORTFOLIO, GAS EFFICIENCY, TX SUCCESS RATES</div>
+      <div class="dim-title">Wallet Hygiene</div>
+      <div class="dim-desc">IS THE AGENT FINANCIALLY SOUND? TOKEN PORTFOLIO, GAS EFFICIENCY, TX SUCCESS RATES. 30% OF THE COMPOSITE</div>
     </div>
     <div class="dim-card">
       <div class="dim-label">D2</div>
-      <div class="dim-title">Behavioural Consistency</div>
-      <div class="dim-desc">IS THE AGENT RELIABLE? TIMING REGULARITY, COUNTERPARTY DIVERSITY, ADAPTATION PATTERNS</div>
+      <div class="dim-title">Behavioural Patterns</div>
+      <div class="dim-desc">IS THE AGENT RELIABLE? TIMING REGULARITY, COUNTERPARTY DIVERSITY, ADAPTATION PATTERNS. 70% OF THE COMPOSITE</div>
     </div>
     <div class="dim-card">
       <div class="dim-label">D3</div>
-      <div class="dim-title">Operational Stability</div>
-      <div class="dim-desc">IS THE INFRASTRUCTURE RESPONSIVE? ENDPOINT AVAILABILITY, RESPONSE TIMES, ERROR RATES. ACTIVATED WHEN AN AGENT URL IS PROVIDED</div>
+      <div class="dim-title">Infrastructure Health</div>
+      <div class="dim-desc">IS THE INFRASTRUCTURE RESPONSIVE? ENDPOINT AVAILABILITY, RESPONSE TIMES, ERROR RATES. OPT-IN OVERLAY — SUPPLY AN AGENT URL TO REWEIGHT TO 25/45/30</div>
     </div>
     <div class="dim-card">
-      <div class="dim-label">D4</div>
+      <div class="dim-label">AHM VERIFY</div>
       <div class="dim-title">Output Quality</div>
-      <div class="dim-desc">IS THE AGENT DELIVERING WHAT IT PROMISES? ADVERSARIAL EVALUATION OF AGENT OUTPUTS VIA AHM VERIFY</div>
+      <div class="dim-desc">IS THE AGENT DELIVERING WHAT IT PROMISES? ADVERSARIAL EVALUATION OF AGENT OUTPUTS. A SEPARATE SERVICE — NOT PART OF THE AHS COMPOSITE</div>
     </div>
   </div>
-  <div class="formula"><span>D1</span> + <span>D2</span> + <span>D3</span> + <span>D4</span> = <span>Agent Health Score</span></div>
+  <!-- D3 is an opt-in overlay and AHM Verify is a separate service; neither is
+       an unconditional term of the composite. See canonical.json -> dimensions. -->
+  <div class="formula"><span>D1</span> + <span>D2</span> <span>(+ D3)</span> = <span>Agent Health Score</span></div>
 </section>
 
 <!-- ENDPOINT SHOWCASE -->
@@ -872,57 +902,24 @@
     <a href="https://blog.agenthealthmonitor.xyz" class="footer-link">BLOG</a>
     <a href="/app" class="footer-link">TRY IT</a>
   </div>
-  <div class="footer-sub">TRUST LAYER FOR THE AGENT ECONOMY &middot; @AHMprotocol</div>
+  <div class="footer-sub">TRUST LAYER FOR THE AGENT ECONOMY &middot; @agenttrust</div>
 </footer>
 
 <script>
 (function() {
   var API = window.location.origin + '/api/ecosystem-stats';
 
-  // Animate a number from 0 to target
-  function animateCount(el, target, suffix, duration) {
-    suffix = suffix || '';
-    duration = duration || 1500;
-    var start = performance.now();
-    var isFloat = target % 1 !== 0;
-    function tick(now) {
-      var elapsed = now - start;
-      var progress = Math.min(elapsed / duration, 1);
-      // ease-out quad
-      var eased = 1 - (1 - progress) * (1 - progress);
-      var current = eased * target;
-      if (isFloat) {
-        el.textContent = current.toFixed(1) + suffix;
-      } else {
-        el.textContent = Math.round(current).toLocaleString() + suffix;
-      }
-      if (progress < 1) requestAnimationFrame(tick);
-    }
-    requestAnimationFrame(tick);
-  }
-
+  // The homepage deliberately renders NO changing figure — no scan count, no
+  // average, no rate. Those live on /dashboard alone, so this page can never go
+  // stale and never shows a placeholder to a crawler. The only value hydrated
+  // here is the endpoint count, which is a stable release-time fact sourced
+  // from canonical.json and served via /api/ecosystem-stats.
   fetch(API)
     .then(function(r) { return r.json(); })
     .then(function(data) {
-      // Hero score
-      var avgAhs = data.avg_ahs || 0;
-      animateCount(document.getElementById('hero-score'), avgAhs, '', 2000);
+      var epCount = data.endpoint_count;
+      if (!epCount) return;
 
-      // Stats strip
-      var total = data.total_scanned || 0;
-      animateCount(document.getElementById('stat-scanned'), total, '', 1500);
-
-      var patterns = data.pattern_distribution || {};
-      var zombie = patterns['Zombie Agent'] || 0;
-      var zombiePct = total > 0 ? Math.round(zombie / total * 100) : 0;
-      animateCount(document.getElementById('stat-zombie'), zombiePct, '%', 1500);
-
-      // Hydrate hardcoded counts with live values
-      var agentLabel = total.toLocaleString() + '+ AGENTS VERIFIED';
-      var statusEl = document.querySelector('.hero-status');
-      if (statusEl) statusEl.innerHTML = '<div class="status-dot"></div>LIVE // ' + agentLabel;
-
-      var epCount = data.endpoint_count || 14;
       var heroSub = document.querySelector('.hero-sub');
       if (heroSub) heroSub.textContent = heroSub.textContent.replace(/\d+ endpoints/i, epCount + ' endpoints');
 
@@ -931,9 +928,7 @@
         pillarStat.textContent = epCount + ' endpoints';
       }
     })
-    .catch(function() {
-      document.getElementById('hero-score').textContent = '--';
-    });
+    .catch(function() { /* endpoint count already correct in markup */ });
 })();
 </script>
 

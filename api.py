@@ -5113,7 +5113,7 @@ async def get_report_card(address: WalletAddress, request: Request):
     grade_full = f"{result.grade} — {result.grade_label}"
     share_text = (
         f"My agent scored {result.agent_health_score}/100 ({grade_full}) "
-        f"on @AHM_xyz Report Card — Top {100 - pct_rank}% of agents on Base"
+        f"on {canonical.twitter_handle()} Report Card — Top {100 - pct_rank}% of agents on Base"
     )
     share_url = f"https://x.com/intent/tweet?text={url_quote(share_text)}"
 

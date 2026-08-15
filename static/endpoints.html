@@ -345,13 +345,12 @@
   <div class="section-full hero">
     <div class="hero-glow"></div>
     <div class="hero-heartbeat" id="heartbeat-container"></div>
-    <div class="hero-score-label">ECOSYSTEM AVERAGE AGENT HEALTH SCORE</div>
-    <div class="hero-score" id="hero-score-num">0</div>
     <div class="hero-subtitle">The definitive health score for autonomous agents</div>
+    <!-- No counts, averages or rates on this page. Changing figures live on
+         /dashboard only — see config/canonical.json -> dynamic_figures. -->
     <div class="hero-stats">
-      <div class="hero-stat-pill"><span class="val cyan" id="hs-total">0</span> agents scored</div>
-      <div class="hero-stat-pill"><span class="val red" id="hs-zombie">0%</span> Zombie Agent patterns</div>
-      <div class="hero-stat-pill"><span class="val amber" id="hs-agrade">0%</span> reach A grade</div>
+      <div class="hero-stat-pill">Scored nightly across 5 registries</div>
+      <div class="hero-stat-pill"><a href="/dashboard">Live ecosystem figures &rarr;</a></div>
     </div>
     <a href="#cta-ahs" class="hero-cta">SCORE YOUR AGENT &mdash; $1.00 USDC</a>
   </div>
@@ -391,12 +390,13 @@
       <div class="grade-subhead">Grade distribution across all scanned agents</div>
       <div class="grade-blocks" id="grade-blocks"></div>
       <div class="grade-legend">
+        <!-- Bands must match _ahs_grade() in monitor.py — see config/canonical.json -> grades -->
         <div class="grade-legend-item"><div class="grade-legend-dot" style="background:var(--grade-a)"></div> A (90-100)</div>
-        <div class="grade-legend-item"><div class="grade-legend-dot" style="background:var(--grade-b)"></div> B (80-89)</div>
-        <div class="grade-legend-item"><div class="grade-legend-dot" style="background:var(--grade-c)"></div> C (70-79)</div>
-        <div class="grade-legend-item"><div class="grade-legend-dot" style="background:var(--grade-d)"></div> D (60-69)</div>
-        <div class="grade-legend-item"><div class="grade-legend-dot" style="background:var(--grade-e)"></div> E (50-59)</div>
-        <div class="grade-legend-item"><div class="grade-legend-dot" style="background:var(--grade-f)"></div> F (&lt;50)</div>
+        <div class="grade-legend-item"><div class="grade-legend-dot" style="background:var(--grade-b)"></div> B (75-89)</div>
+        <div class="grade-legend-item"><div class="grade-legend-dot" style="background:var(--grade-c)"></div> C (60-74)</div>
+        <div class="grade-legend-item"><div class="grade-legend-dot" style="background:var(--grade-d)"></div> D (40-59)</div>
+        <div class="grade-legend-item"><div class="grade-legend-dot" style="background:var(--grade-e)"></div> E (20-39)</div>
+        <div class="grade-legend-item"><div class="grade-legend-dot" style="background:var(--grade-f)"></div> F (0-19)</div>
       </div>
       <div class="grade-callout" id="grade-callout"></div>
     </div>
@@ -455,9 +455,8 @@
     <div class="gauge-label">OUT OF 100</div>
     <div class="hero-subtitle">Is your agent clean?</div>
     <div class="hero-stats">
-      <div class="hero-stat-pill"><span class="val cyan" id="ws-total">0</span> agents scanned</div>
-      <div class="hero-stat-pill">avg hygiene <span class="val green" id="ws-avg">0</span></div>
-      <div class="hero-stat-pill"><span class="val red" id="ws-zombie">0%</span> have critical patterns</div>
+      <div class="hero-stat-pill">Dust, spam, gas efficiency and failure patterns</div>
+      <div class="hero-stat-pill"><a href="/dashboard">Live ecosystem figures &rarr;</a></div>
     </div>
     <a href="#cta-wash" class="hero-cta green">SCAN YOUR AGENT &mdash; $0.50 USDC</a>
   </div>
@@ -1054,16 +1053,19 @@
 
   /* ═══════════════════ UTILITIES ═══════════════════ */
   function animateVal(el, start, end, dur, dec) {
+    if (!el) return;  // element intentionally absent — see canonical.json -> dynamic_figures
     var t0 = null;
     function step(ts) { if(!t0)t0=ts; var p=Math.min((ts-t0)/dur,1), e=1-Math.pow(1-p,3); el.textContent=(start+(end-start)*e).toFixed(dec); if(p<1)requestAnimationFrame(step); }
     requestAnimationFrame(step);
   }
   function animateInt(el, start, end, dur, comma, sfx) {
+    if (!el) return;  // element intentionally absent — see canonical.json -> dynamic_figures
     var t0 = null;
     function step(ts) { if(!t0)t0=ts; var p=Math.min((ts-t0)/dur,1), e=1-Math.pow(1-p,3), v=Math.round(start+(end-start)*e); el.textContent=(comma!==false?v.toLocaleString():v)+(sfx||''); if(p<1)requestAnimationFrame(step); }
     requestAnimationFrame(step);
   }
   function animateSfx(el, start, end, dur, sfx) {
+    if (!el) return;  // element intentionally absent — see canonical.json -> dynamic_figures
     var t0=null, isF=end%1!==0;
     function step(ts) { if(!t0)t0=ts; var p=Math.min((ts-t0)/dur,1), e=1-Math.pow(1-p,3), v=start+(end-start)*e; el.textContent=(isF?v.toFixed(1):Math.round(v))+sfx; if(p<1)requestAnimationFrame(step); }
     requestAnimationFrame(step);
