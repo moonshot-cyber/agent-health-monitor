@@ -1,0 +1,205 @@
+{
+  "_comment": "SINGLE SOURCE OF TRUTH for stable facts across every AHM public surface.",
+  "_rules": [
+    "Values here change only on a deliberate release, never from a nightly scan.",
+    "Anything that changes over time (scan counts, averages, rates, distributions) does NOT belong here - it belongs on /dashboard, rendered from the database.",
+    "Consuming repos get this file via scripts/sync_canonical.py. Do not hand-edit the copies.",
+    "scripts/check_consistency.py fails the build if a surface disagrees with this file."
+  ],
+  "schema_version": 1,
+  "updated": "2026-08-15",
+
+  "product": {
+    "name": "Agent Health Monitor",
+    "short_name": "AHM",
+    "tagline": "Trust layer for the agent economy",
+    "site": "https://agenthealthmonitor.xyz",
+    "docs": "https://docs.agenthealthmonitor.xyz",
+    "dashboard": "https://agenthealthmonitor.xyz/dashboard",
+    "intelligence": "https://intelligence.agenthealthmonitor.xyz",
+    "verify": "https://verify.agenthealthmonitor.xyz",
+    "api_version": "1.8.0"
+  },
+
+  "social": {
+    "twitter_handle": "@agenttrust",
+    "twitter_url": "https://x.com/agenttrust",
+    "contact_email": "pablo@agenthealthmonitor.xyz",
+    "_retired_handles": ["@AHMprotocol", "@AHM_xyz"]
+  },
+
+  "roadmap": {
+    "version": "v2",
+    "stamp": "AUGUST 2026"
+  },
+
+  "endpoints": {
+    "_definition": "Billable data endpoints a caller can hit today. Excludes PUT /ahs/route/policy (integrator policy management, not a data product) and the two free preview routes.",
+    "count": 14,
+    "_source_of_truth": "x402_routes in api.py; count verified against RouteConfig entries",
+    "list": [
+      {"method": "GET",  "path": "/risk/{address}",             "price_env": "RISK_PRICE_USD",         "price": "$0.001", "slug": "risk",         "summary": "Quick risk score for pre-flight checks"},
+      {"method": "GET",  "path": "/ahs/route/{address}",        "price_env": "ROUTE_PRICE_USD",        "price": "$0.01",  "slug": "route",        "summary": "Trust routing decision"},
+      {"method": "GET",  "path": "/risk/premium/{address}",     "price_env": "PREMIUM_RISK_PRICE_USD", "price": "$0.05",  "slug": "risk-premium", "summary": "Premium risk with Nansen labels and PnL"},
+      {"method": "GET",  "path": "/counterparties/{address}",   "price_env": "COUNTERPARTY_PRICE_USD", "price": "$0.10",  "slug": "counterparties", "summary": "Know Your Counterparty"},
+      {"method": "GET",  "path": "/network-map/{address}",      "price_env": "NETWORK_MAP_PRICE_USD",  "price": "$0.10",  "slug": "network-map",  "summary": "Related wallets: funders, deployers, multisig"},
+      {"method": "GET",  "path": "/health/{address}",           "price_env": "PRICE_USD",              "price": "$0.50",  "slug": "health",       "summary": "Full wallet health diagnostic"},
+      {"method": "POST", "path": "/wash/{address}",             "price_env": "WASH_PRICE_USD",         "price": "$0.50",  "slug": "wash",         "summary": "Agent hygiene scan"},
+      {"method": "GET",  "path": "/ahs/{address}",              "price_env": "AHS_PRICE_USD",          "price": "$1.00",  "slug": "ahs",          "summary": "Agent Health Score, composite 0-100"},
+      {"method": "GET",  "path": "/report-card/{address}",      "price_env": "REPORT_CARD_PRICE_USD",  "price": "$2.00",  "slug": "report-card",  "summary": "Visual report card with benchmarks"},
+      {"method": "GET",  "path": "/alerts/subscribe/{address}", "price_env": "ALERT_PRICE_USD",        "price": "$2.00",  "slug": "alerts",       "summary": "Automated monitoring and webhook alerts", "billing": "per month"},
+      {"method": "GET",  "path": "/optimize/{address}",         "price_env": "OPTIMIZE_PRICE_USD",     "price": "$5.00",  "slug": "optimize",     "summary": "Gas optimization report"},
+      {"method": "POST", "path": "/ahs/batch",                  "price_env": "AHS_BATCH_PRICE_USD",    "price": "$10.00", "slug": "ahs-batch",    "summary": "Batch AHS scoring"},
+      {"method": "GET",  "path": "/retry/{address}",            "price_env": "RETRY_PRICE_USD",        "price": "$10.00", "slug": "retry",        "summary": "Optimized retry transactions"},
+      {"method": "GET",  "path": "/agent/protect/{address}",    "price_env": "PROTECT_PRICE_USD",      "price": "$25.00", "slug": "protect",      "summary": "Autonomous protection agent"}
+    ],
+    "free_routes": [
+      {"method": "GET", "path": "/retry/preview/{address}",         "summary": "Preview retryable failure count and estimated savings"},
+      {"method": "GET", "path": "/agent/protect/preview/{address}", "summary": "Preview risk level and recommended services"}
+    ],
+    "unlisted_paid_routes": [
+      {"method": "PUT", "path": "/ahs/route/policy", "price": "$0.01", "reason": "Integrator policy management, not a data product. Excluded from the public count."}
+    ],
+    "price_range": {"min": "$0.001", "max": "$25.00"}
+  },
+
+  "batch": {
+    "_note": "Two real tiers. Never state one without the other - an unqualified single number is wrong.",
+    "x402_max_wallets": 10,
+    "x402_flat_price": "$10.00",
+    "api_key_max_wallets": 25,
+    "api_key_billing": "1 credit per wallet scored",
+    "statement": "Up to 10 wallets per x402 call at $10.00 flat, or up to 25 per request with an API key at 1 credit per wallet."
+  },
+
+  "grades": {
+    "_source_of_truth": "_ahs_grade() in monitor.py - the function the live /ahs path executes",
+    "_warning": "Six grades. Do not publish any other threshold table. A/B/C/D/E/F are quality bands, NOT routing decisions - see routing.",
+    "bands": [
+      {"letter": "A", "min": 90, "max": 100, "label": "Excellent"},
+      {"letter": "B", "min": 75, "max": 89,  "label": "Good"},
+      {"letter": "C", "min": 60, "max": 74,  "label": "Needs Attention"},
+      {"letter": "D", "min": 40, "max": 59,  "label": "Degraded"},
+      {"letter": "E", "min": 20, "max": 39,  "label": "Critical"},
+      {"letter": "F", "min": 0,  "max": 19,  "label": "Failing"}
+    ]
+  },
+
+  "routing": {
+    "_source_of_truth": "_trust_routing() in api.py",
+    "_warning": "Routing bands are a payment-gating decision derived from the grade letter. They are NOT a grade table and must never be published with score ranges of their own.",
+    "_configurable": "Integrators can override these per-policy via PUT /ahs/route/policy, including allowlist bypass and confidence overrides. The mapping below is the default only.",
+    "actions": ["instant_settle", "escrow", "reject"],
+    "default_bands": [
+      {"grades": ["A", "B"],      "action": "instant_settle", "meaning": "Trusted, low-risk agent"},
+      {"grades": ["C"],           "action": "escrow",         "meaning": "Moderate risk, hold funds until confirmed"},
+      {"grades": ["D", "E", "F"], "action": "reject",         "meaning": "High risk, do not transact"}
+    ]
+  },
+
+  "dimensions": {
+    "_source_of_truth": "calculate_ahs() in monitor.py",
+    "_warning": "There are THREE dimensions, not four. D4 does not exist in the scoring code. AHM Verify is a separate product, not a dimension of the composite AHS.",
+    "modes": {
+      "2D": {
+        "_when": "Default. No agent_url supplied.",
+        "weights": {"D1": 0.30, "D2": 0.70, "D3": 0.00}
+      },
+      "3D": {
+        "_when": "Opt-in. Caller supplies an agent_url, enabling infrastructure probing.",
+        "weights": {"D1": 0.25, "D2": 0.45, "D3": 0.30}
+      }
+    },
+    "list": [
+      {"id": "D1", "name": "Wallet Hygiene",      "in_composite": true,  "note": "Dust, spam tokens, gas efficiency, failed tx rate, nonce gaps"},
+      {"id": "D2", "name": "Behavioural Patterns", "in_composite": true,  "note": "Transaction diversity, retry storms, activity gaps, gas adaptation"},
+      {"id": "D3", "name": "Infrastructure Health","in_composite": "opt-in", "note": "Live endpoint probing. Only enters the composite when an agent_url is supplied."}
+    ],
+    "statement": "AHS is a composite of two dimensions by default - D1 Wallet Hygiene at 30% and D2 Behavioural Patterns at 70%. Supplying an agent URL enables D3 Infrastructure Health as an opt-in overlay, reweighting to 25/45/30."
+  },
+
+  "verify": {
+    "_source_of_truth": "ahm-verify/app/panel/orchestrator.py and app/db.py",
+    "_warning": "Anthropic-only. The GPT-4o / Gemini / DeepSeek strings in prompts.py are persona instructions injected into Claude prompts to diversify reasoning style - they are NOT other vendors' models. Never describe this as multi-vendor or 'six-model'.",
+    "roles": 6,
+    "generators": 4,
+    "generator_model": "claude-sonnet-4-6",
+    "critic_model": "claude-opus-4-6",
+    "synthesizer_model": "claude-opus-4-6",
+    "verdict_enum": ["ALLOW", "HOLD", "REJECT"],
+    "on_chain_actions": ["complete", "hold_pending_review", "reject"],
+    "verdict_to_action": {"ALLOW": "complete", "HOLD": "hold_pending_review", "REJECT": "reject"},
+    "prices": {"standard": "$0.50"},
+    "status": "live",
+    "description": "A six-role adversarial panel built on Claude: four independent generators, an adversarial critic, and a synthesiser. Compares a declared job spec against the delivered output and returns an ALLOW / HOLD / REJECT verdict with a confidence score.",
+    "_retired_claims": ["six-model", "6-model", "GPT-4o", "Gemini", "DeepSeek", "APPROVE/REJECT", "PASS/FAIL", "DISSENT", "ESCALATE"]
+  },
+
+  "shield": {
+    "package": "ahm-shield",
+    "version": "0.1.0",
+    "endpoint_used": "GET /ahs/route/{address}",
+    "tiers": [
+      {"id": "free",       "price": "$0",       "billing": "month", "agent_slots": 1,   "call_quota": 100},
+      {"id": "starter",    "price": "$29",      "billing": "month", "agent_slots": 5,   "call_quota": 10000},
+      {"id": "pro",        "price": "$99",      "billing": "month", "agent_slots": 50,  "call_quota": 100000},
+      {"id": "enterprise", "price": "$299",     "billing": "month", "agent_slots": 999, "call_quota": null}
+    ]
+  },
+
+  "api_access_tiers": {
+    "_note": "Distinct product from shield.tiers. Same words 'Starter' and 'Pro', different prices - always qualify which product is meant.",
+    "tiers": [
+      {"id": "starter",   "label": "AHM Starter",   "price": "$9",  "billing": "one-time", "calls": 100},
+      {"id": "pro",       "label": "AHM Pro",       "price": "$39", "billing": "one-time", "calls": 500},
+      {"id": "unlimited", "label": "AHM Unlimited", "price": "$99", "billing": "month",    "calls": null}
+    ]
+  },
+
+  "registries": {
+    "_source_of_truth": "CRON_SETUP.md schedule and the source mapping in db.get_ecosystem_dashboard_stats",
+    "_note": "Six source labels appear in the data. Five are scanned registries; 'API' is the catch-all for wallets scored via direct API calls.",
+    "scanned": [
+      {"id": "ACP",      "label": "ACP (Virtuals)", "scan_utc": "02:00", "source": "agdp.io REST API"},
+      {"id": "Olas",     "label": "Olas",           "scan_utc": "02:30", "source": "Olas ServiceRegistryL2 (Base)"},
+      {"id": "Celo",     "label": "Celo",           "scan_utc": "02:45", "source": "ERC-8004 IdentityRegistry (Celo mainnet)"},
+      {"id": "Arc",      "label": "Arc",            "scan_utc": "03:00", "source": "ERC-8004 IdentityRegistry (Arc testnet)"},
+      {"id": "ERC-8004", "label": "ERC-8004",       "scan_utc": "03:15", "source": "ERC-8004 IdentityRegistry (Base mainnet)"}
+    ],
+    "other_sources": [
+      {"id": "API", "label": "API", "source": "Wallets scored via direct API calls"}
+    ],
+    "display_order": ["ACP", "Olas", "Celo", "ERC-8004", "Arc", "API"],
+    "scanned_count": 5
+  },
+
+  "standards": {
+    "erc8004_agent_id": "#32328",
+    "acp_agent_id": "9055",
+    "erc8183": {"role": "Live evaluator on Arc testnet", "status": "live"},
+    "erc8210": {"role": "Scoring architecture aligned with IRiskHook and IIndependenceSignal", "status": "aligned"}
+  },
+
+  "nouns": {
+    "_decision": "The schema's unit is a single Ethereum address (known_wallets.address is the primary key). One operator can control many addresses, so 'agents' over-claims. Use 'agent wallets' everywhere, including the dashboard card label.",
+    "scanned_unit": "agent wallets",
+    "scanned_unit_singular": "agent wallet"
+  },
+
+  "dynamic_figures": {
+    "_rule": "These are the ONLY home for changing figures. Never hard-code any of them into static copy - link to the dashboard instead.",
+    "canonical_surface": "https://agenthealthmonitor.xyz/dashboard",
+    "stats_endpoint": "https://agenthealthmonitor.xyz/api/ecosystem-stats",
+    "forbidden_in_static_copy": [
+      "agent wallet / agents scanned counts",
+      "average AHS",
+      "zombie rate",
+      "grade distribution percentages",
+      "percentage scoring below any grade",
+      "per-registry counts",
+      "last scan timestamp",
+      "external ecosystem totals (e.g. agents registered across protocols) unless cited to a named external source"
+    ],
+    "approved_phrasing": "the largest longitudinal dataset of agent health metrics in the ecosystem - see live figures on the dashboard"
+  }
+}

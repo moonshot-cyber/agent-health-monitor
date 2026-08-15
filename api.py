@@ -78,6 +78,7 @@ from x402.mechanisms.evm.signers import EthAccountSigner
 from x402.http.clients.httpx import x402HttpxClient
 from eth_account import Account as EthAccount
 
+import canonical
 from monitor import (
     analyze_address,
     analyze_retryable_transactions,
@@ -104,23 +105,29 @@ if not PAYMENT_ADDRESS:
 
 FACILITATOR_URL = os.getenv("FACILITATOR_URL", "https://facilitator.payai.network")
 BASESCAN_API_KEY = os.getenv("BASESCAN_API_KEY", "")
-PRICE = os.getenv("PRICE_USD", "$0.50")
-OPTIMIZE_PRICE = os.getenv("OPTIMIZE_PRICE_USD", "$5.00")
-ALERT_PRICE = os.getenv("ALERT_PRICE_USD", "$2.00")
-RETRY_PRICE = os.getenv("RETRY_PRICE_USD", "$10.00")
-PROTECT_PRICE = os.getenv("PROTECT_PRICE_USD", "$25.00")
-RISK_PRICE = os.getenv("RISK_PRICE_USD", "$0.001")
-PREMIUM_RISK_PRICE = os.getenv("PREMIUM_RISK_PRICE_USD", "$0.05")
-COUNTERPARTY_PRICE = os.getenv("COUNTERPARTY_PRICE_USD", "$0.10")
-NETWORK_MAP_PRICE = os.getenv("NETWORK_MAP_PRICE_USD", "$0.10")
-WASH_PRICE = os.getenv("WASH_PRICE_USD", "$0.50")
-AHS_PRICE = os.getenv("AHS_PRICE_USD", "$1.00")
-AHS_BATCH_PRICE = os.getenv("AHS_BATCH_PRICE_USD", "$10.00")
-ROUTE_PRICE = os.getenv("ROUTE_PRICE_USD", "$0.01")
-REPORT_CARD_PRICE = os.getenv("REPORT_CARD_PRICE_USD", "$2.00")
+# Prices: canonical defaults come from config/canonical.json, overridable by env.
+# Never hard-code a price here — edit canonical.json instead, so every surface
+# that quotes the price moves with it. scripts/check_consistency.py enforces this.
+_PRICE_DEFAULTS = canonical.price_env_defaults()
+
+PRICE = os.getenv("PRICE_USD", _PRICE_DEFAULTS["PRICE_USD"])
+OPTIMIZE_PRICE = os.getenv("OPTIMIZE_PRICE_USD", _PRICE_DEFAULTS["OPTIMIZE_PRICE_USD"])
+ALERT_PRICE = os.getenv("ALERT_PRICE_USD", _PRICE_DEFAULTS["ALERT_PRICE_USD"])
+RETRY_PRICE = os.getenv("RETRY_PRICE_USD", _PRICE_DEFAULTS["RETRY_PRICE_USD"])
+PROTECT_PRICE = os.getenv("PROTECT_PRICE_USD", _PRICE_DEFAULTS["PROTECT_PRICE_USD"])
+RISK_PRICE = os.getenv("RISK_PRICE_USD", _PRICE_DEFAULTS["RISK_PRICE_USD"])
+PREMIUM_RISK_PRICE = os.getenv("PREMIUM_RISK_PRICE_USD", _PRICE_DEFAULTS["PREMIUM_RISK_PRICE_USD"])
+COUNTERPARTY_PRICE = os.getenv("COUNTERPARTY_PRICE_USD", _PRICE_DEFAULTS["COUNTERPARTY_PRICE_USD"])
+NETWORK_MAP_PRICE = os.getenv("NETWORK_MAP_PRICE_USD", _PRICE_DEFAULTS["NETWORK_MAP_PRICE_USD"])
+WASH_PRICE = os.getenv("WASH_PRICE_USD", _PRICE_DEFAULTS["WASH_PRICE_USD"])
+AHS_PRICE = os.getenv("AHS_PRICE_USD", _PRICE_DEFAULTS["AHS_PRICE_USD"])
+AHS_BATCH_PRICE = os.getenv("AHS_BATCH_PRICE_USD", _PRICE_DEFAULTS["AHS_BATCH_PRICE_USD"])
+ROUTE_PRICE = os.getenv("ROUTE_PRICE_USD", _PRICE_DEFAULTS["ROUTE_PRICE_USD"])
+REPORT_CARD_PRICE = os.getenv("REPORT_CARD_PRICE_USD", _PRICE_DEFAULTS["REPORT_CARD_PRICE_USD"])
 AHS_JWT_SECRET = os.getenv("AHS_JWT_SECRET", secrets.token_urlsafe(32))
 NANSEN_PAYER_PRIVATE_KEY = os.getenv("NANSEN_PAYER_PRIVATE_KEY", "")
-ENDPOINT_COUNT = 14  # single source of truth — update here when adding endpoints
+ENDPOINT_COUNT = canonical.endpoint_count()
+BATCH_X402_MAX, BATCH_API_KEY_MAX = canonical.batch_limits()
 NETWORK = os.getenv("NETWORK", "eip155:8453")  # Base mainnet
 VALID_COUPONS = set(c.strip().upper() for c in os.getenv("VALID_COUPONS", "").split(",") if c.strip())
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
@@ -2878,7 +2885,7 @@ x402_routes = {
         mime_type="application/json",
         description=(
             "AHS Batch: Score multiple agent wallets in a single call. "
-            "Up to 10 wallets per x402 payment ($10.00), or up to 25 via API key."
+            + canonical.batch_statement()
         ),
         extensions={
             "bazaar": {
@@ -3307,7 +3314,7 @@ async def api_info():
             "GET /health/{address}": f"{PRICE} USDC — wallet health diagnosis",
             "POST /wash/{address}": f"{WASH_PRICE} USDC — agent hygiene scan (dust, spam, gas efficiency, failure patterns)",
             "GET /ahs/{address}": f"{AHS_PRICE} USDC — Agent Health Score (composite 0-100 index across wallet hygiene, behavioural patterns, and infrastructure health)",
-            "POST /ahs/batch": f"{AHS_BATCH_PRICE} USDC — batch AHS scoring (up to 10 wallets per x402 call, up to 25 via API key at {AHS_PRICE}/wallet)",
+            "POST /ahs/batch": f"{AHS_BATCH_PRICE} USDC — batch AHS scoring (up to {BATCH_X402_MAX} wallets per x402 call, up to {BATCH_API_KEY_MAX} via API key at {AHS_PRICE}/wallet)",
             "GET /alerts/subscribe/{address}": f"{ALERT_PRICE} USDC/month — automated monitoring & webhook alerts",
             "GET /optimize/{address}": f"{OPTIMIZE_PRICE} USDC — gas optimization report",
             "GET /retry/{address}": f"{RETRY_PRICE} USDC — optimized retry transactions for recent failures",
@@ -4701,8 +4708,8 @@ async def get_ahs_batch(body: AHSBatchRequest, request: Request):
     """
     Batch Agent Health Score: score multiple wallets in a single call.
 
-    Accepts up to 25 wallet addresses. Pricing:
-    - **x402 path:** $10.00 USDC flat for up to 10 wallets per call.
+    Two tiers apply — see canonical.json -> batch. Pricing:
+    - **x402 path:** flat batch price, capped at BATCH_X402_MAX wallets per call.
     - **API key path:** 1 credit per wallet scored. Supports partial results
       if credits are insufficient (scores as many as credits allow).
 
@@ -4714,7 +4721,7 @@ async def get_ahs_batch(body: AHSBatchRequest, request: Request):
     if not body.addresses:
         raise HTTPException(status_code=400, detail="addresses array is required and must not be empty")
 
-    page_size = max(1, min(25, body.page_size))
+    page_size = max(1, min(BATCH_API_KEY_MAX, body.page_size))
     page = max(1, body.page)
 
     # Validate all addresses upfront (before normalisation, so errors show raw input)
@@ -4772,12 +4779,13 @@ async def get_ahs_batch(body: AHSBatchRequest, request: Request):
                     f"{total_addresses} addresses scored ({available} credits remaining)"
                 )
     else:
-        # x402 path: payment already settled by middleware for $10 (up to 10 wallets)
-        if len(page_addrs) > 10:
-            page_addrs = page_addrs[:10]
+        # x402 path: payment already settled by middleware for the flat batch
+        # price, which covers up to BATCH_X402_MAX wallets (see canonical.json).
+        if len(page_addrs) > BATCH_X402_MAX:
+            page_addrs = page_addrs[:BATCH_X402_MAX]
             errors.append(
-                "x402 batch limited to 10 wallets per call. "
-                "Use an API key (X-API-Key header) for batches of up to 25."
+                f"x402 batch limited to {BATCH_X402_MAX} wallets per call. "
+                f"Use an API key (X-API-Key header) for batches of up to {BATCH_API_KEY_MAX}."
             )
 
     # ── Score wallets concurrently ──────────────────────────────────────
