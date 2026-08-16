@@ -142,8 +142,12 @@ def main():
     tag_w = bbox_tag[2] - bbox_tag[0]
     draw.text(((WIDTH - tag_w) // 2, 415), tags, font=tag_font, fill=CYAN_DIM)
 
-    # "11 pay-per-call endpoints  •  No accounts  •  Just USDC"
-    detail = "11 pay-per-call endpoints  \u2022  No accounts  \u2022  Just USDC"
+    # Deliberately carries no count. This is a committed PNG — it cannot
+    # render from canonical.json at request time, so any number baked in
+    # here drifts silently once the real value moves. It sat at "11" while
+    # every other surface said 14, on the image served as the social
+    # preview for the whole site. Keep this line qualitative.
+    detail = "Pay-per-call diagnostics  •  No accounts  •  Just USDC"
     bbox_det = draw.textbbox((0, 0), detail, font=url_font)
     det_w = bbox_det[2] - bbox_det[0]
     draw.text(((WIDTH - det_w) // 2, 455), detail, font=url_font, fill=TEXT_DIM)
