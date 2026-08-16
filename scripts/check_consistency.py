@@ -343,12 +343,37 @@ def gather_local(extra_dirs: list[str]) -> list[tuple[str, str, bool]]:
 
 
 def gather_live() -> list[tuple[str, str, bool]]:
+    """Fetch the deployed surfaces, bypassing the CDN.
+
+    These sites sit behind Cloudflare with a 4-hour TTL. Fetching them plainly
+    reads whatever the edge happens to be holding, which makes this check
+    worthless in both directions: it reported drift on a homepage that had
+    already been fixed, and it would just as happily report a pass while the
+    edge served a good page over a broken deploy.
+
+    A unique query string forces a MISS so the response comes from the origin.
+    """
+    import time
     import urllib.request
+
     out = []
+    bust = str(int(time.time()))
     for url in LIVE_URLS:
+        sep = "&" if "?" in url else "?"
+        fetch_url = f"{url}{sep}_cc={bust}"
         try:
-            req = urllib.request.Request(url, headers={"User-Agent": "ahm-consistency-check"})
+            req = urllib.request.Request(fetch_url, headers={
+                "User-Agent": "ahm-consistency-check",
+                "Cache-Control": "no-cache",
+                "Pragma": "no-cache",
+            })
             with urllib.request.urlopen(req, timeout=30) as r:
+                cache_status = r.headers.get("cf-cache-status", "")
+                if cache_status.upper() == "HIT":
+                    print(f"warning: {url} still served from CDN cache "
+                          f"(cf-cache-status: {cache_status}) — result may be stale",
+                          file=sys.stderr)
+                # Report against the clean URL; the buster is a fetch detail.
                 out.append((url, r.read().decode("utf-8", "replace"),
                             url.rstrip("/").endswith("/dashboard")))
         except Exception as exc:
