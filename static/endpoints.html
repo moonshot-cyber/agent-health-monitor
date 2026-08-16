@@ -530,7 +530,7 @@
       <div class="hero-stat-pill"><span class="val green">$0.01</span> per check</div>
       <div class="hero-stat-pill"><span class="val cyan">~500ms</span> response</div>
     </div>
-    <a href="#cta-risk" class="hero-cta">CHECK RISK &mdash; $0.01 USDC</a>
+    <a href="#cta-risk" class="hero-cta">CHECK RISK &mdash; $0.001 USDC</a>
   </div>
   <div class="divider"></div>
   <div class="section">
@@ -580,7 +580,7 @@
     <div class="cta-question">Is this agent safe to pay?</div>
     <div class="cta-form">
       <input type="text" class="cta-input" id="cta-risk-addr" placeholder="0x... agent wallet address" spellcheck="false" autocomplete="off">
-      <button class="cta-btn" onclick="goCTA('risk')">CHECK RISK &mdash; $0.01</button>
+      <button class="cta-btn" onclick="goCTA('risk')">CHECK RISK &mdash; $0.001</button>
     </div>
     <div class="cta-note">No account. No subscription. Pay once on Base mainnet.</div>
     <div class="cta-powered">POWERED BY x402 &middot; USDC &middot; BASE MAINNET</div>
@@ -772,11 +772,22 @@
     })
     .catch(function(e) { showError(e.message); });
 
+  // These pages carry live-fetched ecosystem charts. They are never stale, but
+  // they are also never present without JS — so a failure must degrade to a
+  // pointer at the canonical surface rather than a bare error string.
   function showError(msg) {
     document.getElementById('loading').style.display = 'none';
     var el = document.getElementById('error');
     el.style.display = 'block';
-    el.textContent = '// ERROR: ' + msg;
+    el.innerHTML = '// Live ecosystem figures are unavailable right now (' +
+      String(msg).replace(/[<>&]/g, '') + '). ' +
+      '<a href="/dashboard">View them on the dashboard &rarr;</a>';
+    // Still show the page body: the endpoint description, pricing and sample
+    // response are static and remain useful without the charts.
+    var page = document.getElementById(
+      slug === 'ahs' ? 'ahs-page' : slug === 'wash' ? 'wash-page' :
+      slug === 'risk' ? 'risk-page' : 'rc-page');
+    if (page) page.style.display = 'block';
   }
 
   /* ═══════════════════ AHS ═══════════════════ */

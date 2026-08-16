@@ -10,7 +10,7 @@ Trust and health verification for the autonomous agent economy. Before an agent 
 
 | Endpoint | Price (x402) | Purpose |
 |---|---|---|
-| `GET /risk/{address}` | $0.01 USDC | Pre-transaction trust check — is this agent safe to interact with? |
+| `GET /risk/{address}` | $0.001 USDC | Pre-transaction trust check — is this agent safe to interact with? |
 | `GET /risk/premium/{address}` | $0.05 USDC | Premium risk score with Nansen labels + PnL profitability summary |
 | `GET /counterparties/{address}` | $0.10 USDC | Know Your Counterparty — top interactions enriched with Nansen |
 | `GET /network-map/{address}` | $0.10 USDC | Wallet network map — funding, deployer & multisig links via Nansen |
@@ -357,7 +357,7 @@ from x402.mechanisms.evm.exact import ExactEvmScheme
 client = x402Client()
 client.register("eip155:*", ExactEvmScheme(signer=your_wallet))
 
-# Quick risk screen ($0.01)
+# Quick risk screen ($0.001)
 risk = client.get("https://agenthealthmonitor.xyz/risk/0x1234...")
 
 # Agent Health Score ($1.00)
@@ -414,7 +414,7 @@ uvicorn api:app --host 0.0.0.0 --port 4021
 | `FACILITATOR_URL` | No | `https://x402.org/facilitator` | x402 facilitator endpoint |
 | `STRIPE_SECRET_KEY` | No | — | Stripe secret key for fiat API key system |
 | `STRIPE_WEBHOOK_SECRET` | No | — | Stripe webhook signing secret |
-| `RISK_PRICE_USD` | No | `$0.01` | Price per quick risk check |
+| `RISK_PRICE_USD` | No | `$0.001` | Price per quick risk check |
 | `PREMIUM_RISK_PRICE_USD` | No | `$0.05` | Price per premium risk + Nansen + PnL |
 | `COUNTERPARTY_PRICE_USD` | No | `$0.10` | Price per counterparty analysis |
 | `NETWORK_MAP_PRICE_USD` | No | `$0.10` | Price per network map |
