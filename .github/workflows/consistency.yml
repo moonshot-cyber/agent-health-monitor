@@ -32,29 +32,61 @@ jobs:
       - name: Check local surfaces against canonical config
         run: python scripts/check_consistency.py
 
-      # Sibling repos hold the docs and intelligence surfaces. Checked out
-      # alongside so one run covers the whole public estate; skipped silently
-      # if the checkout is unavailable (e.g. a fork without access).
+      # Sibling repos hold the docs and intelligence surfaces — where most of
+      # the drift lived. The default GITHUB_TOKEN is scoped to this repo only,
+      # so cloning them needs a PAT with read access to all three, stored as
+      # the CONSISTENCY_REPO_TOKEN secret.
+      #
+      # Without it these checkouts 404 and the coverage gap must be LOUD. An
+      # earlier version skipped silently and the job went green having checked
+      # nothing but this repo — a passing build that proved less than it
+      # appeared to.
       - name: Check out ahm-docs
+        id: co_docs
         uses: actions/checkout@v4
         continue-on-error: true
         with:
           repository: moonshot-cyber/ahm-docs
+          token: ${{ secrets.CONSISTENCY_REPO_TOKEN || github.token }}
           path: _siblings/ahm-docs
 
       - name: Check out ahm-intelligence
+        id: co_intel
         uses: actions/checkout@v4
         continue-on-error: true
         with:
           repository: moonshot-cyber/ahm-intelligence
+          token: ${{ secrets.CONSISTENCY_REPO_TOKEN || github.token }}
           path: _siblings/ahm-intelligence
 
       - name: Check sibling surfaces
         run: |
-          args=""
-          for d in _siblings/ahm-docs/public _siblings/ahm-intelligence/public; do
-            [ -d "$d" ] && args="$args --surfaces $d"
+          args=""; missing=""
+          for name in ahm-docs ahm-intelligence; do
+            d="_siblings/$name/public"
+            if [ -d "$d" ]; then
+              args="$args --surfaces $d"
+              echo "covered: $name"
+            else
+              missing="$missing $name"
+              echo "::warning title=Consistency coverage gap::$name was not checked out, so its surfaces were NOT checked. Add a CONSISTENCY_REPO_TOKEN secret (PAT with read access to all three repos) to close this gap."
+            fi
           done
+
+          if [ -n "$missing" ]; then
+            echo
+            echo "NOT COVERED BY THIS RUN:$missing"
+            echo "These repos hold the docs and intelligence surfaces. Until the"
+            echo "token is configured, drift there will not block a deploy."
+            echo
+          fi
+
+          # Only meaningful if at least one sibling is present; otherwise this
+          # would silently re-check the same local surfaces and pass again.
+          if [ -z "$args" ]; then
+            echo "Skipping sibling check — nothing to check."
+            exit 0
+          fi
           python scripts/check_consistency.py $args
 
       # Only on a real push to the default branch: verify what is actually
