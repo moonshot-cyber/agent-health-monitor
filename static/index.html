@@ -408,6 +408,28 @@
     letter-spacing: 0.05em;
   }
 
+  /* Quotes are verbatim and are not edited. Any figure inside one is what was
+     true when it was said, so each carries its date — see the note under the
+     section heading. */
+  .quote-date {
+    font-family: var(--mono);
+    font-size: 0.55rem;
+    color: var(--text-dim);
+    letter-spacing: 0.15em;
+    opacity: 0.7;
+    margin-top: 0.4rem;
+  }
+
+  .quotes-note {
+    font-family: var(--mono);
+    font-size: 0.6rem;
+    color: var(--text-dim);
+    text-align: center;
+    margin-bottom: 1.25rem;
+    letter-spacing: 0.05em;
+  }
+  .quotes-note a { color: var(--cyan); }
+
   /* ── MECHANIC ── */
   .mechanic-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.5rem; margin-bottom: 2rem; }
 
@@ -753,21 +775,28 @@
 <section class="section">
   <div class="section-title">WHAT BUILDERS ARE SAYING</div>
   <div class="section-tag">// SOCIAL PROOF</div>
+  <div class="quotes-note">
+    Quoted verbatim and dated. Figures cited were current when said &mdash;
+    for today&rsquo;s, see the <a href="/dashboard">live dashboard</a>.
+  </div>
   <div class="quotes">
     <div class="quote-card">
       <div class="quote-text">37% zombie agent patterns is a wild stat. will take a closer look at AHM</div>
       <div class="quote-author">@JordanLyall</div>
       <div class="quote-handle">agentpaymentsstack.com</div>
+      <div class="quote-date">MARCH 2026</div>
     </div>
     <div class="quote-card">
       <div class="quote-text">@AHMprotocol flagged a self-registration bug &rarr; fixed and expanded self-reg to x402 + MPP</div>
       <div class="quote-author">@RyanTheGentry</div>
       <div class="quote-handle">402index.io</div>
+      <div class="quote-date">MARCH 2026</div>
     </div>
     <div class="quote-card">
       <div class="quote-text">That routing gate direction is the right one&hellip; agent-side health scoring before routing makes sense</div>
       <div class="quote-author">@Alfredz0x</div>
       <div class="quote-handle">httppay.xyz</div>
+      <div class="quote-date">MARCH 2026</div>
     </div>
   </div>
 </section>

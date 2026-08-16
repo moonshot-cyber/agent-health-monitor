@@ -108,8 +108,11 @@ ALLOWED_CONTEXTS = [
     ("There is no APPROVE", "explicit negation in ahm-verify CLAUDE.md"),
     ("no other grade table", "explicit negation in the docs grade section"),
     ("does not exist in the scoring code", "explicit negation of D4"),
-    ("quote-text", "attributed third-party quotation — not our copy"),
-    ("quote-author", "attributed third-party quotation — not our copy"),
+    # Only a DATED quotation is excused. A quote is someone else's words and is
+    # never edited, but an undated one presents a point-in-time figure as
+    # current — so the date is what earns the exemption, not the quotation
+    # marks. Adding a quote without a quote-date will fail this check.
+    ("quote-date", "attributed third-party quotation, carrying its date"),
     ("of classified", "dated one-off taxonomy sample, not a nightly-scan figure"),
     ("random sample", "dated one-off taxonomy sample, not a nightly-scan figure"),
     ("classification run", "dated one-off taxonomy sample, not a nightly-scan figure"),
