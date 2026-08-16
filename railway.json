@@ -6,7 +6,8 @@
   "deploy": {
     "startCommand": "uvicorn api:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips=*",
     "healthcheckPath": "/up",
-    "healthcheckTimeout": 10,
+    "_healthcheckTimeout_note": "Cold start is 5-9s locally and slower on a cold container — importing web3, x402, stripe and anthropic dominates. At the previous value of 10 the probe expired before uvicorn was listening, so the deploy failed with no non-200 ever logged. Railway's own default is 300.",
+    "healthcheckTimeout": 120,
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 3
   }
