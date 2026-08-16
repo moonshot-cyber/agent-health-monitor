@@ -1,0 +1,66 @@
+name: Consistency
+
+# Blocks a deploy when a public surface drifts from config/canonical.json.
+#
+# Two things this guards against:
+#   - a changing figure (scan count, average, rate) getting typed into static
+#     copy, where it is stale the next time the nightly scan runs;
+#   - a stable value (price, grade threshold, weight, endpoint count, handle)
+#     being retyped into a template instead of rendered from canonical.
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    # Weekly, so drift on a deployed surface is caught even with no commits —
+    # the PDFs and the OG image are committed artefacts that can fall behind
+    # their source without anyone touching this repo.
+    - cron: '0 8 * * 1'
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Check local surfaces against canonical config
+        run: python scripts/check_consistency.py
+
+      # Sibling repos hold the docs and intelligence surfaces. Checked out
+      # alongside so one run covers the whole public estate; skipped silently
+      # if the checkout is unavailable (e.g. a fork without access).
+      - name: Check out ahm-docs
+        uses: actions/checkout@v4
+        continue-on-error: true
+        with:
+          repository: moonshot-cyber/ahm-docs
+          path: _siblings/ahm-docs
+
+      - name: Check out ahm-intelligence
+        uses: actions/checkout@v4
+        continue-on-error: true
+        with:
+          repository: moonshot-cyber/ahm-intelligence
+          path: _siblings/ahm-intelligence
+
+      - name: Check sibling surfaces
+        run: |
+          args=""
+          for d in _siblings/ahm-docs/public _siblings/ahm-intelligence/public; do
+            [ -d "$d" ] && args="$args --surfaces $d"
+          done
+          python scripts/check_consistency.py $args
+
+      # Only on a real push to the default branch: verify what is actually
+      # being served, not just what is in the tree. A surface can drift because
+      # a deploy went stale, not because a file changed.
+      - name: Check deployed surfaces
+        if: github.event_name == 'push' || github.event_name == 'schedule'
+        continue-on-error: true
+        run: python scripts/check_consistency.py --live
