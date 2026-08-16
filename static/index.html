@@ -224,14 +224,15 @@
     padding: 2.5rem 0 1.5rem;
     transition: transform 0.2s;
   }
+  .hero-score-link { padding: 0; }
   .hero-score-link:hover { transform: translateY(-2px); }
   .hero-score-link .hero-score-label {
-    font-size: clamp(0.75rem, 1.8vw, 1rem);
-    color: var(--cyan);
-    text-shadow: 0 0 30px rgba(0,245,255,0.4);
-    margin-top: 0;
+    font-size: 0.7rem;
+    color: var(--text-dim);
+    letter-spacing: 0.25em;
+    margin-top: 0.5rem;
   }
-  .hero-score-link:hover .hero-score-label { color: var(--text-bright); }
+  .hero-score-link:hover .hero-score-label { color: var(--cyan); }
 
   .stat-link { text-decoration: none; display: block; }
   .stat-link:hover .stat-value { color: var(--text-bright); }
@@ -715,6 +716,15 @@
       <path class="heartbeat-line" d="M0,60 L120,60 L140,60 L160,20 L180,100 L200,40 L220,80 L240,60 L360,60 L380,60 L400,25 L420,95 L440,45 L460,75 L480,60 L500,60"/>
     </svg>
     <a href="/dashboard" class="hero-score-link">
+      <!-- data-live marks a value rendered server-side from the database on
+           every request. It is not static copy and cannot go stale, so the
+           consistency checker permits a figure here. The server substitutes
+           the token; the client animates up to it. Without JS the real number
+           is already in the markup — the old version printed "--" to
+           crawlers, which is why it was briefly removed. -->
+      <div class="hero-score" id="hero-score"
+           data-live="ecosystem_avg_ahs"
+           data-value="{{SSR_AVG_AHS}}">{{SSR_AVG_AHS}}</div>
       <div class="hero-score-label">ECOSYSTEM AVERAGE AHS &amp; LIVE FIGURES &rarr;</div>
     </a>
   </div>
@@ -938,11 +948,32 @@
 (function() {
   var API = window.location.origin + '/api/ecosystem-stats';
 
-  // The homepage deliberately renders NO changing figure — no scan count, no
-  // average, no rate. Those live on /dashboard alone, so this page can never go
-  // stale and never shows a placeholder to a crawler. The only value hydrated
-  // here is the endpoint count, which is a stable release-time fact sourced
-  // from canonical.json and served via /api/ecosystem-stats.
+  // The ecosystem average is server-rendered into [data-live] on every request,
+  // so it is correct in the markup before any JS runs — crawlers, agents and
+  // curl all see the real number. This only replays it as a count-up for
+  // human visitors, starting from the value already on the page rather than
+  // fetching it again. If JS never runs, the number is simply already there.
+  (function animateHeroScore() {
+    var el = document.querySelector('[data-live="ecosystem_avg_ahs"]');
+    if (!el) return;
+    var target = parseFloat(el.getAttribute('data-value'));
+    if (!isFinite(target)) return;              // server render failed; leave as-is
+    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+    var start = null, DURATION = 2000;
+    function tick(now) {
+      if (!start) start = now;
+      var p = Math.min((now - start) / DURATION, 1);
+      var eased = 1 - (1 - p) * (1 - p);        // ease-out quad
+      el.textContent = (eased * target).toFixed(1);
+      if (p < 1) requestAnimationFrame(tick);
+      else el.textContent = target.toFixed(1);  // land exactly on the real value
+    }
+    requestAnimationFrame(tick);
+  })();
+
+  // The only other value hydrated here is the endpoint count — a stable
+  // release-time fact from canonical.json, served via /api/ecosystem-stats.
   fetch(API)
     .then(function(r) { return r.json(); })
     .then(function(data) {
