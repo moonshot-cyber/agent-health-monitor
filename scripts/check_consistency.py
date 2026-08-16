@@ -183,25 +183,57 @@ def check_text(name: str, raw: str, is_dashboard: bool) -> list[Finding]:
     return findings
 
 
+def extract_grade_bands(path: Path) -> list[tuple[int, str, str]]:
+    """Pull the (min, letter, label) ladder out of _ahs_grade by parsing source.
+
+    Returns them in descending threshold order, matching how the function is
+    written and how canonical.json lists them. The final bare `return` (the
+    else-case, F) is treated as min=0.
+    """
+    import ast
+
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    fn = next((n for n in ast.walk(tree)
+               if isinstance(n, ast.FunctionDef) and n.name == "_ahs_grade"), None)
+    if fn is None:
+        raise ValueError("_ahs_grade not found")
+
+    bands: list[tuple[int, str, str]] = []
+    for node in fn.body:
+        if isinstance(node, ast.If):
+            # if score >= N: return "X", "Label"
+            cmp_node = node.test
+            threshold = cmp_node.comparators[0].value
+            letter, label = (e.value for e in node.body[0].value.elts)
+            bands.append((threshold, letter, label))
+        elif isinstance(node, ast.Return) and isinstance(node.value, ast.Tuple):
+            letter, label = (e.value for e in node.value.elts)
+            bands.append((0, letter, label))
+    if not bands:
+        raise ValueError("no grade bands parsed from _ahs_grade")
+    return bands
+
+
 def check_canonical_against_code() -> list[Finding]:
     """The config must not drift from the code it claims to describe."""
     findings: list[Finding] = []
     src = "config/canonical.json"
 
+    # Read the thresholds out of monitor.py's source rather than importing it.
+    # Importing drags in the whole runtime dependency tree, which this check
+    # does not need and which is not installed in CI — and a checker that can
+    # be defeated by a missing dependency is not a checker.
     try:
-        sys.path.insert(0, str(ROOT))
-        from monitor import _ahs_grade
-    except Exception as exc:  # pragma: no cover - import environment dependent
+        bands = extract_grade_bands(ROOT / "monitor.py")
+    except Exception as exc:
         return [Finding(src, 0, "cannot verify grades",
-                        f"monitor import failed: {exc}", "")]
+                        f"could not parse _ahs_grade from monitor.py: {exc}", "")]
 
-    for score in range(101):
-        if canonical.grade_for_score(score) != _ahs_grade(score):
-            findings.append(Finding(
-                src, 0, "grade table drift",
-                f"score {score}: canonical says {canonical.grade_for_score(score)}, "
-                f"monitor._ahs_grade says {_ahs_grade(score)}", ""))
-            break
+    canon_bands = [(b["min"], b["letter"], b["label"]) for b in canonical.grade_bands()]
+    if bands != canon_bands:
+        findings.append(Finding(
+            src, 0, "grade table drift",
+            f"canonical has {canon_bands}, monitor._ahs_grade has {bands}", ""))
 
     api = (ROOT / "api.py").read_text(encoding="utf-8")
 
