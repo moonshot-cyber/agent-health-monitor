@@ -134,14 +134,23 @@ class Finding:
 
 
 def strip_markup(text: str) -> str:
-    """Drop script/style bodies and HTML comments before matching prose.
+    """Drop script/style bodies, comments, and server-rendered live values.
 
     Client-side code legitimately contains figure-shaped expressions (it renders
     live values); the rule is about published copy, not the code that fetches it.
+
+    Elements carrying data-live are also removed. Those hold a figure rendered
+    from the database on every request — it cannot go stale, which is the only
+    thing this rule exists to prevent. The distinction that matters is not
+    "static page vs dynamic page" but "typed by a human vs rendered from the
+    source of truth"; data-live marks the latter. Whitelisting the attribute
+    rather than the page keeps the rule tight: everything else on the homepage
+    is still held to it.
     """
     text = re.sub(r"<script\b.*?</script>", " ", text, flags=re.S | re.I)
     text = re.sub(r"<style\b.*?</style>", " ", text, flags=re.S | re.I)
     text = re.sub(r"<!--.*?-->", " ", text, flags=re.S)
+    text = re.sub(r"<(\w+)[^>]*\bdata-live=[^>]*>.*?</\1>", " ", text, flags=re.S | re.I)
     return text
 
 

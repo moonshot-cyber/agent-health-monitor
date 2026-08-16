@@ -3176,11 +3176,40 @@ STATIC_DIR = pathlib.Path(__file__).parent / "static"
 
 @app.api_route("/", methods=["GET", "HEAD"], tags=["Discovery & Info"])
 async def root():
-    """Serve the marketing homepage."""
+    """Serve the marketing homepage, with its one live figure rendered in.
+
+    The hero carries the ecosystem average AHS. It is a changing figure, so it
+    is rendered from the database on every request rather than typed into the
+    markup — it cannot go stale, and unlike the earlier client-fetched version
+    it is present for crawlers, agents and curl instead of showing a dash.
+    """
     index = STATIC_DIR / "index.html"
-    if index.is_file():
+    if not index.is_file():
+        return JSONResponse({"service": "Agent Health Monitor", "docs": "/docs",
+                             "info": "/api/info"})
+
+    html_text = index.read_text(encoding="utf-8")
+    if "{{SSR_AVG_AHS}}" not in html_text:
         return FileResponse(index)
-    return JSONResponse({"service": "Agent Health Monitor", "docs": "/docs", "info": "/api/info"})
+
+    try:
+        loop = asyncio.get_running_loop()
+        stats = await loop.run_in_executor(None, scan_db.get_ecosystem_dashboard_stats)
+        avg = stats.get("avg_ahs")
+        # A zero average means no scored wallets, not an ecosystem scoring zero.
+        # Publishing "0.0" would be worse than publishing nothing.
+        if not avg:
+            raise ValueError("no ecosystem average available")
+        rendered = html_text.replace("{{SSR_AVG_AHS}}", f"{float(avg):.1f}")
+    except Exception:
+        # Never fail the homepage over a stats query. The hero collapses to the
+        # label-and-link form, which is what the page looked like before this
+        # figure existed.
+        logging.exception("Homepage server-render failed; serving without the live figure")
+        rendered = html_text.replace(
+            'data-value="{{SSR_AVG_AHS}}">{{SSR_AVG_AHS}}', 'data-value="">&mdash;')
+
+    return HTMLResponse(rendered)
 
 
 @app.get("/app", tags=["Discovery & Info"])
