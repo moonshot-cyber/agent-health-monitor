@@ -1,0 +1,98 @@
+name: Consistency
+
+# Blocks a deploy when a public surface drifts from config/canonical.json.
+#
+# Two things this guards against:
+#   - a changing figure (scan count, average, rate) getting typed into static
+#     copy, where it is stale the next time the nightly scan runs;
+#   - a stable value (price, grade threshold, weight, endpoint count, handle)
+#     being retyped into a template instead of rendered from canonical.
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    # Weekly, so drift on a deployed surface is caught even with no commits —
+    # the PDFs and the OG image are committed artefacts that can fall behind
+    # their source without anyone touching this repo.
+    - cron: '0 8 * * 1'
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Check local surfaces against canonical config
+        run: python scripts/check_consistency.py
+
+      # Sibling repos hold the docs and intelligence surfaces — where most of
+      # the drift lived. The default GITHUB_TOKEN is scoped to this repo only,
+      # so cloning them needs a PAT with read access to all three, stored as
+      # the CONSISTENCY_REPO_TOKEN secret.
+      #
+      # Without it these checkouts 404 and the coverage gap must be LOUD. An
+      # earlier version skipped silently and the job went green having checked
+      # nothing but this repo — a passing build that proved less than it
+      # appeared to.
+      - name: Check out ahm-docs
+        id: co_docs
+        uses: actions/checkout@v4
+        continue-on-error: true
+        with:
+          repository: moonshot-cyber/ahm-docs
+          token: ${{ secrets.CONSISTENCY_REPO_TOKEN || github.token }}
+          path: _siblings/ahm-docs
+
+      - name: Check out ahm-intelligence
+        id: co_intel
+        uses: actions/checkout@v4
+        continue-on-error: true
+        with:
+          repository: moonshot-cyber/ahm-intelligence
+          token: ${{ secrets.CONSISTENCY_REPO_TOKEN || github.token }}
+          path: _siblings/ahm-intelligence
+
+      - name: Check sibling surfaces
+        run: |
+          args=""; missing=""
+          for name in ahm-docs ahm-intelligence; do
+            d="_siblings/$name/public"
+            if [ -d "$d" ]; then
+              args="$args --surfaces $d"
+              echo "covered: $name"
+            else
+              missing="$missing $name"
+              echo "::warning title=Consistency coverage gap::$name was not checked out, so its surfaces were NOT checked. Add a CONSISTENCY_REPO_TOKEN secret (PAT with read access to all three repos) to close this gap."
+            fi
+          done
+
+          if [ -n "$missing" ]; then
+            echo
+            echo "NOT COVERED BY THIS RUN:$missing"
+            echo "These repos hold the docs and intelligence surfaces. Until the"
+            echo "token is configured, drift there will not block a deploy."
+            echo
+          fi
+
+          # Only meaningful if at least one sibling is present; otherwise this
+          # would silently re-check the same local surfaces and pass again.
+          if [ -z "$args" ]; then
+            echo "Skipping sibling check — nothing to check."
+            exit 0
+          fi
+          python scripts/check_consistency.py $args
+
+      # Only on a real push to the default branch: verify what is actually
+      # being served, not just what is in the tree. A surface can drift because
+      # a deploy went stale, not because a file changed.
+      - name: Check deployed surfaces
+        if: github.event_name == 'push' || github.event_name == 'schedule'
+        continue-on-error: true
+        run: python scripts/check_consistency.py --live

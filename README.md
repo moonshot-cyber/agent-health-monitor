@@ -1,6 +1,6 @@
 # Agent Health Monitor
 
-Trust and health verification for the autonomous agent economy. Before an agent delegates a task, routes a payment, or enters a contract — it needs to know: **is this counterparty solvent, reliable, and operational?** AHM answers that with 14 diagnostic endpoints, a nightly-updated trust registry spanning five agent discovery sources, and composite scoring across three dimensions. See [AHM_VALUE_PROPOSITIONS.md](AHM_VALUE_PROPOSITIONS.md) for live ecosystem stats.
+Trust and health verification for the autonomous agent economy. Before an agent delegates a task, routes a payment, or enters a contract — it needs to know: **is this counterparty solvent, reliable, and operational?** AHM answers that with 14 diagnostic endpoints, a nightly-updated trust registry spanning five agent discovery sources, and composite scoring across three dimensions. Live ecosystem figures are on the [dashboard](https://agenthealthmonitor.xyz/dashboard).
 
 **Pay how you want:** [x402 protocol](https://x402.org) (USDC on Base, pay-per-call) or [Stripe](https://agenthealthmonitor.xyz) (fiat API key, no wallet required).
 
@@ -10,7 +10,7 @@ Trust and health verification for the autonomous agent economy. Before an agent 
 
 | Endpoint | Price (x402) | Purpose |
 |---|---|---|
-| `GET /risk/{address}` | $0.01 USDC | Pre-transaction trust check — is this agent safe to interact with? |
+| `GET /risk/{address}` | $0.001 USDC | Pre-transaction trust check — is this agent safe to interact with? |
 | `GET /risk/premium/{address}` | $0.05 USDC | Premium risk score with Nansen labels + PnL profitability summary |
 | `GET /counterparties/{address}` | $0.10 USDC | Know Your Counterparty — top interactions enriched with Nansen |
 | `GET /network-map/{address}` | $0.10 USDC | Wallet network map — funding, deployer & multisig links via Nansen |
@@ -46,14 +46,14 @@ No wallet required. Purchase an API key at [agenthealthmonitor.xyz](https://agen
 
 ## Trust Registry
 
-Agent wallets scanned and tracked across 5 discovery sources (live count in [AHM_VALUE_PROPOSITIONS.md](AHM_VALUE_PROPOSITIONS.md)):
+Agent wallets scanned and tracked across 5 discovery sources (live counts on the [dashboard](https://agenthealthmonitor.xyz/dashboard)):
 
 | Source | Description |
 |---|---|
 | **ACP (Virtuals)** | Automated nightly scans via `acpx.virtuals.io` API |
-| **ERC-8004** | On-chain agent registry on Base mainnet (32,700+ registered as of May 2026) |
+| **ERC-8004** | On-chain agent registry on Base mainnet |
 | **Olas** | Olas protocol agent registry, nightly scans |
-| **Arc** | ERC-8004 IdentityRegistry on Arc testnet, nightly scans (1,200+ agents as of May 2026) |
+| **Arc** | ERC-8004 IdentityRegistry on Arc testnet, nightly scans |
 | **API** | Wallets scanned via direct API calls |
 
 All scan results are stored in the trust registry database with grade distribution, trend tracking, and ecosystem-wide health statistics available at `/trust-registry` and `/dashboard`.
@@ -156,9 +156,9 @@ curl "https://agenthealthmonitor.xyz/ahs/0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96
     "confidence": "HIGH",
     "mode": "3D",
     "dimensions": [
-      { "dimension": "D1: Wallet Hygiene", "score": 28, "weight": 0.30 },
-      { "dimension": "D2: Behavioural Patterns", "score": 55, "weight": 0.50 },
-      { "dimension": "D3: Infrastructure Health", "score": 38, "weight": 0.20 }
+      { "dimension": "D1: Wallet Hygiene", "score": 28, "weight": 0.25 },
+      { "dimension": "D2: Behavioural Patterns", "score": 55, "weight": 0.45 },
+      { "dimension": "D3: Infrastructure Health", "score": 38, "weight": 0.30 }
     ],
     "patterns_detected": [
       {
@@ -233,7 +233,7 @@ curl -X POST https://agenthealthmonitor.xyz/ahs/batch \
 GET /report-card/{wallet_address}
 ```
 
-Generates a personalised 1200x675 PNG report card showing AHS score, grade, dimension breakdown, and percentile ranking against all 4,500+ scanned agents. Includes a pre-built share URL for X/Twitter.
+Generates a personalised 1200x675 PNG report card showing AHS score, grade, dimension breakdown, and percentile ranking against every scanned agent wallet. Includes a pre-built share URL for X/Twitter.
 
 ### 5. Alert Monitoring ($2.00/month) — Stay on top of it
 
@@ -357,7 +357,7 @@ from x402.mechanisms.evm.exact import ExactEvmScheme
 client = x402Client()
 client.register("eip155:*", ExactEvmScheme(signer=your_wallet))
 
-# Quick risk screen ($0.01)
+# Quick risk screen ($0.001)
 risk = client.get("https://agenthealthmonitor.xyz/risk/0x1234...")
 
 # Agent Health Score ($1.00)
@@ -414,7 +414,7 @@ uvicorn api:app --host 0.0.0.0 --port 4021
 | `FACILITATOR_URL` | No | `https://x402.org/facilitator` | x402 facilitator endpoint |
 | `STRIPE_SECRET_KEY` | No | — | Stripe secret key for fiat API key system |
 | `STRIPE_WEBHOOK_SECRET` | No | — | Stripe webhook signing secret |
-| `RISK_PRICE_USD` | No | `$0.01` | Price per quick risk check |
+| `RISK_PRICE_USD` | No | `$0.001` | Price per quick risk check |
 | `PREMIUM_RISK_PRICE_USD` | No | `$0.05` | Price per premium risk + Nansen + PnL |
 | `COUNTERPARTY_PRICE_USD` | No | `$0.10` | Price per counterparty analysis |
 | `NETWORK_MAP_PRICE_USD` | No | `$0.10` | Price per network map |

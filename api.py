@@ -24,6 +24,7 @@ Environment variables:
 
 import asyncio
 import hmac
+import html
 import logging
 import os
 import re
@@ -78,6 +79,7 @@ from x402.mechanisms.evm.signers import EthAccountSigner
 from x402.http.clients.httpx import x402HttpxClient
 from eth_account import Account as EthAccount
 
+import canonical
 from monitor import (
     analyze_address,
     analyze_retryable_transactions,
@@ -104,23 +106,29 @@ if not PAYMENT_ADDRESS:
 
 FACILITATOR_URL = os.getenv("FACILITATOR_URL", "https://facilitator.payai.network")
 BASESCAN_API_KEY = os.getenv("BASESCAN_API_KEY", "")
-PRICE = os.getenv("PRICE_USD", "$0.50")
-OPTIMIZE_PRICE = os.getenv("OPTIMIZE_PRICE_USD", "$5.00")
-ALERT_PRICE = os.getenv("ALERT_PRICE_USD", "$2.00")
-RETRY_PRICE = os.getenv("RETRY_PRICE_USD", "$10.00")
-PROTECT_PRICE = os.getenv("PROTECT_PRICE_USD", "$25.00")
-RISK_PRICE = os.getenv("RISK_PRICE_USD", "$0.001")
-PREMIUM_RISK_PRICE = os.getenv("PREMIUM_RISK_PRICE_USD", "$0.05")
-COUNTERPARTY_PRICE = os.getenv("COUNTERPARTY_PRICE_USD", "$0.10")
-NETWORK_MAP_PRICE = os.getenv("NETWORK_MAP_PRICE_USD", "$0.10")
-WASH_PRICE = os.getenv("WASH_PRICE_USD", "$0.50")
-AHS_PRICE = os.getenv("AHS_PRICE_USD", "$1.00")
-AHS_BATCH_PRICE = os.getenv("AHS_BATCH_PRICE_USD", "$10.00")
-ROUTE_PRICE = os.getenv("ROUTE_PRICE_USD", "$0.01")
-REPORT_CARD_PRICE = os.getenv("REPORT_CARD_PRICE_USD", "$2.00")
+# Prices: canonical defaults come from config/canonical.json, overridable by env.
+# Never hard-code a price here — edit canonical.json instead, so every surface
+# that quotes the price moves with it. scripts/check_consistency.py enforces this.
+_PRICE_DEFAULTS = canonical.price_env_defaults()
+
+PRICE = os.getenv("PRICE_USD", _PRICE_DEFAULTS["PRICE_USD"])
+OPTIMIZE_PRICE = os.getenv("OPTIMIZE_PRICE_USD", _PRICE_DEFAULTS["OPTIMIZE_PRICE_USD"])
+ALERT_PRICE = os.getenv("ALERT_PRICE_USD", _PRICE_DEFAULTS["ALERT_PRICE_USD"])
+RETRY_PRICE = os.getenv("RETRY_PRICE_USD", _PRICE_DEFAULTS["RETRY_PRICE_USD"])
+PROTECT_PRICE = os.getenv("PROTECT_PRICE_USD", _PRICE_DEFAULTS["PROTECT_PRICE_USD"])
+RISK_PRICE = os.getenv("RISK_PRICE_USD", _PRICE_DEFAULTS["RISK_PRICE_USD"])
+PREMIUM_RISK_PRICE = os.getenv("PREMIUM_RISK_PRICE_USD", _PRICE_DEFAULTS["PREMIUM_RISK_PRICE_USD"])
+COUNTERPARTY_PRICE = os.getenv("COUNTERPARTY_PRICE_USD", _PRICE_DEFAULTS["COUNTERPARTY_PRICE_USD"])
+NETWORK_MAP_PRICE = os.getenv("NETWORK_MAP_PRICE_USD", _PRICE_DEFAULTS["NETWORK_MAP_PRICE_USD"])
+WASH_PRICE = os.getenv("WASH_PRICE_USD", _PRICE_DEFAULTS["WASH_PRICE_USD"])
+AHS_PRICE = os.getenv("AHS_PRICE_USD", _PRICE_DEFAULTS["AHS_PRICE_USD"])
+AHS_BATCH_PRICE = os.getenv("AHS_BATCH_PRICE_USD", _PRICE_DEFAULTS["AHS_BATCH_PRICE_USD"])
+ROUTE_PRICE = os.getenv("ROUTE_PRICE_USD", _PRICE_DEFAULTS["ROUTE_PRICE_USD"])
+REPORT_CARD_PRICE = os.getenv("REPORT_CARD_PRICE_USD", _PRICE_DEFAULTS["REPORT_CARD_PRICE_USD"])
 AHS_JWT_SECRET = os.getenv("AHS_JWT_SECRET", secrets.token_urlsafe(32))
 NANSEN_PAYER_PRIVATE_KEY = os.getenv("NANSEN_PAYER_PRIVATE_KEY", "")
-ENDPOINT_COUNT = 14  # single source of truth — update here when adding endpoints
+ENDPOINT_COUNT = canonical.endpoint_count()
+BATCH_X402_MAX, BATCH_API_KEY_MAX = canonical.batch_limits()
 NETWORK = os.getenv("NETWORK", "eip155:8453")  # Base mainnet
 VALID_COUPONS = set(c.strip().upper() for c in os.getenv("VALID_COUPONS", "").split(",") if c.strip())
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
@@ -2878,7 +2886,7 @@ x402_routes = {
         mime_type="application/json",
         description=(
             "AHS Batch: Score multiple agent wallets in a single call. "
-            "Up to 10 wallets per x402 payment ($10.00), or up to 25 via API key."
+            + canonical.batch_statement()
         ),
         extensions={
             "bazaar": {
@@ -3307,7 +3315,7 @@ async def api_info():
             "GET /health/{address}": f"{PRICE} USDC — wallet health diagnosis",
             "POST /wash/{address}": f"{WASH_PRICE} USDC — agent hygiene scan (dust, spam, gas efficiency, failure patterns)",
             "GET /ahs/{address}": f"{AHS_PRICE} USDC — Agent Health Score (composite 0-100 index across wallet hygiene, behavioural patterns, and infrastructure health)",
-            "POST /ahs/batch": f"{AHS_BATCH_PRICE} USDC — batch AHS scoring (up to 10 wallets per x402 call, up to 25 via API key at {AHS_PRICE}/wallet)",
+            "POST /ahs/batch": f"{AHS_BATCH_PRICE} USDC — batch AHS scoring (up to {BATCH_X402_MAX} wallets per x402 call, up to {BATCH_API_KEY_MAX} via API key at {AHS_PRICE}/wallet)",
             "GET /alerts/subscribe/{address}": f"{ALERT_PRICE} USDC/month — automated monitoring & webhook alerts",
             "GET /optimize/{address}": f"{OPTIMIZE_PRICE} USDC — gas optimization report",
             "GET /retry/{address}": f"{RETRY_PRICE} USDC — optimized retry transactions for recent failures",
@@ -3363,13 +3371,156 @@ async def scan_quality():
     return {"batches": history}
 
 
+_GRADE_CSS = {"A": "grade-A", "B": "grade-B", "C": "grade-C",
+              "D": "grade-D", "E": "grade-E", "F": "grade-F"}
+_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+           "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
+
+def _bar_row(label: str, bar_pct: float, value_text: str,
+             css_class: str = "", inline_colour: str = "",
+             narrow_label: bool = False) -> str:
+    """One horizontal bar row, matching the markup the client script emits."""
+    label_style = (
+        ' style="width:auto; min-width:0; font-size:0.6rem; white-space:nowrap"'
+        if narrow_label else ""
+    )
+    fill_style = f"width:{bar_pct}%"
+    if inline_colour:
+        fill_style += f"; background:{inline_colour}"
+    return (
+        '<div class="bar-row">'
+        f'<div class="bar-label"{label_style}>{html.escape(label)}</div>'
+        f'<div class="bar-track"><div class="bar-fill {css_class}" style="{fill_style}"></div></div>'
+        f'<div class="bar-value">{value_text}</div>'
+        "</div>"
+    )
+
+
+def _render_dashboard_html(stats: dict) -> str:
+    """Render the dashboard server-side.
+
+    /dashboard is the single canonical home for figures that change. It must be
+    readable by crawlers, agents and curl — so every value is baked into the
+    markup here rather than left to client-side fetch. The client script still
+    runs and re-renders, which keeps the page fresh for human visitors.
+    """
+    tpl = (STATIC_DIR / "dashboard.html").read_text(encoding="utf-8")
+
+    grades = stats.get("grade_distribution") or {}
+    patterns = stats.get("pattern_distribution") or {}
+    sources = stats.get("data_sources") or {}
+    total = sum(grades.values())
+
+    # -- Metric cards --
+    zombie_count = patterns.get("Zombie Agent", 0)
+    zombie_pct = round(zombie_count / total * 100) if total else 0
+
+    updated = "—"
+    raw_updated = stats.get("last_updated")
+    if raw_updated:
+        try:
+            dt = datetime.strptime(raw_updated, "%Y-%m-%dT%H:%M:%SZ")
+            updated = f"{_MONTHS[dt.month - 1]} {dt.day}, {dt.year}"
+        except ValueError:
+            updated = raw_updated
+
+    unit = canonical.scanned_unit()
+    sub = (
+        f"Live data from {total:,} {unit} scanned on Base mainnet"
+        if total else "Live data from Base mainnet"
+    )
+
+    # -- Source chips --
+    order = canonical.registry_display_order()
+    ordered = [k for k in order if k in sources]
+    ordered += [k for k in sources if k not in order]
+    src_html = "".join(
+        f'<div class="source-chip" data-source="{html.escape(k)}">'
+        f"{html.escape(k)}: <strong>{sources[k]:,}</strong> {unit}</div>"
+        for k in ordered
+    )
+
+    # -- Grade distribution --
+    max_grade = max(grades.values()) if grades else 0
+    grade_html = ""
+    for letter in canonical.grade_letters():
+        cnt = grades.get(letter, 0)
+        pct = (cnt / total * 100) if total else 0
+        bar = (cnt / max_grade * 100) if max_grade else 0
+        grade_html += _bar_row(letter, bar, f"{cnt} ({pct:.1f}%)",
+                               css_class=_GRADE_CSS.get(letter, ""))
+
+    # -- Pattern breakdown --
+    # The CDP classifier only labels a minority of scanned wallets. Rendering
+    # only the matched patterns implied the classifier covered the population
+    # when it covers a fraction of it, so the unmatched remainder is shown
+    # explicitly and the column sums to 100%.
+    classified = sum(patterns.values())
+    unclassified = max(0, total - classified)
+    rows = sorted(patterns.items(), key=lambda kv: kv[1], reverse=True)[:6]
+    if unclassified:
+        rows.append(("Unclassified", unclassified))
+
+    max_pat = max((c for _, c in rows), default=0)
+    pattern_html = ""
+    for name, cnt in rows:
+        pct = (cnt / total * 100) if total else 0
+        bar = (cnt / max_pat * 100) if max_pat else 0
+        lowered = name.lower()
+        if "zombie" in lowered or "cascading" in lowered:
+            colour = "var(--red)"
+        elif "healthy" in lowered:
+            colour = "var(--green)"
+        elif name == "Unclassified":
+            colour = "var(--text-dim)"
+        else:
+            colour = "var(--amber)"
+        pattern_html += _bar_row(name, bar, f"{pct:.1f}%",
+                                 inline_colour=colour, narrow_label=True)
+    if not rows:
+        pattern_html = (
+            '<div style="font-family:var(--mono); font-size:0.7rem; '
+            'color:var(--text-dim); text-align:center; padding:1rem">'
+            "No pattern data available</div>"
+        )
+
+    return (
+        tpl.replace("{{SSR_SUB}}", html.escape(sub))
+        .replace("{{SSR_TOTAL}}", f"{total:,}")
+        .replace("{{SSR_AVG}}", str(stats.get("avg_ahs", "—")))
+        .replace("{{SSR_ZOMBIE}}", f"{zombie_pct}%")
+        .replace("{{SSR_UPDATED}}", html.escape(updated))
+        .replace("{{SSR_SOURCES}}", src_html)
+        .replace("{{SSR_GRADES}}", grade_html)
+        .replace("{{SSR_PATTERNS}}", pattern_html)
+        .replace("{{SSR_D1}}", str(stats.get("avg_d1", "—")))
+        .replace("{{SSR_D2}}", str(stats.get("avg_d2", "—")))
+    )
+
+
 @app.get("/dashboard", tags=["Discovery & Info"])
 async def dashboard():
-    """Serve the public ecosystem health dashboard."""
+    """Serve the public ecosystem health dashboard, server-rendered."""
     dash_file = STATIC_DIR / "dashboard.html"
-    if dash_file.is_file():
+    if not dash_file.is_file():
+        raise HTTPException(status_code=404, detail="Dashboard not found")
+
+    loop = asyncio.get_running_loop()
+    try:
+        stats = await loop.run_in_executor(
+            None, scan_db.get_ecosystem_dashboard_stats
+        )
+        rendered = await loop.run_in_executor(
+            None, partial(_render_dashboard_html, stats)
+        )
+    except Exception:
+        # Never blank the page on a stats failure — fall back to the template,
+        # which the client script will populate from /api/ecosystem-stats.
+        logging.exception("Dashboard server-render failed; serving template")
         return FileResponse(dash_file)
-    raise HTTPException(status_code=404, detail="Dashboard not found")
+
+    return HTMLResponse(rendered)
 
 
 @app.get("/pay-by-card", tags=["Discovery & Info"])
@@ -4701,8 +4852,8 @@ async def get_ahs_batch(body: AHSBatchRequest, request: Request):
     """
     Batch Agent Health Score: score multiple wallets in a single call.
 
-    Accepts up to 25 wallet addresses. Pricing:
-    - **x402 path:** $10.00 USDC flat for up to 10 wallets per call.
+    Two tiers apply — see canonical.json -> batch. Pricing:
+    - **x402 path:** flat batch price, capped at BATCH_X402_MAX wallets per call.
     - **API key path:** 1 credit per wallet scored. Supports partial results
       if credits are insufficient (scores as many as credits allow).
 
@@ -4714,7 +4865,7 @@ async def get_ahs_batch(body: AHSBatchRequest, request: Request):
     if not body.addresses:
         raise HTTPException(status_code=400, detail="addresses array is required and must not be empty")
 
-    page_size = max(1, min(25, body.page_size))
+    page_size = max(1, min(BATCH_API_KEY_MAX, body.page_size))
     page = max(1, body.page)
 
     # Validate all addresses upfront (before normalisation, so errors show raw input)
@@ -4772,12 +4923,13 @@ async def get_ahs_batch(body: AHSBatchRequest, request: Request):
                     f"{total_addresses} addresses scored ({available} credits remaining)"
                 )
     else:
-        # x402 path: payment already settled by middleware for $10 (up to 10 wallets)
-        if len(page_addrs) > 10:
-            page_addrs = page_addrs[:10]
+        # x402 path: payment already settled by middleware for the flat batch
+        # price, which covers up to BATCH_X402_MAX wallets (see canonical.json).
+        if len(page_addrs) > BATCH_X402_MAX:
+            page_addrs = page_addrs[:BATCH_X402_MAX]
             errors.append(
-                "x402 batch limited to 10 wallets per call. "
-                "Use an API key (X-API-Key header) for batches of up to 25."
+                f"x402 batch limited to {BATCH_X402_MAX} wallets per call. "
+                f"Use an API key (X-API-Key header) for batches of up to {BATCH_API_KEY_MAX}."
             )
 
     # ── Score wallets concurrently ──────────────────────────────────────
@@ -4961,7 +5113,7 @@ async def get_report_card(address: WalletAddress, request: Request):
     grade_full = f"{result.grade} — {result.grade_label}"
     share_text = (
         f"My agent scored {result.agent_health_score}/100 ({grade_full}) "
-        f"on @AHM_xyz Report Card — Top {100 - pct_rank}% of agents on Base"
+        f"on {canonical.twitter_handle()} Report Card — Top {100 - pct_rank}% of agents on Base"
     )
     share_url = f"https://x.com/intent/tweet?text={url_quote(share_text)}"
 
