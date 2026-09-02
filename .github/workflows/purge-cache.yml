@@ -1,0 +1,106 @@
+name: Purge Cloudflare cache
+
+# Cloudflare fronts this site with a 4-hour TTL, so a correct deploy can look
+# broken for hours — that happened three times while this was being set up, and
+# each time the origin was already right.
+#
+# Triggered by Railway's own deployment_status rather than by push: pushing
+# only means the build has started, so purging then would re-cache the OLD page
+# and make the problem worse.
+
+on:
+  deployment_status:
+  workflow_dispatch:
+    inputs:
+      urls:
+        description: 'Comma-separated URLs to purge, or "all" for the whole zone'
+        required: false
+        default: ""
+        type: string
+
+jobs:
+  purge:
+    # deployment_status fires for every state; only a completed, successful
+    # deploy should trigger a purge.
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      github.event.deployment_status.state == 'success'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check secrets are configured
+        env:
+          ZONE: ${{ secrets.CLOUDFLARE_ZONE_ID }}
+          TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          if [ -z "$ZONE" ] || [ -z "$TOKEN" ]; then
+            echo "::error title=Cloudflare purge not configured::Set CLOUDFLARE_ZONE_ID and CLOUDFLARE_API_TOKEN in this repo's Actions secrets. Until then every deploy stays behind a 4-hour cache."
+            exit 1
+          fi
+
+      - name: Build purge payload
+        id: payload
+        run: |
+          INPUT="${{ github.event.inputs.urls }}"
+          if [ "$INPUT" = "all" ]; then
+            echo 'json={"purge_everything":true}' >> "$GITHUB_OUTPUT"
+            echo "Purging entire zone"
+          elif [ -n "$INPUT" ]; then
+            JSON=$(echo "$INPUT" | tr ',' '\n' | python3 -c \
+              "import sys,json; print(json.dumps({'files':[l.strip() for l in sys.stdin if l.strip()]}))")
+            echo "json=$JSON" >> "$GITHUB_OUTPUT"
+          else
+            # Default: the HTML surfaces this repo serves. Deliberately not
+            # purge_everything — that would also evict docs and intelligence,
+            # which are deployed from their own repos and unaffected by this
+            # deploy. Static assets are fingerprinted or rarely change.
+            JSON=$(python3 - <<'PY'
+          import json
+          base = "https://agenthealthmonitor.xyz"
+          paths = ["/", "/roadmap", "/dashboard", "/app", "/shield", "/verify",
+                   "/pay-by-card", "/endpoints/ahs", "/endpoints/wash",
+                   "/endpoints/risk", "/endpoints/report-card",
+                   "/static/ahm-og-banner.png"]
+          print(json.dumps({"files": [base + p for p in paths]}))
+          PY
+          )
+            echo "json=$JSON" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Purge
+        env:
+          CLOUDFLARE_ZONE_ID: ${{ secrets.CLOUDFLARE_ZONE_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          PAYLOAD='${{ steps.payload.outputs.json }}'
+          response=$(curl -fsSL -X POST \
+            "https://api.cloudflare.com/client/v4/zones/$CLOUDFLARE_ZONE_ID/purge_cache" \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+            -H "Content-Type: application/json" \
+            --data "$PAYLOAD")
+          echo "$response" | python3 -m json.tool
+          echo "$response" | python3 -c \
+            "import sys,json; sys.exit(0 if json.load(sys.stdin).get('success') else 1)"
+
+      # A successful API response only means Cloudflare accepted the request.
+      # Confirm the edge actually re-fetched, so a silently ineffective purge
+      # cannot pass as a working one.
+      - name: Verify the edge re-fetched
+        run: |
+          sleep 15
+          status=$(curl -sI https://agenthealthmonitor.xyz/ | tr -d '\r' \
+                   | awk -F': ' 'tolower($1)=="cf-cache-status"{print $2}')
+          age=$(curl -sI https://agenthealthmonitor.xyz/ | tr -d '\r' \
+                | awk -F': ' 'tolower($1)=="age"{print $2}')
+          echo "cf-cache-status=$status age=${age:-0}"
+          case "$status" in
+            MISS|EXPIRED|REVALIDATED|DYNAMIC) echo "Edge re-fetched from origin." ;;
+            HIT)
+              if [ "${age:-0}" -lt 120 ]; then
+                echo "HIT on a freshly repopulated entry (age ${age}s) — purge worked."
+              else
+                echo "::error title=Purge ineffective::Still serving a cached copy ${age}s old. Check the API token has Zone > Cache Purge on this zone."
+                exit 1
+              fi ;;
+            *) echo "::warning title=Unexpected cache status::cf-cache-status=$status" ;;
+          esac
