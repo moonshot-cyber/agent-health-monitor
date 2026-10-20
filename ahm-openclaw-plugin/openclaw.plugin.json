@@ -1,0 +1,23 @@
+{
+  "id": "ahm-agent-health-monitor",
+  "name": "Agent Health Monitor",
+  "description": "On-chain agent health diagnostics, trust scoring, and wallet hygiene analysis via x402 micropayments on Base.",
+  "version": "1.0.0",
+  "categories": ["developer-tools"],
+  "contracts": {
+    "tools": [
+      "ahm_risk_check",
+      "ahm_premium_risk",
+      "ahm_health",
+      "ahm_wash",
+      "ahm_health_score",
+      "ahm_trust_route",
+      "ahm_counterparties",
+      "ahm_network_map"
+    ]
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false
+  }
+}
