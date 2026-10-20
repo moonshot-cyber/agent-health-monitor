@@ -7,7 +7,7 @@
     "scripts/check_consistency.py fails the build if a surface disagrees with this file."
   ],
   "schema_version": 1,
-  "updated": "2026-08-15",
+  "updated": "2026-10-20",
 
   "product": {
     "name": "Agent Health Monitor",
@@ -22,10 +22,10 @@
   },
 
   "social": {
-    "twitter_handle": "@agenttrust",
-    "twitter_url": "https://x.com/agenttrust",
+    "twitter_handle": "@AHMprotocol",
+    "twitter_url": "https://x.com/AHMprotocol",
     "contact_email": "pablo@agenthealthmonitor.xyz",
-    "_retired_handles": ["@AHMprotocol", "@AHM_xyz"]
+    "_retired_handles": ["@agenttrust", "@AHM_xyz"]
   },
 
   "roadmap": {
