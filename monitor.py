@@ -67,17 +67,64 @@ class AgentHealth:
 
 # -- API Layer ----------------------------------------------------------
 
+
+class ChainDataUnavailable(RuntimeError):
+    """Upstream chain data could not be retrieved.
+
+    Raised instead of returning empty data. This distinction is the whole
+    point: an outage and a genuinely quiet wallet are not the same thing, and
+    conflating them is what let a broken upstream publish ~19,000 fabricated
+    Grade D scores between 7 and 27 October 2026.
+
+    The failure was silent at three layers. basescan_get swallowed every
+    exception and returned {}; fetch_transactions read that as "no
+    transactions" and returned []; calculate_d2_score read THAT as
+    "insufficient history" and returned its 50 baseline. The composite came
+    out at a confident-looking 58 / Grade D for every wallet scanned, and was
+    written to the database as fact.
+
+    Callers must either skip the wallet or surface the error. They must never
+    score one.
+    """
+
+
+# status == "0" is overloaded in the Etherscan/Blockscout API: it means both
+# "nothing found" and "your request failed". Only these messages are benign.
+_EMPTY_RESULT_MESSAGES = ("no transactions found", "no records found")
+
+
 def basescan_get(params: dict, api_key: str = "") -> dict:
-    """Make a Blockscout/Basescan API request with error handling."""
+    """Fetch from the chain data API.
+
+    Raises ChainDataUnavailable on any failure. Returns a payload only when
+    the upstream genuinely answered — including a legitimate empty result.
+    """
     if api_key:
         params["apikey"] = api_key
     try:
         resp = requests.get(BASESCAN_API_URL, params=params, timeout=30)
         resp.raise_for_status()
-        return resp.json()
     except requests.RequestException as e:
-        print(f"  [!] API error: {e}")
-        return {}
+        raise ChainDataUnavailable(f"{BASESCAN_API_URL}: {e}") from e
+
+    try:
+        data = resp.json()
+    except ValueError as e:
+        # A bot-challenge interstitial returns HTML with HTTP 200, so
+        # raise_for_status passes and only the decode reveals the problem.
+        # This is exactly how the October outage presented.
+        snippet = resp.text[:120].replace("\n", " ")
+        raise ChainDataUnavailable(
+            f"{BASESCAN_API_URL}: non-JSON response ({resp.status_code}): {snippet!r}"
+        ) from e
+
+    if str(data.get("status")) == "0":
+        message = str(data.get("message", "")).strip()
+        if message.lower() not in _EMPTY_RESULT_MESSAGES:
+            raise ChainDataUnavailable(
+                f"{BASESCAN_API_URL}: API error: {message or data.get('result') or 'unknown'}"
+            )
+    return data
 
 
 def fetch_transactions(address: str, api_key: str = "") -> list[dict]:
@@ -93,9 +140,15 @@ def fetch_transactions(address: str, api_key: str = "") -> list[dict]:
         "sort": "asc",
     }, api_key)
 
-    if data.get("status") == "1" and isinstance(data.get("result"), list):
-        return data["result"]
-    return []
+    result = data.get("result")
+    if isinstance(result, list):
+        # Includes the legitimate empty case: basescan_get has already raised
+        # if the upstream actually failed, so [] here means "this wallet has
+        # no transactions", not "we could not find out".
+        return result
+    raise ChainDataUnavailable(
+        f"unexpected txlist payload for {address}: {type(result).__name__}"
+    )
 
 
 def fetch_token_transfers(address: str, max_pages: int = 5) -> list[dict]:
@@ -150,11 +203,14 @@ def fetch_token_transfers(address: str, max_pages: int = 5) -> list[dict]:
 
 def get_eth_price(api_key: str = "") -> float:
     """Fetch current ETH/USD price."""
-    # Try Blockscout stats endpoint
-    data = basescan_get({"module": "stats", "action": "ethprice"}, api_key)
+    # Try Blockscout stats endpoint. Unlike transaction data, the ETH price is
+    # not load-bearing for a score — it has a live fallback and then a constant
+    # — so an upstream failure here degrades quietly by design rather than
+    # aborting the scan.
     try:
+        data = basescan_get({"module": "stats", "action": "ethprice"}, api_key)
         return float(data["result"]["ethusd"])
-    except (KeyError, TypeError, ValueError):
+    except (ChainDataUnavailable, KeyError, TypeError, ValueError):
         pass
     # Fallback: CoinGecko free API
     try:

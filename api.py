@@ -81,6 +81,7 @@ from eth_account import Account as EthAccount
 
 import canonical
 from monitor import (
+    ChainDataUnavailable,
     analyze_address,
     analyze_retryable_transactions,
     analyze_wash,
@@ -129,6 +130,24 @@ AHS_JWT_SECRET = os.getenv("AHS_JWT_SECRET", secrets.token_urlsafe(32))
 NANSEN_PAYER_PRIVATE_KEY = os.getenv("NANSEN_PAYER_PRIVATE_KEY", "")
 ENDPOINT_COUNT = canonical.endpoint_count()
 BATCH_X402_MAX, BATCH_API_KEY_MAX = canonical.batch_limits()
+# -- Scanning kill switch ----------------------------------------------------
+# Defaults to OFF. The Base chain data API went behind a bot challenge on
+# 7 October 2026; every wallet scanned between then and 27 October was written
+# with the no-data default (D1 75 / D2 50 -> composite 58 / Grade D), which
+# overwrote 141 real Grade A scores and pushed Grade D from 71% to 92% of the
+# population.
+#
+# monitor.fetch_transactions now raises ChainDataUnavailable instead of
+# returning [], so a repeat cannot be written as a score. This flag stays off
+# until a working Base data source is configured, so resuming is a deliberate
+# act rather than a side effect of a deploy. Set SCANS_ENABLED=true to resume.
+SCANS_ENABLED = os.getenv("SCANS_ENABLED", "false").strip().lower() in ("1", "true", "yes")
+
+# Consecutive ChainDataUnavailable failures before a scan run aborts. Stops a
+# dead upstream from burning a whole nightly budget one skipped wallet at a
+# time, and makes the outage loud instead of a trickle of warnings.
+SCAN_FAILURE_LIMIT = int(os.getenv("SCAN_FAILURE_LIMIT", "25"))
+
 NETWORK = os.getenv("NETWORK", "eip155:8453")  # Base mainnet
 VALID_COUPONS = set(c.strip().upper() for c in os.getenv("VALID_COUPONS", "").split(",") if c.strip())
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
@@ -1589,7 +1608,15 @@ async def lifespan(app: FastAPI):
         erc8183_task = asyncio.create_task(erc8183_worker.erc8183_worker_loop())
 
     # -- APScheduler: nightly scans --
+    # Rank refresh is registered either way: it re-ranks existing rows and
+    # touches no upstream API, so it stays useful while scanning is paused.
     scheduler = AsyncIOScheduler()
+    if not SCANS_ENABLED:
+        logger.warning(
+            "Nightly registry scans are PAUSED (SCANS_ENABLED=false). "
+            "Set SCANS_ENABLED=true once a working Base chain data source is "
+            "configured - see the comment at SCANS_ENABLED in api.py."
+        )
     scheduler.add_job(
         run_acp_scan,
         trigger=CronTrigger(hour=2, minute=0, timezone="UTC"),
@@ -1644,6 +1671,15 @@ async def lifespan(app: FastAPI):
         misfire_grace_time=3600,
         max_instances=1,
     )
+    # Pause rather than skip registration, so /acp-scan/status and friends can
+    # still report the jobs and show them as paused instead of 404-ing.
+    if not SCANS_ENABLED:
+        for _jid in ("acp_nightly_scan", "olas_nightly_scan", "celo_nightly_scan",
+                     "arc_nightly_scan", "erc8004_nightly_scan"):
+            _job = scheduler.get_job(_jid)
+            if _job is not None:
+                _job.pause()
+
     scheduler.start()
     app.state.scheduler = scheduler
 
@@ -6735,8 +6771,22 @@ async def run_erc8004_scan():
 # -- Rescan Background Loop --------------------------------------------------
 
 async def rescan_loop():
-    """Background loop: re-scan known wallets on their configured interval."""
+    """Background loop: re-scan known wallets on their configured interval.
+
+    This loop did the most damage in the October outage: nightly scans only
+    added bad rows, but rescans OVERWROTE existing good ones. 141 Grade A
+    wallets were replaced with the no-data default before anyone noticed.
+    """
+    if not SCANS_ENABLED:
+        logger.warning(
+            "Rescan loop is PAUSED (SCANS_ENABLED=false). Rescans overwrite "
+            "existing scores, so this stays off until a working Base chain "
+            "data source is configured."
+        )
+        return
+
     await asyncio.sleep(300)  # 5-minute startup delay
+    consecutive_unavailable = 0
 
     while True:
         try:
@@ -6783,8 +6833,28 @@ async def rescan_loop():
                     ))
                     logger.info("Rescan %s: AHS=%d/%s", wallet["address"][:10], result.agent_health_score, result.grade)
 
+                except ChainDataUnavailable as e:
+                    # Not this wallet's fault — the upstream is down. Never
+                    # score it; count the failures and stop the sweep if they
+                    # persist, so an outage is loud rather than a slow trickle
+                    # of warnings nobody reads.
+                    consecutive_unavailable += 1
+                    logger.warning(
+                        "Rescan skipped %s: chain data unavailable (%d consecutive): %s",
+                        wallet["address"][:10], consecutive_unavailable, e,
+                    )
+                    if consecutive_unavailable >= SCAN_FAILURE_LIMIT:
+                        logger.error(
+                            "Rescan loop aborting sweep: %d consecutive chain data "
+                            "failures. Upstream is unavailable; no scores written.",
+                            consecutive_unavailable,
+                        )
+                        break
                 except Exception as e:
+                    consecutive_unavailable = 0
                     logger.warning("Rescan failed for %s: %s", wallet["address"][:10], e)
+                else:
+                    consecutive_unavailable = 0
 
                 await asyncio.sleep(3)  # Rate limit between scans
 
