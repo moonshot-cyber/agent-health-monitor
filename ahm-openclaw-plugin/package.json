@@ -1,0 +1,66 @@
+{
+  "name": "ahm-agent-health-monitor",
+  "version": "1.0.0",
+  "description": "OpenClaw plugin for Agent Health Monitor: on-chain agent health diagnostics, trust scoring, and wallet hygiene analysis via x402 micropayments on Base.",
+  "author": "AHMprotocol",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "openclaw.plugin.json",
+    "README.md"
+  ],
+  "keywords": [
+    "openclaw",
+    "openclaw-plugin",
+    "clawhub",
+    "agent-health-monitor",
+    "ahm",
+    "x402",
+    "base",
+    "usdc",
+    "blockchain",
+    "wallet",
+    "trust",
+    "risk",
+    "security",
+    "diagnostics",
+    "agent"
+  ],
+  "homepage": "https://agenthealthmonitor.xyz",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/moonshot-cyber/agent-health-monitor.git",
+    "directory": "ahm-openclaw-plugin"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\""
+  },
+  "dependencies": {
+    "typebox": "1.4.2"
+  },
+  "peerDependencies": {
+    "openclaw": ">=2026.3.24-beta.2"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "openclaw": "^2026.10.5",
+    "typescript": "^7.0.2"
+  },
+  "openclaw": {
+    "extensions": [
+      "./dist/index.js"
+    ],
+    "compat": {
+      "pluginApi": ">=2026.3.24-beta.2",
+      "minGatewayVersion": "2026.3.24-beta.2"
+    },
+    "build": {
+      "openclawVersion": "2026.10.5",
+      "pluginSdkVersion": "2026.10.5"
+    }
+  }
+}
