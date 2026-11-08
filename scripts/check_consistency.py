@@ -9,7 +9,7 @@ Three classes of check:
      runs; the only durable fix is for it not to be there.
 
   2. FORBIDDEN STRINGS — specific claims that were wrong and must not return,
-     e.g. "8,000+", "six-model", "GPT-4o", "AHMprotocol", "13 endpoints".
+     e.g. "8,000+", "six-model", "GPT-4o", "@agenttrust", "13 endpoints".
 
   3. HARD-CODED STABLE VALUES — prices, thresholds, weights, counts and handles
      must come from config/canonical.json, not be retyped into a template.
@@ -91,7 +91,7 @@ FORBIDDEN_STRINGS = [
     "8,000+", "8,800+", "2,860+", "4,500+", "4,552", "42,000+",
     "13 endpoints", "13 diagnostic", "11 pay-per-call",
     "GPT-4o", "six-model", "6-model", "DeepSeek",
-    "AHMprotocol", "AHM_xyz",
+    "@agenttrust", "%40agenttrust", "x.com/agenttrust", "AHM_xyz",
     "61.3", "61.2", "59.3",
     "91% score", "91% of agents",
     "APPROVE/REJECT", "APPROVE or REJECT",
