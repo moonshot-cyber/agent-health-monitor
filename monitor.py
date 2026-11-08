@@ -13,6 +13,7 @@ Usage:
 import argparse
 import csv
 import math
+import os
 import re
 import sys
 import time
@@ -24,8 +25,26 @@ import requests
 
 # -- Configuration ------------------------------------------------------
 
-# Blockscout etherscan-compatible API (free, no key required)
-BASESCAN_API_URL = "https://base.blockscout.com/api"
+# Blockscout Universal API.
+#
+# The old per-instance host (base.blockscout.com/api) was deprecated in
+# Blockscout v12.0.0 on 7 October 2026 — the same day scoring silently broke.
+# It now answers with an HTML interstitial rather than JSON. The replacement is
+# a keyed REST API on a single host, with the chain selected by path segment.
+#
+# Free tier: 100K credits/day, 5 RPS. Undocumented endpoints cost 20 credits,
+# so the daily budget is ~5,000 calls. One call per wallet keeps ~1,200 nightly
+# scans at roughly 24K credits — comfortably inside it.
+BLOCKSCOUT_API_URL = os.getenv("BLOCKSCOUT_API_URL", "https://api.blockscout.com")
+BLOCKSCOUT_CHAIN_ID = os.getenv("BLOCKSCOUT_CHAIN_ID", "8453")  # Base mainnet
+BLOCKSCOUT_API_KEY = os.getenv("BLOCKSCOUT_API_KEY", "")
+# Transactions requested per wallet in a single page. Higher means fewer calls
+# and fewer credits; D2 needs at least 10 to score at all.
+BLOCKSCOUT_TX_PAGE_SIZE = int(os.getenv("BLOCKSCOUT_TX_PAGE_SIZE", "200"))
+
+# Retained for the legacy etherscan-shaped helpers that still use basescan_get
+# (ETH price). Not used for transaction history any more.
+BASESCAN_API_URL = os.getenv("BASESCAN_API_URL", "https://base.blockscout.com/api")
 BASE_RPC_URL = "https://mainnet.base.org"
 
 # Blockscout is free but has rate limits (~50 req/min)
@@ -127,28 +146,107 @@ def basescan_get(params: dict, api_key: str = "") -> dict:
     return data
 
 
-def fetch_transactions(address: str, api_key: str = "") -> list[dict]:
-    """Fetch outgoing transaction history from Basescan."""
-    data = basescan_get({
-        "module": "account",
-        "action": "txlist",
-        "address": address,
-        "startblock": 0,
-        "endblock": 99999999,
-        "page": 1,
-        "offset": 1000,
-        "sort": "asc",
-    }, api_key)
+def _to_unix(ts: str | None) -> str:
+    """Blockscout v2 timestamps are ISO8601; the scorers expect unix seconds."""
+    if not ts:
+        return "0"
+    try:
+        return str(int(datetime.fromisoformat(ts.replace("Z", "+00:00")).timestamp()))
+    except (ValueError, TypeError):
+        return "0"
 
-    result = data.get("result")
-    if isinstance(result, list):
-        # Includes the legitimate empty case: basescan_get has already raised
-        # if the upstream actually failed, so [] here means "this wallet has
-        # no transactions", not "we could not find out".
-        return result
-    raise ChainDataUnavailable(
-        f"unexpected txlist payload for {address}: {type(result).__name__}"
-    )
+
+def _v2_to_etherscan(tx: dict) -> dict:
+    """Map one Blockscout v2 transaction onto the etherscan-shaped dict.
+
+    Every scorer in this module reads the etherscan field names, so the
+    translation happens once, here, rather than being scattered through
+    calculate_d1_score, calculate_d2_score and the pattern detectors.
+
+    Shape differences that matter:
+      - from/to are Address objects, not strings
+      - timestamp is ISO8601, not unix seconds
+      - gas fields are gas_limit/gas_used, and are strings
+      - nonce is a JSON number, not a string
+      - success is status "ok"/"error" rather than isError "0"/"1"
+    """
+    frm = tx.get("from") or {}
+    to = tx.get("to") or {}
+    created = tx.get("created_contract") or {}
+
+    # status is the documented enum; result carries either a state or a free
+    # text error message. Treat anything that is not an explicit success as a
+    # failure only when status says so - result can legitimately be "pending".
+    status = tx.get("status")
+    failed = status == "error"
+
+    return {
+        "hash": tx.get("hash", ""),
+        "from": (frm.get("hash") or "") if isinstance(frm, dict) else (frm or ""),
+        "to": (to.get("hash") or "") if isinstance(to, dict) else (to or ""),
+        "timeStamp": _to_unix(tx.get("timestamp")),
+        "gas": str(tx.get("gas_limit") or 0),
+        "gasUsed": str(tx.get("gas_used") or 0),
+        "gasPrice": str(tx.get("gas_price") or 0),
+        "nonce": str(tx.get("nonce") if tx.get("nonce") is not None else ""),
+        "isError": "1" if failed else "0",
+        "txreceipt_status": "0" if failed else "1",
+        "input": tx.get("raw_input") or "0x",
+        "value": str(tx.get("value") or 0),
+        "contractAddress": (created.get("hash") or "") if isinstance(created, dict) else "",
+        "blockNumber": str(tx.get("block_number") or 0),
+    }
+
+
+def fetch_transactions(address: str, api_key: str = "") -> list[dict]:
+    """Fetch outgoing transactions for an address, etherscan-shaped.
+
+    Uses the Blockscout Universal API. Raises ChainDataUnavailable rather than
+    returning [] when the upstream cannot answer - see that exception's
+    docstring for why the distinction matters.
+
+    One request per wallet by design: paging would multiply credit spend, and
+    BLOCKSCOUT_TX_PAGE_SIZE transactions is far more than D2 needs.
+    """
+    key = api_key or BLOCKSCOUT_API_KEY
+    url = (f"{BLOCKSCOUT_API_URL.rstrip('/')}/{BLOCKSCOUT_CHAIN_ID}"
+           f"/api/v2/addresses/{address}/transactions")
+    params = {"filter": "from", "items_count": BLOCKSCOUT_TX_PAGE_SIZE}
+    headers = {"accept": "application/json"}
+    if key:
+        headers["authorization"] = f"Bearer {key}"
+
+    try:
+        resp = requests.get(url, params=params, headers=headers, timeout=30)
+    except requests.RequestException as e:
+        raise ChainDataUnavailable(f"{url}: {e}") from e
+
+    if resp.status_code in (401, 402, 403):
+        raise ChainDataUnavailable(
+            f"{url}: {resp.status_code} - check BLOCKSCOUT_API_KEY "
+            f"({resp.text[:120]})"
+        )
+    if resp.status_code == 429:
+        raise ChainDataUnavailable(f"{url}: rate limited (429)")
+    try:
+        resp.raise_for_status()
+    except requests.HTTPError as e:
+        raise ChainDataUnavailable(f"{url}: {e}") from e
+
+    try:
+        data = resp.json()
+    except ValueError as e:
+        snippet = resp.text[:120].replace("\n", " ")
+        raise ChainDataUnavailable(
+            f"{url}: non-JSON response ({resp.status_code}): {snippet!r}") from e
+
+    items = data.get("items")
+    if not isinstance(items, list):
+        raise ChainDataUnavailable(
+            f"{url}: no items array in response (keys: {sorted(data)[:6]})")
+
+    # An empty items list is a real answer: this wallet has sent nothing.
+    return [_v2_to_etherscan(t) for t in items]
 
 
 def fetch_token_transfers(address: str, max_pages: int = 5) -> list[dict]:
